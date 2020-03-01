@@ -141,13 +141,13 @@ func ServeUDP(addr string, shadow func(net.PacketConn) net.PacketConn) {
 		if err := m.WriteTo(s, bb, srvAddr); err != nil {
 			rc, err := net.ListenPacket("udp", "")
 			if err != nil {
-				logf("")
+				logf("listen packet connection error %v", err)
 				continue
 			}
 
 			_, err = rc.WriteTo(bb, srvAddr)
 			if err != nil {
-				logf("")
+				logf("write to %v, error: %v", srvAddr, err)
 				rc.Close()
 				continue
 			}
@@ -243,12 +243,17 @@ func timedCopy(rc net.PacketConn, pc net.PacketConn, raddr net.Addr, timeout tim
 					return nil
 				}
 			}
-			return fmt.Errorf("read from: %v", err)
+			return fmt.Errorf("read from error: %v", err)
 		}
 
-		_, err = pc.WriteTo(buf[:n], raddr)
+		srcAddr, err:= socks.ParseAddr(buf[:n])
 		if err != nil {
-			return fmt.Errorf("write udp to remote: %v", err)
+			logf("parse real address error: %v", err)
+		}
+
+		// strip original address
+		if _, err = pc.WriteTo(buf[len(srcAddr):n], raddr); err != nil {
+			return fmt.Errorf("write udp to remote error: %v", err)
 		}
 	}
 }
