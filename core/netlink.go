@@ -1,10 +1,5 @@
 package core
 
-import (
-	"encoding/binary"
-	"net"
-)
-
 type Netlink struct {
 	InterfaceIndex    uint32
 	SubInterfaceIndex uint32
