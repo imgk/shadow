@@ -144,6 +144,7 @@ func ServeUDP(addr string, shadow func(net.PacketConn) net.PacketConn) {
 				logf("listen packet connection error %v", err)
 				continue
 			}
+			rc = shadow(rc)
 
 			_, err = rc.WriteTo(bb, srvAddr)
 			if err != nil {
