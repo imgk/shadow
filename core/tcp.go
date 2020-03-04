@@ -61,30 +61,33 @@ func DivertTCP() {
 
 			if aa.Loopback() {
 				l = &tcpTable4[binary.BigEndian.Uint16(bb[22:])]
+				nw := aa.Network()
+
 				copy(bb[12:16], l.RemoteAddr[:])
 				copy(bb[16:20], l.LocalAddr[:])
 				copy(bb[20:22], l.RemotePort[:])
 
-				nw := aa.Network()
 				nw.InterfaceIndex = l.InterfaceIndex
 				nw.SubInterfaceIndex = l.SubInterfaceIndex
 
 				aa.SetLoopback(false)
 			} else {
 				l = &tcpTable4[binary.BigEndian.Uint16(bb[20:])]
+				nw := aa.Network()
+
 				if bb[33] == byte(1)<<1 { // SYN
 					copy(l.LocalAddr[:], bb[12:16])
 					copy(l.RemoteAddr[:], bb[16:20])
 					copy(l.RemotePort[:], bb[22:24])
+
+					l.InterfaceIndex = nw.InterfaceIndex
+					l.SubInterfaceIndex = nw.SubInterfaceIndex
 				}
 
 				copy(bb[12:16], []byte{127, 0, 0, 1})
 				copy(bb[16:20], []byte{127, 0, 0, 1})
 				binary.BigEndian.PutUint16(bb[22:24], divertPort)
 
-				nw := aa.Network()
-				l.InterfaceIndex = nw.InterfaceIndex
-				l.SubInterfaceIndex = nw.SubInterfaceIndex
 				nw.InterfaceIndex = 1 // Loopback
 				nw.SubInterfaceIndex = 0
 
