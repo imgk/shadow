@@ -4,6 +4,8 @@ A shadowsocks Windows client based on WinDviert.
 
 ## How to use it
 
-Build Shadowsocks-WinDivert and Divert driver. Run shadowsocks-windivert.exe as administrator.
+Download pre-built binaries from Release first, then download [WinDviert](https://github.com/basil00/Divert) and version 2.2 is tested. Run this progroam with administrator privilege.
 
-shadowsocks-windivert.exe -c rule.json -s ss://AEAD_CHACHA20_POLY1305:password@server:port -u -v
+## Config File
+
+Currently shadowsocks only support CHACHA20-IETF-POLY1305, AES-256-GCM and DUMMY for no encryption/decryption.

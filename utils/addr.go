@@ -1,4 +1,4 @@
-package socks
+package utils
 
 import (
 	"encoding/binary"
@@ -38,9 +38,9 @@ func (addr Addr) String() string {
 }
 
 func ReadAddr(conn net.Conn) (Addr, error) {
-	return readAddr(conn, make([]byte, MaxAddrLen))
+	return ReadAddrBuffer(conn, make([]byte, MaxAddrLen))
 }
-func readAddr(conn net.Conn, addr []byte) (Addr, error) {
+func ReadAddrBuffer(conn net.Conn, addr []byte) (Addr, error) {
 	_, err := io.ReadFull(conn, addr[:2])
 	if err != nil {
 		return nil, err
@@ -137,9 +137,9 @@ func ResolveUDPAddr(addr Addr) (*net.UDPAddr, error) {
 }
 
 func ResolveAddr(addr net.Addr) (Addr, error) {
-	return resolveAddr(addr, make([]byte, MaxAddrLen))
+	return ResolveAddrBuffer(addr, make([]byte, MaxAddrLen))
 }
-func resolveAddr(addr net.Addr, b []byte) (Addr, error) {
+func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 	if a, ok := addr.(*net.TCPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
 			b[0] = AddrTypeIPv4

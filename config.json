@@ -1,0 +1,14 @@
+{
+    "Server": "ss://chacha20-ietf-poly1305:password@127.0.0.1:8388",
+    "Proxy": [
+        "**.google.*"
+    ],
+    "Direct": [
+        "**.baidu.*",
+        "**.youku.*",
+        "**.*"
+    ],
+    "Blocked": [
+        "ad.blocked.com"
+    ]
+}

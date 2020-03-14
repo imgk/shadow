@@ -1,12 +1,13 @@
-package core
+package main
 
 import (
 	"encoding/json"
 	"io/ioutil"
 )
 
-func LoadRules(f string) error {
-	var rule struct {
+func loadConfig(f string) (string, error) {
+	var cfg struct {
+		Server  string
 		Proxy   []string
 		Direct  []string
 		Blocked []string
@@ -14,26 +15,25 @@ func LoadRules(f string) error {
 
 	b, err := ioutil.ReadFile(f)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	err = json.Unmarshal(b, &rule)
+	err = json.Unmarshal(b, &cfg)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	for _, v := range rule.Proxy {
+	for _, v := range cfg.Proxy {
 		matchTree.Store(v, "PROXY")
 	}
 
-	for _, v := range rule.Direct {
+	for _, v := range cfg.Direct {
 		matchTree.Store(v, "DIRECT")
 	}
 
-	for _, v := range rule.Blocked {
+	for _, v := range cfg.Blocked {
 		matchTree.Store(v, "BLOCKED")
 	}
 
-	matchTree.Store("**.44.in-addr.arpa.", "PROXY")
-	return nil
+	return cfg.Server, nil
 }

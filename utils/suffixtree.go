@@ -1,4 +1,4 @@
-package suffixtree
+package utils
 
 import (
 	"strings"
@@ -11,14 +11,14 @@ type Tree struct {
 	sync.RWMutex
 }
 type node struct {
-	value  string
+	value  interface{}
 	branch map[string]*node
 }
 
 func NewTree(sep string) *Tree {
 	return &Tree{
 		node: &node{
-			value:  "",
+			value:  struct{}{},
 			branch: map[string]*node{},
 		},
 		sep:     sep,
@@ -26,12 +26,12 @@ func NewTree(sep string) *Tree {
 	}
 }
 
-func (t *Tree) Store(k string, v string) {
+func (t *Tree) Store(k string, v interface{}) {
 	t.Lock()
 	defer t.Unlock()
 	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
 }
-func (n *node) store(ks []string, v string) {
+func (n *node) store(ks []string, v interface{}) {
 	l := len(ks)
 	switch l {
 	case 0:
@@ -59,7 +59,7 @@ func (n *node) store(ks []string, v string) {
 		b, ok := n.branch[k]
 		if !ok {
 			b = &node{
-				value:  "",
+				value:  struct{}{},
 				branch: map[string]*node{},
 			}
 			n.branch[k] = b
@@ -69,16 +69,16 @@ func (n *node) store(ks []string, v string) {
 	}
 }
 
-func (t *Tree) Load(k string) string {
+func (t *Tree) Load(k string) interface{} {
 	t.RLock()
 	defer t.RUnlock()
 	return t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
 }
-func (n *node) load(ks []string) string {
+func (n *node) load(ks []string) interface{} {
 	l := len(ks)
 	switch l {
 	case 0:
-		return ""
+		return struct{}{}
 	case 1:
 		b, ok := n.branch[ks[l-1]]
 		if ok {
@@ -95,12 +95,12 @@ func (n *node) load(ks []string) string {
 			return b.value
 		}
 
-		return ""
+		return struct{}{}
 	default:
 		b, ok := n.branch[ks[l-1]]
 		if ok {
 			s := b.load(ks[:l-1])
-			if s != "" {
+			if s != struct{}{} {
 				return s
 			}
 		}
@@ -108,7 +108,7 @@ func (n *node) load(ks []string) string {
 		b, ok = n.branch["*"]
 		if ok {
 			s := b.load(ks[:l-1])
-			if s != "" {
+			if s != struct{}{} {
 				return s
 			}
 		}
@@ -118,6 +118,6 @@ func (n *node) load(ks []string) string {
 			return b.value
 		}
 
-		return ""
+		return struct{}{}
 	}
 }
