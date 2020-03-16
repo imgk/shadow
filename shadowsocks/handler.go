@@ -11,6 +11,8 @@ import (
 
 	"github.com/eycorsican/go-tun2socks/core"
 
+	"github.com/imgk/shadowsocks-windivert/dns"
+	"github.com/imgk/shadowsocks-windivert/log"
 	"github.com/imgk/shadowsocks-windivert/netstack"
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
@@ -23,11 +25,9 @@ type Handler struct {
 	addr    string
 	timeout time.Duration
 	conns   map[core.UDPConn]net.PacketConn
-	getAddr func(net.IP, []byte) (utils.Addr, error)
-	logf    func(f string, v ...interface{})
 }
 
-func NewHandler(url string, timeout time.Duration, getAddr func(net.IP, []byte) (utils.Addr, error), logf func(string, ... interface{})) (netstack.Handler, error) {
+func NewHandler(url string, timeout time.Duration) (netstack.Handler, error) {
 	addr, cipher, password, err := ParseUrl(url)
 	if err != nil {
 		return nil, err
@@ -51,8 +51,6 @@ func NewHandler(url string, timeout time.Duration, getAddr func(net.IP, []byte) 
 		addr:    addr,
 		timeout: timeout,
 		conns:   make(map[core.UDPConn]net.PacketConn, 16),
-		getAddr: getAddr,
-		logf: logf,
 	}, nil
 }
 
@@ -62,7 +60,7 @@ func (h *Handler) Handle(c net.Conn, target *net.TCPAddr) error {
 	go func() {
 		defer c.Close()
 
-		addr, err := h.getAddr(target.IP, make([]byte, utils.MaxAddrLen))
+		addr, err := dns.IPToDomainAddr(target.IP, make([]byte, utils.MaxAddrLen))
 		if err != nil {
 			errCh <- fmt.Errorf("lookup original address error: %v", err)
 			return
@@ -85,7 +83,7 @@ func (h *Handler) Handle(c net.Conn, target *net.TCPAddr) error {
 
 		errCh <- nil
 
-		h.logf("proxy tcp %v <-> %v <-> %v", c.LocalAddr(), h.addr, addr)
+		log.Logf("proxy tcp %v <-> %v <-> %v", c.LocalAddr(), h.addr, addr)
 
 		if err := relay(c.(core.TCPConn), rc.(*Conn)); err != nil {
 			if ne, ok := err.(net.Error); ok {
@@ -97,7 +95,7 @@ func (h *Handler) Handle(c net.Conn, target *net.TCPAddr) error {
 					return
 				}
 			}
-			h.logf("relay error: %v", err)
+			log.Logf("relay error: %v", err)
 		}
 	}()
 
@@ -131,7 +129,7 @@ func (h *Handler) Connect(pc core.UDPConn, target *net.UDPAddr) error {
 		return errors.New("nil target")
 	}
 
-	addr, err := h.getAddr(target.IP, make([]byte, utils.MaxAddrLen))
+	addr, err := dns.IPToDomainAddr(target.IP, make([]byte, utils.MaxAddrLen))
 	if err != nil {
 		return fmt.Errorf("lookup original address error: %v", err)
 	}
@@ -147,7 +145,7 @@ func (h *Handler) Connect(pc core.UDPConn, target *net.UDPAddr) error {
 	h.conns[pc] = rc
 	h.Unlock()
 
-	h.logf("proxy udp %v <-> %v <-> %v", pc.LocalAddr(), h.addr, addr)
+	log.Logf("proxy udp %v <-> %v <-> %v", pc.LocalAddr(), h.addr, addr)
 
 	go func() {
 		b := h.Get().([]byte)
@@ -162,19 +160,19 @@ func (h *Handler) Connect(pc core.UDPConn, target *net.UDPAddr) error {
 						break
 					}
 				}
-				h.logf("read packet error: %v", err)
+				log.Logf("read packet error: %v", err)
 				break
 			}
 
 			raddr, err := utils.ParseAddr(b[:n])
 			if err != nil {
-				h.logf("parse addr error: %v", err)
+				log.Logf("parse addr error: %v", err)
 				break
 			}
 
 			_, err = pc.WriteFrom(b[len(raddr):n], target)
 			if err != nil {
-				h.logf("write packet error: %v", err)
+				log.Logf("write packet error: %v", err)
 				break
 			}
 		}
@@ -202,7 +200,7 @@ func (h *Handler) ReceiveTo(pc core.UDPConn, data []byte, target *net.UDPAddr) e
 	b := h.Get().([]byte)
 	defer h.Put(b)
 
-	addr, err := h.getAddr(target.IP, b)
+	addr, err := dns.IPToDomainAddr(target.IP, b)
 	if err != nil {
 		return fmt.Errorf("lookup original address error: %v", err)
 	}

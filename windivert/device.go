@@ -78,7 +78,7 @@ func (d *Device) WriteTo(w io.Writer) (int64, error) {
 
 		bb := b[:nr]
 		for len(bb) > 0 {
-			l := int(b[2])<<8 + int(b[3])
+			l := int(b[2])<<8 | int(b[3])
 
 			_, err = w.Write(b[:l])
 			if err != nil {
@@ -98,4 +98,4 @@ func (d *Device) Write(b []byte) (int, error) {
 func (d *Device) ReadFrom(r io.Reader) (int64, error) {
 	//TODO
 	return 0, errors.New("not support")
-} 
+}

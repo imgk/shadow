@@ -1,4 +1,4 @@
-package main
+package dns
 
 import (
 	"encoding/binary"
@@ -9,13 +9,21 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 
+	"github.com/imgk/shadowsocks-windivert/log"
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
-var counter = uint16(time.Now().Unix())
+var (
+	counter   = uint16(time.Now().Unix())
+	matchTree = utils.NewTree(".")
+)
+
+func MatchTree() *utils.Tree {
+	return matchTree
+}
 
 func AddrToDomainAddr(addr net.Addr, b []byte) (utils.Addr, error) {
-	switch addr.(type){
+	switch addr.(type) {
 	case *net.TCPAddr:
 		a, err := IPToDomainAddr(addr.(*net.TCPAddr).IP, b)
 		if err != nil {
@@ -53,7 +61,7 @@ func IPToDomainAddr(addr net.IP, b []byte) (utils.Addr, error) {
 
 func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 	if len(m.Questions) == 0 {
-		logf("length of questions in dns message is 0")
+		log.Logf("length of questions in dns message is 0")
 		return m
 	}
 
@@ -64,7 +72,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 		case "PROXY":
 			switch m.Questions[0].Type {
 			case dnsmessage.TypeA:
-				typeA := &dnsmessage.AResource{A: [4]byte{44, 44, uint8(counter>>8), uint8(counter)}}
+				typeA := &dnsmessage.AResource{A: [4]byte{44, 44, uint8(counter >> 8), uint8(counter)}}
 				matchTree.Store(name, typeA)
 
 				typePTR := &dnsmessage.PTRResource{PTR: m.Questions[0].Name}

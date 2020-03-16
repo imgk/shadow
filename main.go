@@ -1,37 +1,27 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"time"
 
 	"golang.org/x/sys/windows"
 
+	"github.com/imgk/shadowsocks-windivert/dns"
+	"github.com/imgk/shadowsocks-windivert/log"
 	"github.com/imgk/shadowsocks-windivert/netstack"
 	"github.com/imgk/shadowsocks-windivert/shadowsocks"
 	"github.com/imgk/shadowsocks-windivert/systray"
-	"github.com/imgk/shadowsocks-windivert/utils"
 	"github.com/imgk/shadowsocks-windivert/windivert"
 )
 
-var (
-	verbose = false
-	matchTree = utils.NewTree(".")
-	logger = log.New(os.Stderr, "", log.Lshortfile|log.LstdFlags)
-)
-
-func logf(f string, v ...interface{}) {
-	if verbose {
-		logger.Output(2, fmt.Sprintf(f, v...))
-	}
-}
-
 func main() {
-	flag.BoolVar(&verbose, "v", false, "enable verbose mode")
+	flag.BoolVar(log.Verbose(), "v", false, "enable verbose mode")
 	flag.Parse()
 
 	addrUrl, err := loadConfig("config.json")
@@ -39,7 +29,7 @@ func main() {
 		panic(fmt.Errorf("load config config.json error: %v", err))
 	}
 
-	handler, err := shadowsocks.NewHandler(addrUrl, time.Minute*5, IPToDomainAddr, logf)
+	handler, err := shadowsocks.NewHandler(addrUrl, time.Minute*5)
 	if err != nil {
 		panic(fmt.Errorf("shadowsocks error %v", err))
 	}
@@ -48,10 +38,8 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("windivert error: %v", err))
 	}
-	defer dev.Close()
 
 	stack := netstack.NewStack(handler, dev.(io.Writer))
-	defer stack.Close()
 
 	go func() {
 		if wt, ok := dev.(io.WriterTo); ok {
@@ -61,39 +49,73 @@ func main() {
 			return
 		}
 
-		if _, err := io.CopyBuffer(stack, dev, make([]byte, 1500)); err != nil {
+		if _, err := io.CopyBuffer(stack, dev, make([]byte, 2048)); err != nil {
 			panic(fmt.Errorf("netstack exit error: %v", err))
 		}
 	}()
 
 	go func() {
-		if err := Serve(); err != nil {
+		if err := dns.Serve(); err != nil {
 			panic(fmt.Errorf("dns exit error: %v", err))
 		}
 	}()
 
-	logf("shadowsocks is running ...")
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, windows.SIGINT, windows.SIGTERM)
 
+	tray, err := systray.New()
+	if err != nil {
+		panic(fmt.Errorf("systray error: %v", err))
+	}
+	if err := tray.Show(10, "Shadowsocks"); err != nil {
+		panic(fmt.Errorf("set icon error: %v", err))
+	}
+
 	go func() {
-		const iconResID = 10
-
-		tray, err := systray.New()
-		if err != nil {
-			panic(fmt.Errorf("systray error: %v", err))
-		}
-
-		if err := tray.Show(iconResID, "Shadowsocks"); err != nil {
-			panic(fmt.Errorf("set icon error: %v", err))
-		}
-
-		tray.AppendMenu("Close", func() { sigCh <- windows.SIGTERM })
-
 		if err := tray.Run(); err != nil {
 			panic(fmt.Errorf("tray run error: %v", err))
 		}
 	}()
 
+	log.Logf("shadowsocks is running ...")
 	<-sigCh
+
+	dev.Close()
+	stack.Close()
+	tray.Stop()
+}
+
+func loadConfig(f string) (string, error) {
+	var cfg struct {
+		Server   string
+		Proxy    []string
+		Direct   []string
+		Blocked  []string
+	}
+
+	b, err := ioutil.ReadFile(f)
+	if err != nil {
+		return "", err
+	}
+
+	err = json.Unmarshal(b, &cfg)
+	if err != nil {
+		return "", err
+	}
+
+	matchTree := dns.MatchTree()
+
+	for _, v := range cfg.Proxy {
+		matchTree.Store(v, "PROXY")
+	}
+
+	for _, v := range cfg.Direct {
+		matchTree.Store(v, "DIRECT")
+	}
+
+	for _, v := range cfg.Blocked {
+		matchTree.Store(v, "BLOCKED")
+	}
+
+	return cfg.Server, nil
 }
