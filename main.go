@@ -2,12 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -24,9 +28,30 @@ func main() {
 	flag.BoolVar(log.Verbose(), "v", false, "enable verbose mode")
 	flag.Parse()
 
-	addrUrl, err := loadConfig("config.json")
+	addrUrl, plugin, pluginOpts, err := loadConfig("config.json")
 	if err != nil {
 		panic(fmt.Errorf("load config config.json error: %v", err))
+	}
+
+	pluginCmd, err := loadPlugin(plugin, pluginOpts)
+	if plugin != "" && err != nil {
+		panic(fmt.Errorf("plugin error: %v", err))
+	}
+
+	pluginCh := make(chan struct{})
+	if pluginCmd != nil {
+		go func() {
+			log.Logf("plugin %v start", plugin)
+			if err := pluginCmd.Run(); err != nil {
+				select {
+				case <-pluginCh:
+				case <-time.After(time.Second*5):
+					panic(fmt.Errorf("plugin error %v", err))
+				}
+			}
+			pluginCh <- struct{}{}
+			log.Logf("plugin %v stop", plugin)
+		}()
 	}
 
 	handler, err := shadowsocks.NewHandler(addrUrl, time.Minute*5)
@@ -67,6 +92,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("systray error: %v", err))
 	}
+	tray.AppendMenu("Close", func() { sigCh <- windows.SIGTERM })
 	if err := tray.Show(10, "Shadowsocks"); err != nil {
 		panic(fmt.Errorf("set icon error: %v", err))
 	}
@@ -82,25 +108,43 @@ func main() {
 
 	dev.Close()
 	stack.Close()
+
+	if pluginCmd != nil {
+		if err := pluginCmd.Process.Signal(windows.SIGTERM); err != nil {
+			//log.Logf("signal plugin process error: %v", err) // windows not supported
+		}
+
+		select {
+		case <-pluginCh:
+		case <-time.After(time.Second):
+			if err := pluginCmd.Process.Kill(); err != nil {
+				log.Logf("kill plugin process error: %v", err)
+			}
+			pluginCh <- struct{}{}
+		}
+	}
+
 	tray.Stop()
 }
 
-func loadConfig(f string) (string, error) {
+func loadConfig(f string) (string, string, string, error) {
 	var cfg struct {
-		Server   string
-		Proxy    []string
-		Direct   []string
-		Blocked  []string
+		Server     string
+		Plugin     string
+		PluginOpts string
+		Proxy      []string
+		Direct     []string
+		Blocked    []string
 	}
 
 	b, err := ioutil.ReadFile(f)
 	if err != nil {
-		return "", err
+		return "", "", "", err
 	}
 
 	err = json.Unmarshal(b, &cfg)
 	if err != nil {
-		return "", err
+		return "", "", "", err
 	}
 
 	matchTree := dns.MatchTree()
@@ -117,5 +161,30 @@ func loadConfig(f string) (string, error) {
 		matchTree.Store(v, "BLOCKED")
 	}
 
-	return cfg.Server, nil
+	return cfg.Server, cfg.Plugin, cfg.PluginOpts, nil
+}
+
+func loadPlugin(name, opts string) (*exec.Cmd, error) {
+	if info, err := os.Stat(name); err != nil {
+		return nil, err
+	} else {
+		if info.IsDir() {
+			return nil, errors.New("not a file")
+		}
+	}
+
+	if !filepath.IsAbs(name) {
+		dir, _ := os.Getwd()
+		name = filepath.Join(dir, name)
+	}
+
+	w := log.Writer("Plugin:")
+	cmd := &exec.Cmd{
+		Path: name,
+		Args: append([]string{name}, strings.Split(opts, " ")...),
+		Stdout: w,
+		Stderr: w,
+	}
+
+	return cmd, nil
 }
