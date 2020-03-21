@@ -20,7 +20,7 @@ const (
 
 var ErrInvalidAddrType = errors.New("invalid address type")
 
-func (addr Addr) NetWork() string {
+func (addr Addr) Network() string {
 	return ""
 }
 
@@ -140,6 +140,11 @@ func ResolveAddr(addr net.Addr) (Addr, error) {
 	return ResolveAddrBuffer(addr, make([]byte, MaxAddrLen))
 }
 func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
+	if a, ok := addr.(Addr); ok {
+		n := copy(b, a)
+		return b[:n], nil
+	}
+
 	if a, ok := addr.(*net.TCPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
 			b[0] = AddrTypeIPv4

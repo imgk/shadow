@@ -21,10 +21,10 @@ func (l *Logger) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-var logger = &Logger {
+var logger = &Logger{
 	Logger: log.New(os.Stderr, "", log.Lshortfile|log.LstdFlags),
 	format: "",
-	mode: false,
+	mode:   false,
 }
 
 func Verbose() *bool {

@@ -282,9 +282,17 @@ func Open(filter string, layer C.WINDIVERT_LAYER, priority int16, flags uint64) 
 
 func (h *Handle) Recv(buffer []byte, address *Address) (uint, error) {
 	recvLen := uint(0)
-	b := C.WinDivertRecv(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
-	if b == C.FALSE {
-		return 0, GetLastError()
+
+	if buffer == nil || len(buffer) == 0 {
+		b := C.WinDivertRecv(C.HANDLE(h.Handle), unsafe.Pointer(nil), C.uint(0), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
+		if b == C.FALSE {
+			return 0, GetLastError()
+		}
+	} else {
+		b := C.WinDivertRecv(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
+		if b == C.FALSE {
+			return 0, GetLastError()
+		}
 	}
 
 	return recvLen, nil

@@ -21,6 +21,7 @@ import (
 	"github.com/imgk/shadowsocks-windivert/netstack"
 	"github.com/imgk/shadowsocks-windivert/shadowsocks"
 	"github.com/imgk/shadowsocks-windivert/systray"
+	"github.com/imgk/shadowsocks-windivert/utils"
 	"github.com/imgk/shadowsocks-windivert/windivert"
 )
 
@@ -28,33 +29,37 @@ func main() {
 	flag.BoolVar(log.Verbose(), "v", false, "enable verbose mode")
 	flag.Parse()
 
-	addrUrl, plugin, pluginOpts, err := loadConfig("config.json")
+	mutex, err := windows.CreateMutex(nil, true, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
 	if err != nil {
+		panic(fmt.Errorf("create mutex error: %v", err))
+	}
+
+	if err := loadConfig("config.json", dns.MatchTree()); err != nil {
 		panic(fmt.Errorf("load config config.json error: %v", err))
 	}
 
-	pluginCmd, err := loadPlugin(plugin, pluginOpts)
-	if plugin != "" && err != nil {
+	pluginCmd, err := loadPlugin(conf.Plugin, conf.PluginOpts)
+	if conf.Plugin != "" && err != nil {
 		panic(fmt.Errorf("plugin error: %v", err))
 	}
 
 	pluginCh := make(chan struct{})
 	if pluginCmd != nil {
 		go func() {
-			log.Logf("plugin %v start", plugin)
+			log.Logf("plugin %v start", conf.Plugin)
 			if err := pluginCmd.Run(); err != nil {
 				select {
 				case <-pluginCh:
-				case <-time.After(time.Second*5):
+				case <-time.After(time.Second * 5):
 					panic(fmt.Errorf("plugin error %v", err))
 				}
 			}
 			pluginCh <- struct{}{}
-			log.Logf("plugin %v stop", plugin)
+			log.Logf("plugin %v stop", conf.Plugin)
 		}()
 	}
 
-	handler, err := shadowsocks.NewHandler(addrUrl, time.Minute*5)
+	handler, err := shadowsocks.NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		panic(fmt.Errorf("shadowsocks error %v", err))
 	}
@@ -80,7 +85,7 @@ func main() {
 	}()
 
 	go func() {
-		if err := dns.Serve(); err != nil {
+		if err := dns.Serve(conf.NameServer); err != nil {
 			panic(fmt.Errorf("dns exit error: %v", err))
 		}
 	}()
@@ -125,63 +130,67 @@ func main() {
 	}
 
 	tray.Stop()
+	windows.ReleaseMutex(mutex)
 }
 
-func loadConfig(f string) (string, string, string, error) {
-	var cfg struct {
-		Server     string
-		Plugin     string
-		PluginOpts string
-		Proxy      []string
-		Direct     []string
-		Blocked    []string
-	}
+var conf struct {
+	Server     string
+	NameServer string
+	Plugin     string
+	PluginOpts string
+	Proxy      []string
+	Direct     []string
+	Blocked    []string
+}
 
+func loadConfig(f string, matchTree *utils.Tree) error {
 	b, err := ioutil.ReadFile(f)
 	if err != nil {
-		return "", "", "", err
+		return err
 	}
 
-	err = json.Unmarshal(b, &cfg)
+	err = json.Unmarshal(b, &conf)
 	if err != nil {
-		return "", "", "", err
+		return err
 	}
 
-	matchTree := dns.MatchTree()
-
-	for _, v := range cfg.Proxy {
+	for _, v := range conf.Proxy {
 		matchTree.Store(v, "PROXY")
 	}
 
-	for _, v := range cfg.Direct {
+	for _, v := range conf.Direct {
 		matchTree.Store(v, "DIRECT")
 	}
 
-	for _, v := range cfg.Blocked {
+	for _, v := range conf.Blocked {
 		matchTree.Store(v, "BLOCKED")
 	}
 
-	return cfg.Server, cfg.Plugin, cfg.PluginOpts, nil
+	return nil
 }
 
 func loadPlugin(name, opts string) (*exec.Cmd, error) {
-	if info, err := os.Stat(name); err != nil {
+	info, err := os.Stat(name)
+	if err != nil {
 		return nil, err
-	} else {
-		if info.IsDir() {
-			return nil, errors.New("not a file")
-		}
+	}
+
+	if info.IsDir() {
+		return nil, errors.New("not a file")
 	}
 
 	if !filepath.IsAbs(name) {
-		dir, _ := os.Getwd()
+		dir, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
 		name = filepath.Join(dir, name)
 	}
 
 	w := log.Writer("Plugin:")
 	cmd := &exec.Cmd{
-		Path: name,
-		Args: append([]string{name}, strings.Split(opts, " ")...),
+		Path:   name,
+		Args:   append([]string{name}, strings.Split(opts, " ")...),
 		Stdout: w,
 		Stderr: w,
 	}

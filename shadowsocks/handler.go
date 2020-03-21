@@ -102,6 +102,12 @@ func (h *Handler) Handle(c net.Conn, target *net.TCPAddr) error {
 	return <-errCh
 }
 
+type DuplexConn interface {
+	net.Conn
+	CloseRead() error
+	CloseWrite() error
+}
+
 func relay(c core.TCPConn, rc *Conn) error {
 	errCh := make(chan error, 1)
 

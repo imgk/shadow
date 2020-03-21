@@ -9,7 +9,6 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 
-	"github.com/imgk/shadowsocks-windivert/log"
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
@@ -59,10 +58,11 @@ func IPToDomainAddr(addr net.IP, b []byte) (utils.Addr, error) {
 	return nil, fmt.Errorf("%v not found", addr)
 }
 
-func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
+var errZeroLength = errors.New("length of questions in dns message is 0")
+
+func ResolveDNS(m *dnsmessage.Message) (*dnsmessage.Message, error) {
 	if len(m.Questions) == 0 {
-		log.Logf("length of questions in dns message is 0")
-		return m
+		return m, errZeroLength
 	}
 
 	name := m.Questions[0].Name.String()
@@ -86,7 +86,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 						Name:  m.Questions[0].Name,
 						Type:  m.Questions[0].Type,
 						Class: m.Questions[0].Class,
-						TTL:   5,
+						TTL:   1,
 					},
 					Body: typeA,
 				})
@@ -96,7 +96,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 				m.Header.RCode = dnsmessage.RCodeRefused
 			}
 		case "DIRECT":
-			return m
+			return m, nil
 		case "BLOCKED":
 			switch m.Questions[0].Type {
 			case dnsmessage.TypeA:
@@ -106,7 +106,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 						Name:  m.Questions[0].Name,
 						Type:  m.Questions[0].Type,
 						Class: m.Questions[0].Class,
-						TTL:   5,
+						TTL:   1,
 					},
 					Body: &dnsmessage.AResource{A: [4]byte{127, 0, 0, 1}},
 				})
@@ -116,7 +116,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 				m.Header.RCode = dnsmessage.RCodeRefused
 			}
 		default:
-			return m
+			return m, nil
 		}
 	case *dnsmessage.PTRResource:
 		switch m.Questions[0].Type {
@@ -127,7 +127,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 					Name:  m.Questions[0].Name,
 					Type:  m.Questions[0].Type,
 					Class: m.Questions[0].Class,
-					TTL:   5,
+					TTL:   1,
 				},
 				Body: s.(*dnsmessage.PTRResource),
 			})
@@ -143,7 +143,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 					Name:  m.Questions[0].Name,
 					Type:  m.Questions[0].Type,
 					Class: m.Questions[0].Class,
-					TTL:   5,
+					TTL:   1,
 				},
 				Body: s.(*dnsmessage.AResource),
 			})
@@ -155,7 +155,7 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 	case *dnsmessage.AAAAResource:
 		m.Header.RCode = dnsmessage.RCodeRefused
 	default:
-		return m
+		return m, nil
 	}
 
 	m.Header.Response = true
@@ -163,5 +163,5 @@ func ResolveDNS(m *dnsmessage.Message) *dnsmessage.Message {
 	m.Header.Truncated = false
 	m.Header.RecursionAvailable = false
 
-	return m
+	return m, nil
 }

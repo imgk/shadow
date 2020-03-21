@@ -121,3 +121,16 @@ func (n *node) load(ks []string) interface{} {
 		return struct{}{}
 	}
 }
+
+func (t *Tree) Reset() {
+	t.Lock()
+	defer t.Unlock()
+	t.reset()
+}
+func (n *node) reset() {
+	n.value = nil
+	for k, v := range n.branch {
+		v.reset()
+		delete(n.branch, k)
+	}
+}

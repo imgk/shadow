@@ -1,11 +1,13 @@
 package dns
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"time"
 )
@@ -22,39 +24,45 @@ func NewResolver(s string) (Resolver, error) {
 
 	switch u.Scheme {
 	case "udp":
-		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.Host, "53"))
+		_, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.Host, "53"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &UDPResolver{Addr: addr, Timeout: time.Second * 3}, nil
+		return &UDPResolver{Addr: net.JoinHostPort(u.Host, "53"), Timeout: time.Second * 3}, nil
 	case "tcp":
-		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "53"))
+		_, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "53"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &TCPResolver{Addr: addr, Timeout: time.Second * 3}, nil
+		return &TCPResolver{Addr: net.JoinHostPort(u.Host, "53"), Timeout: time.Second * 3}, nil
 	case "tls":
-		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "853"))
+		_, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "853"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &TLSResolver{Addr: addr, Timeout: time.Second * 3, Conf: &tls.Config{ServerName: u.Host}}, nil
+		return &TLSResolver{Conf: &tls.Config{ServerName: u.Host}, Addr: net.JoinHostPort(u.Host, "853"), Timeout: time.Second * 3}, nil
+	case "https":
+		_, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "443"))
+		if err != nil {
+			return nil, err
+		}
+
+		return &DoHWireformat{BaseUrl: s, Timeout: time.Second * 3, Client: http.Client{Timeout: time.Second * 3}}, nil
 	default:
 		return nil, fmt.Errorf("not a valid dns protocol")
 	}
 }
 
 type UDPResolver struct {
-	Addr    *net.UDPAddr
+	Addr    string
 	Timeout time.Duration
 }
 
 func (r *UDPResolver) Resolve(b []byte, n int) (int, error) {
-	var conn net.Conn
-	conn, err := net.DialUDP("udp", nil, r.Addr)
+	conn, err := net.Dial("udp", r.Addr)
 	if err != nil {
 		return 0, fmt.Errorf("failed to dial %v, error: %v", r.Addr, err)
 	}
@@ -79,13 +87,12 @@ func (r *UDPResolver) Resolve(b []byte, n int) (int, error) {
 }
 
 type TCPResolver struct {
-	Addr    *net.TCPAddr
+	Addr    string
 	Timeout time.Duration
 }
 
 func (r *TCPResolver) Resolve(b []byte, n int) (int, error) {
-	var conn net.Conn
-	conn, err := net.DialTCP("tcp", nil, r.Addr)
+	conn, err := net.Dial("tcp", r.Addr)
 	if err != nil {
 		return 0, fmt.Errorf("failed to dial %v, error: %v", r.Addr, err)
 	}
@@ -117,17 +124,15 @@ func (r *TCPResolver) Resolve(b []byte, n int) (int, error) {
 
 type TLSResolver struct {
 	Conf    *tls.Config
-	Addr    *net.TCPAddr
+	Addr    string
 	Timeout time.Duration
 }
 
 func (r *TLSResolver) Resolve(b []byte, n int) (int, error) {
-	var conn net.Conn
-	conn, err := net.DialTCP("tcp", nil, r.Addr)
+	conn, err := tls.Dial("tcp", r.Addr, r.Conf)
 	if err != nil {
 		return 0, fmt.Errorf("failed to dial %v, error: %v", r.Addr, err)
 	}
-	conn = tls.Client(conn, r.Conf)
 	defer conn.Close()
 
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
@@ -152,4 +157,37 @@ func (r *TLSResolver) Resolve(b []byte, n int) (int, error) {
 	}
 
 	return n, nil
+}
+
+type DoHWireformat struct {
+	BaseUrl string
+	Timeout time.Duration
+	http.Client
+}
+
+func (r *DoHWireformat) Resolve(b []byte, n int) (int, error) {
+	req, err := http.NewRequest(http.MethodPost, r.BaseUrl, bytes.NewBuffer(b[2:2+n]))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Add("accept", "application/dns-message")
+	req.Header.Add("content-type", "application/dns-message")
+
+	res, err := r.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Body.Close()
+
+	n = 2
+	for {
+		nr, err := res.Body.Read(b[n:])
+		n += nr
+		if err != nil {
+			if err == io.EOF {
+				return n - 2, nil
+			}
+			return n - 2, err
+		}
+	}
 }
