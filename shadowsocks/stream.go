@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"time"
 )
 
 const MaxPacketSize = 16384
@@ -73,6 +74,7 @@ func (r *reader) Read(b []byte) (int, error) {
 func (r *reader) WriteTo(w io.Writer) (n int64, err error) {
 	for len(r.left) > 0 {
 		nw, ew := w.Write(r.left)
+		r.left = r.left[nw:]
 		n += int64(nw)
 		if ew != nil {
 			return n, ew
@@ -261,7 +263,7 @@ func (c *Conn) CloseWrite() error {
 		return conn.CloseWrite()
 	}
 
-	return nil
+	return c.Conn.SetWriteDeadline(time.Now())
 }
 
 func (c *Conn) CloseRead() error {
@@ -269,5 +271,5 @@ func (c *Conn) CloseRead() error {
 		return conn.CloseRead()
 	}
 
-	return nil
+	return c.Conn.SetReadDeadline(time.Now())
 }

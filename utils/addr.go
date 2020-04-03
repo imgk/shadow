@@ -137,14 +137,13 @@ func ResolveUDPAddr(addr Addr) (*net.UDPAddr, error) {
 }
 
 func ResolveAddr(addr net.Addr) (Addr, error) {
+	if a, ok := addr.(Addr); ok {
+		return a, nil
+	}
+
 	return ResolveAddrBuffer(addr, make([]byte, MaxAddrLen))
 }
 func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
-	if a, ok := addr.(Addr); ok {
-		n := copy(b, a)
-		return b[:n], nil
-	}
-
 	if a, ok := addr.(*net.TCPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
 			b[0] = AddrTypeIPv4

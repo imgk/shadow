@@ -25,61 +25,67 @@ import (
 	"github.com/imgk/shadowsocks-windivert/windivert"
 )
 
-func main() {
-	flag.BoolVar(log.Verbose(), "v", false, "enable verbose mode")
+func init() {
+	mode := flag.Bool("v", false, "enable verbose mode")
 	flag.Parse()
 
-	mutex, err := windows.CreateMutex(nil, true, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
+	log.SetMode(*mode)
+}
+
+func main() {
+	_, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
+	if err == nil {
+		panic(fmt.Errorf("shadowsocks-windivert is already running"))
+	}
+	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
 	if err != nil {
 		panic(fmt.Errorf("create mutex error: %v", err))
+	}
+	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
+	if err != nil {
+		panic(fmt.Errorf("wait for mutex error: %v", err))
+	}
+	switch event {
+	case windows.WAIT_OBJECT_0, windows.WAIT_ABANDONED:
+	default:
+		panic(fmt.Errorf("wait for mutex event id error: %v", event))
 	}
 
 	if err := loadConfig("config.json", dns.MatchTree()); err != nil {
 		panic(fmt.Errorf("load config config.json error: %v", err))
 	}
 
-	pluginCmd, err := loadPlugin(conf.Plugin, conf.PluginOpts)
+	plugin, err := loadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
-		panic(fmt.Errorf("plugin error: %v", err))
+		panic(fmt.Errorf("plugin %v error: %v", conf.Plugin, err))
 	}
 
-	pluginCh := make(chan struct{})
-	if pluginCmd != nil {
+	if plugin != nil {
 		go func() {
 			log.Logf("plugin %v start", conf.Plugin)
-			if err := pluginCmd.Run(); err != nil {
-				select {
-				case <-pluginCh:
-				case <-time.After(time.Second * 5):
-					panic(fmt.Errorf("plugin error %v", err))
-				}
+			if err := plugin.Run(); err != nil {
+				panic(fmt.Errorf("plugin error %v", err))
 			}
-			pluginCh <- struct{}{}
 			log.Logf("plugin %v stop", conf.Plugin)
 		}()
 	}
 
-	handler, err := shadowsocks.NewHandler(conf.Server, time.Minute)
+	var handler netstack.Handler
+	handler, err = shadowsocks.NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		panic(fmt.Errorf("shadowsocks error %v", err))
 	}
 
-	dev, err := windivert.NewDevice("and ip and packet[16] = 44 and packet[17] = 44")
+	var dev netstack.Device
+	dev, err = windivert.NewDevice("and outbound and ip and packet[16] = 44 and packet[17] = 44")
 	if err != nil {
 		panic(fmt.Errorf("windivert error: %v", err))
 	}
 
-	stack := netstack.NewStack(handler, dev.(io.Writer))
+	stack := netstack.NewStack(handler, dev)
 
 	go func() {
-		if wt, ok := dev.(io.WriterTo); ok {
-			if _, err := wt.WriteTo(stack.(io.Writer)); err != nil {
-				panic(fmt.Errorf("netstack exit error: %v", err))
-			}
-			return
-		}
-
-		if _, err := io.CopyBuffer(stack, dev, make([]byte, 2048)); err != nil {
+		if _, err := dev.WriteTo(stack); err != nil {
 			panic(fmt.Errorf("netstack exit error: %v", err))
 		}
 	}()
@@ -97,7 +103,14 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("systray error: %v", err))
 	}
-	tray.AppendMenu("Close", func() { sigCh <- windows.SIGTERM })
+	tray.AppendMenu("Reload Rules", func() {
+		if err := loadConfig("config.json", dns.MatchTree()); err != nil {
+			panic(fmt.Errorf("reload config file error: %v", err))
+		}
+	})
+	tray.AppendMenu("Close", func() {
+		sigCh <- windows.SIGTERM
+	})
 	if err := tray.Show(10, "Shadowsocks"); err != nil {
 		panic(fmt.Errorf("set icon error: %v", err))
 	}
@@ -108,25 +121,15 @@ func main() {
 		}
 	}()
 
-	log.Logf("shadowsocks is running ...")
+	log.Logf("shadowsocks is running...")
 	<-sigCh
 
 	dev.Close()
 	stack.Close()
+	dns.Stop()
 
-	if pluginCmd != nil {
-		if err := pluginCmd.Process.Signal(windows.SIGTERM); err != nil {
-			//log.Logf("signal plugin process error: %v", err) // windows not supported
-		}
-
-		select {
-		case <-pluginCh:
-		case <-time.After(time.Second):
-			if err := pluginCmd.Process.Kill(); err != nil {
-				log.Logf("kill plugin process error: %v", err)
-			}
-			pluginCh <- struct{}{}
-		}
+	if plugin != nil {
+		plugin.Stop()
 	}
 
 	tray.Stop()
@@ -154,22 +157,29 @@ func loadConfig(f string, matchTree *utils.Tree) error {
 		return err
 	}
 
+	matchTree.Lock()
+	defer matchTree.Unlock()
+
+	matchTree.UnsafeReset()
+
 	for _, v := range conf.Proxy {
-		matchTree.Store(v, "PROXY")
+		matchTree.UnsafeStore(v, "PROXY")
 	}
 
 	for _, v := range conf.Direct {
-		matchTree.Store(v, "DIRECT")
+		matchTree.UnsafeStore(v, "DIRECT")
 	}
 
 	for _, v := range conf.Blocked {
-		matchTree.Store(v, "BLOCKED")
+		matchTree.UnsafeStore(v, "BLOCKED")
 	}
 
 	return nil
 }
 
-func loadPlugin(name, opts string) (*exec.Cmd, error) {
+func loadPlugin(name, opts string) (*Plugin, error) {
+	log.SetPluginPrefix(name)
+
 	info, err := os.Stat(name)
 	if err != nil {
 		return nil, err
@@ -187,13 +197,54 @@ func loadPlugin(name, opts string) (*exec.Cmd, error) {
 		name = filepath.Join(dir, name)
 	}
 
-	w := log.Writer("Plugin:")
-	cmd := &exec.Cmd{
-		Path:   name,
-		Args:   append([]string{name}, strings.Split(opts, " ")...),
-		Stdout: w,
-		Stderr: w,
+	return NewPlugin(name, append([]string{name}, strings.Split(opts, " ")...), log.Writer()), nil
+}
+
+type Plugin struct {
+	exec.Cmd
+	closed chan struct{}
+}
+
+func NewPlugin(name string, args []string, w io.Writer) *Plugin {
+	return &Plugin{
+		Cmd: exec.Cmd{
+			Path:   name,
+			Args:   args,
+			Stdout: w,
+			Stderr: w,
+		},
+		closed: make(chan struct{}, 1),
+	}
+}
+
+func (p *Plugin) Run() error {
+	if err := p.Cmd.Run(); err != nil {
+		select {
+		case <-p.closed:
+			return nil
+		case <-time.After(time.Second * 5):
+			return fmt.Errorf("plugin ends unexpectedly error: %v", err)
+		}
 	}
 
-	return cmd, nil
+	p.closed <- struct{}{}
+	return nil
+}
+
+func (p *Plugin) Stop() error {
+	if err := p.Cmd.Process.Signal(windows.SIGTERM); err != nil {
+		//return fmt.Errorf("signal plugin process error: %v", err) // windows is not supported
+	}
+
+	select {
+	case <-p.closed:
+		return nil
+	case <-time.After(time.Second):
+		if err := p.Cmd.Process.Kill(); err != nil {
+			return fmt.Errorf("kill plugin process error: %v", err)
+		}
+		p.closed <- struct{}{}
+	}
+
+	return nil
 }

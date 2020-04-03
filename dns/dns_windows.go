@@ -15,6 +15,21 @@ import (
 	"github.com/imgk/shadowsocks-windivert/windivert"
 )
 
+var hd *windivert.Handle
+
+func Stop() error {
+	if err := hd.Shutdown(windivert.ShutdownBoth); err != nil {
+		hd.Close()
+		return fmt.Errorf("shutdown dns handle error: %v", err)
+	}
+
+	if err := hd.Close(); err != nil {
+		return fmt.Errorf("close dns handle error: %v", err)
+	}
+
+	return nil
+}
+
 func Serve(server string) error {
 	r, err := NewResolver(server)
 	if server != "" && err != nil {
@@ -27,31 +42,23 @@ func Serve(server string) error {
 	}
 
 	const filter string = "not loopback and outbound and udp and udp.DstPort = 53"
-	hd, err := windivert.Open(filter, windivert.LayerNetwork, windivert.PriorityDefault, windivert.FlagDefault)
+	hd, err = windivert.Open(filter, windivert.LayerNetwork, windivert.PriorityDefault-1, windivert.FlagDefault)
 	if err != nil {
-		panic(fmt.Errorf("open dns handle error: %v", err))
+		return fmt.Errorf("open dns handle error: %v", err)
 	}
 	if err := hd.SetParam(windivert.QueueLength, windivert.QueueLengthMax); err != nil {
-		panic(fmt.Errorf("set dns handle parameter queue length error %v", err))
+		return fmt.Errorf("set dns handle parameter queue length error %v", err)
 	}
 	if err := hd.SetParam(windivert.QueueTime, windivert.QueueTimeMax); err != nil {
-		panic(fmt.Errorf("set dns handle parameter queue time error %v", err))
+		return fmt.Errorf("set dns handle parameter queue time error %v", err)
 	}
 	if err := hd.SetParam(windivert.QueueSize, windivert.QueueSizeMax); err != nil {
-		panic(fmt.Errorf("set dns handle parameter queue size error %v", err))
+		return fmt.Errorf("set dns handle parameter queue size error %v", err)
 	}
-	defer func() {
-		if err := hd.Shutdown(windivert.ShutdownBoth); err != nil {
-			panic(fmt.Errorf("shutdown dns handle error: %v", err))
-		}
-
-		if err := hd.Close(); err != nil {
-			panic(fmt.Errorf("close dns handle error: %v", err))
-		}
-	}()
+	defer Stop()
 
 	var aPool = sync.Pool{New: func() interface{} { return new(windivert.Address) }}
-	var bPool = sync.Pool{New: func() interface{} { return make([]byte, 2048) }}
+	var bPool = sync.Pool{New: func() interface{} { return make([]byte, 1024) }}
 	var mPool = sync.Pool{New: func() interface{} { return new(dnsmessage.Message) }}
 
 	for {
@@ -61,6 +68,13 @@ func Serve(server string) error {
 
 		n, err := hd.Recv(b, a)
 		if err != nil {
+			aPool.Put(a)
+			bPool.Put(b)
+			mPool.Put(m)
+
+			if err == windivert.ErrNoData {
+				return nil
+			}
 			return fmt.Errorf("receive dns from handle error: %v", err)
 		}
 
@@ -155,11 +169,11 @@ func Serve(server string) error {
 }
 
 func SendBack4(b []byte) {
-	t := make([]byte, 4)
+	t := [4]byte{}
 
-	copy(t, b[12:16])
+	copy(t[:], b[12:16])
 	copy(b[12:16], b[16:20])
-	copy(b[16:20], t)
+	copy(b[16:20], t[:])
 	copy(b[22:24], b[20:22])
 	copy(b[20:22], []byte{0, 53})
 
@@ -168,11 +182,11 @@ func SendBack4(b []byte) {
 }
 
 func SendBack6(b []byte) {
-	t := make([]byte, 16)
+	t := [16]byte{}
 
-	copy(t, b[8:24])
+	copy(t[:], b[8:24])
 	copy(b[8:24], b[24:40])
-	copy(b[24:40], t)
+	copy(b[24:40], t[:])
 	copy(b[42:44], b[40:42])
 	copy(b[40:42], []byte{0, 53})
 

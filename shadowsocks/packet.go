@@ -12,10 +12,8 @@ var ErrShortPacket = errors.New("short packet")
 var _zerononce [128]byte
 
 type PacketConn struct {
-	sync.Mutex
 	net.PacketConn
 	Cipher
-	buff []byte
 }
 
 func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
@@ -24,12 +22,12 @@ func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
 	}
 
 	return &PacketConn{
-		Mutex:      sync.Mutex{},
 		PacketConn: pc,
 		Cipher:     ciph,
-		buff:       make([]byte, MaxPacketSize<<2),
 	}
 }
+
+var pool = sync.Pool{New: func() interface{} { return make([]byte, MaxPacketSize<<2) }}
 
 func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 	saltSize := ciph.SaltSize()
@@ -54,15 +52,15 @@ func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	pc.Lock()
-	defer pc.Unlock()
+	buff := pool.Get().([]byte)
+	defer pool.Put(buff)
 
-	n, addr, err := pc.PacketConn.ReadFrom(pc.buff)
+	n, addr, err := pc.PacketConn.ReadFrom(buff)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	bb, err := Unpack(b, pc.buff[:n], pc.Cipher)
+	bb, err := Unpack(b, buff[:n], pc.Cipher)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -72,7 +70,7 @@ func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 
 func Pack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 	saltSize := ciph.SaltSize()
-	salt := dst[:ciph.SaltSize()]
+	salt := dst[:saltSize]
 	_, err := rand.Read(salt)
 	if err != nil {
 		return nil, err
@@ -87,14 +85,14 @@ func Pack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 		return nil, io.ErrShortBuffer
 	}
 
-	return aead.Seal(dst[:ciph.SaltSize()], _zerononce[:aead.NonceSize()], pkt, nil), nil
+	return aead.Seal(dst[:saltSize], _zerononce[:aead.NonceSize()], pkt, nil), nil
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	pc.Lock()
-	defer pc.Unlock()
+	buff := pool.Get().([]byte)
+	defer pool.Put(buff)
 
-	bb, err := Pack(pc.buff, b, pc.Cipher)
+	bb, err := Pack(buff, b, pc.Cipher)
 	if err != nil {
 		return 0, err
 	}

@@ -31,6 +31,9 @@ func (t *Tree) Store(k string, v interface{}) {
 	defer t.Unlock()
 	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
 }
+func (t *Tree) UnsafeStore(k string, v interface{}) {
+	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
+}
 func (n *node) store(ks []string, v interface{}) {
 	l := len(ks)
 	switch l {
@@ -72,6 +75,9 @@ func (n *node) store(ks []string, v interface{}) {
 func (t *Tree) Load(k string) interface{} {
 	t.RLock()
 	defer t.RUnlock()
+	return t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
+}
+func (t *Tree) UnsafeLoad(k string) interface{} {
 	return t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
 }
 func (n *node) load(ks []string) interface{} {
@@ -125,6 +131,9 @@ func (n *node) load(ks []string) interface{} {
 func (t *Tree) Reset() {
 	t.Lock()
 	defer t.Unlock()
+	t.reset()
+}
+func (t *Tree) UnsafeReset() {
 	t.reset()
 }
 func (n *node) reset() {
