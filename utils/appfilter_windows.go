@@ -67,7 +67,7 @@ func QueryName(pid uint32) (string, error) {
 
 type AppFilter struct {
 	sync.RWMutex
-	apps  map[string]struct{}
+	apps map[string]struct{}
 }
 
 func NewAppFilter() *AppFilter {

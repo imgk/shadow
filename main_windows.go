@@ -33,7 +33,7 @@ func main() {
 	mutex, err = windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
 	if err != nil {
 		log.Logf("create mutex error: %v", err)
-		
+
 		return
 	}
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)

@@ -8,7 +8,7 @@ import (
 )
 
 func IPv4Mask(i uint32) net.IPMask {
-	return net.IPMask([]byte{byte(i>>24), byte(i>>16), byte(i>>8), byte(i)})
+	return net.IPMask([]byte{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)})
 }
 
 func IPv6Mask(a, b, c, d uint32) net.IPMask {
@@ -16,7 +16,7 @@ func IPv6Mask(a, b, c, d uint32) net.IPMask {
 }
 
 func IPv4Addr(i uint32) net.IP {
-	return net.IP([]byte{byte(i>>24), byte(i>>16), byte(i>>8), byte(i)})
+	return net.IP([]byte{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)})
 }
 
 func IPv6Addr(a, b, c, d uint32) net.IP {
@@ -51,7 +51,7 @@ func NewIPFilter() *IPFilter {
 	mask := ^uint32(0)
 
 	for i := range f.E {
-		f.E[i] = &Element {
+		f.E[i] = &Element{
 			N: mask << (31 - i),
 			R: make(map[uint32]struct{}),
 			C: 0,

@@ -140,7 +140,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 		nr, nx, er := d.RecvHd.RecvEx(b, a, nil)
 		if er != nil {
 			select {
-			case <- d.active:
+			case <-d.active:
 			default:
 				if er != ErrNoData {
 					err = fmt.Errorf("RecvEx in WriteTo error: %v", er)
@@ -162,7 +162,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 					_, er := w.Write(bb[:l])
 					if er != nil {
 						select {
-						case <- d.active:
+						case <-d.active:
 						default:
 							err = fmt.Errorf("Write in WriteTo error: %v", er)
 						}
@@ -183,7 +183,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 					_, er := w.Write(bb[:l])
 					if er != nil {
 						select {
-						case <- d.active:
+						case <-d.active:
 						default:
 							err = fmt.Errorf("Write in WriteTo error: %v", er)
 						}
@@ -233,7 +233,7 @@ func (d *Device) CheckIPv4(b []byte) bool {
 		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
 		switch d.TCP[p] {
 		case 0:
-			if b[ipv4.HeaderLen+13] & SYN != SYN {
+			if b[ipv4.HeaderLen+13]&SYN != SYN {
 				d.TCP[p] = 1
 
 				return false
@@ -255,13 +255,13 @@ func (d *Device) CheckIPv4(b []byte) bool {
 
 			return false
 		case 1:
-			if b[ipv4.HeaderLen+13] & FIN == FIN {
+			if b[ipv4.HeaderLen+13]&FIN == FIN {
 				d.TCP[p] = 0
 			}
 
 			return false
 		case 2:
-			if b[ipv4.HeaderLen+13] & FIN == FIN {
+			if b[ipv4.HeaderLen+13]&FIN == FIN {
 				d.TCP[p] = 0
 			}
 
@@ -345,7 +345,7 @@ func (d *Device) CheckIPv6(b []byte) bool {
 		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
 		switch d.TCP6[p] {
 		case 0:
-			if b[ipv6.HeaderLen+13] & SYN != SYN {
+			if b[ipv6.HeaderLen+13]&SYN != SYN {
 				d.TCP6[p] = 1
 
 				return false
@@ -356,7 +356,7 @@ func (d *Device) CheckIPv6(b []byte) bool {
 
 				return true
 			}
-			
+
 			if d.CheckTCP6(b) {
 				d.TCP6[p] = 2
 
@@ -367,13 +367,13 @@ func (d *Device) CheckIPv6(b []byte) bool {
 
 			return false
 		case 1:
-			if b[ipv6.HeaderLen+13] & FIN == FIN {
+			if b[ipv6.HeaderLen+13]&FIN == FIN {
 				d.TCP6[p] = 0
 			}
 
 			return false
 		case 2:
-			if b[ipv6.HeaderLen+13] & FIN == FIN {
+			if b[ipv6.HeaderLen+13]&FIN == FIN {
 				d.TCP6[p] = 0
 			}
 
@@ -423,7 +423,7 @@ func (d *Device) CheckTCP6(b []byte) bool {
 
 	for i := range rs {
 		if rs[i].LocalPort == p {
-			if *(*uint32)(unsafe.Pointer(&b[8])) == rs[i].LocalAddr[0] && *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr[1] && *(*uint32)(unsafe.Pointer(&b[16])) == rs[i].LocalAddr[2] &&*(*uint32)(unsafe.Pointer(&b[20])) == rs[i].LocalAddr[3] {
+			if *(*uint32)(unsafe.Pointer(&b[8])) == rs[i].LocalAddr[0] && *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr[1] && *(*uint32)(unsafe.Pointer(&b[16])) == rs[i].LocalAddr[2] && *(*uint32)(unsafe.Pointer(&b[20])) == rs[i].LocalAddr[3] {
 				return d.AppFilter.Lookup(rs[i].OwningPid)
 			}
 		}
@@ -442,7 +442,7 @@ func (d *Device) CheckUDP6(b []byte) bool {
 
 	for i := range rs {
 		if rs[i].LocalPort == p {
-			if *(*uint32)(unsafe.Pointer(&b[8])) == rs[i].LocalAddr[0] && *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr[1] && *(*uint32)(unsafe.Pointer(&b[16])) == rs[i].LocalAddr[2] &&*(*uint32)(unsafe.Pointer(&b[20])) == rs[i].LocalAddr[3] {
+			if *(*uint32)(unsafe.Pointer(&b[8])) == rs[i].LocalAddr[0] && *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr[1] && *(*uint32)(unsafe.Pointer(&b[16])) == rs[i].LocalAddr[2] && *(*uint32)(unsafe.Pointer(&b[20])) == rs[i].LocalAddr[3] {
 				return d.AppFilter.Lookup(rs[i].OwningPid)
 			}
 		}
@@ -470,7 +470,7 @@ func (d *Device) writeLoop() {
 				_, err := d.SendHd.SendEx(b[:n], a[:m], nil)
 				if err != nil {
 					select {
-					case <- d.active:
+					case <-d.active:
 					default:
 						panic(fmt.Errorf("device writeLoop error: %v", err))
 					}
@@ -484,7 +484,7 @@ func (d *Device) writeLoop() {
 			nr, err := d.PipeReader.Read(b[n:])
 			if err != nil {
 				select {
-				case <- d.active:
+				case <-d.active:
 				default:
 					panic(fmt.Errorf("device writeLoop error: %v", err))
 				}
@@ -499,7 +499,7 @@ func (d *Device) writeLoop() {
 				_, err := d.SendHd.SendEx(b[:n], a[:m], nil)
 				if err != nil {
 					select {
-					case <- d.active:
+					case <-d.active:
 					default:
 						panic(fmt.Errorf("device writeLoop error: %v", err))
 					}
