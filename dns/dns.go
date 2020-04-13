@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
@@ -19,6 +20,20 @@ var (
 
 func MatchTree() *utils.Tree {
 	return matchTree
+}
+
+func ParseUrl(s string) (listen, server string, err error) {
+	ss := strings.Split(s, "=")
+
+	if len(ss) != 2 {
+		err = errors.New("incorrect dns config")
+		return
+	}
+
+	listen = ss[0]
+	server = ss[1]
+
+	return
 }
 
 func AddrToDomainAddr(addr net.Addr, b []byte) (utils.Addr, error) {
@@ -44,6 +59,10 @@ func AddrToDomainAddr(addr net.Addr, b []byte) (utils.Addr, error) {
 
 func IPToDomainAddr(addr net.IP, b []byte) (utils.Addr, error) {
 	if ip := addr.To4(); ip != nil {
+		if ip[0] != 44 || ip[1] != 44 {
+			return nil, fmt.Errorf("%v not found", addr)
+		}
+
 		s := matchTree.Load(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", ip[3], ip[2]))
 		if v, ok := s.(*dnsmessage.PTRResource); ok {
 			b[0] = utils.AddrTypeDomain
@@ -52,6 +71,7 @@ func IPToDomainAddr(addr net.IP, b []byte) (utils.Addr, error) {
 
 			return b[:n+4], nil
 		}
+
 		return nil, fmt.Errorf("%v not found", addr)
 	}
 

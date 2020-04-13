@@ -9,131 +9,22 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"golang.org/x/sys/windows"
-
-	"github.com/imgk/shadowsocks-windivert/dns"
 	"github.com/imgk/shadowsocks-windivert/log"
-	"github.com/imgk/shadowsocks-windivert/netstack"
-	"github.com/imgk/shadowsocks-windivert/shadowsocks"
-	"github.com/imgk/shadowsocks-windivert/systray"
 	"github.com/imgk/shadowsocks-windivert/utils"
-	"github.com/imgk/shadowsocks-windivert/windivert"
 )
+
+var file string
 
 func init() {
 	mode := flag.Bool("v", false, "enable verbose mode")
+	flag.StringVar(&file, "c", "config.json", "config file")
 	flag.Parse()
 
 	log.SetMode(*mode)
-}
-
-func main() {
-	_, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
-	if err == nil {
-		panic(fmt.Errorf("shadowsocks-windivert is already running"))
-	}
-	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
-	if err != nil {
-		panic(fmt.Errorf("create mutex error: %v", err))
-	}
-	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
-	if err != nil {
-		panic(fmt.Errorf("wait for mutex error: %v", err))
-	}
-	switch event {
-	case windows.WAIT_OBJECT_0, windows.WAIT_ABANDONED:
-	default:
-		panic(fmt.Errorf("wait for mutex event id error: %v", event))
-	}
-
-	if err := loadConfig("config.json", dns.MatchTree()); err != nil {
-		panic(fmt.Errorf("load config config.json error: %v", err))
-	}
-
-	plugin, err := loadPlugin(conf.Plugin, conf.PluginOpts)
-	if conf.Plugin != "" && err != nil {
-		panic(fmt.Errorf("plugin %v error: %v", conf.Plugin, err))
-	}
-
-	if plugin != nil {
-		go func() {
-			log.Logf("plugin %v start", conf.Plugin)
-			if err := plugin.Run(); err != nil {
-				panic(fmt.Errorf("plugin error %v", err))
-			}
-			log.Logf("plugin %v stop", conf.Plugin)
-		}()
-	}
-
-	var handler netstack.Handler
-	handler, err = shadowsocks.NewHandler(conf.Server, time.Minute)
-	if err != nil {
-		panic(fmt.Errorf("shadowsocks error %v", err))
-	}
-
-	var dev netstack.Device
-	dev, err = windivert.NewDevice("and outbound and ip and packet[16] = 44 and packet[17] = 44")
-	if err != nil {
-		panic(fmt.Errorf("windivert error: %v", err))
-	}
-
-	stack := netstack.NewStack(handler, dev)
-
-	go func() {
-		if _, err := dev.WriteTo(stack); err != nil {
-			panic(fmt.Errorf("netstack exit error: %v", err))
-		}
-	}()
-
-	go func() {
-		if err := dns.Serve(conf.NameServer); err != nil {
-			panic(fmt.Errorf("dns exit error: %v", err))
-		}
-	}()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, os.Kill, windows.SIGINT, windows.SIGTERM)
-
-	tray, err := systray.New()
-	if err != nil {
-		panic(fmt.Errorf("systray error: %v", err))
-	}
-	tray.AppendMenu("Reload Rules", func() {
-		if err := loadConfig("config.json", dns.MatchTree()); err != nil {
-			panic(fmt.Errorf("reload config file error: %v", err))
-		}
-	})
-	tray.AppendMenu("Close", func() {
-		sigCh <- windows.SIGTERM
-	})
-	if err := tray.Show(10, "Shadowsocks"); err != nil {
-		panic(fmt.Errorf("set icon error: %v", err))
-	}
-
-	go func() {
-		if err := tray.Run(); err != nil {
-			panic(fmt.Errorf("tray run error: %v", err))
-		}
-	}()
-
-	log.Logf("shadowsocks is running...")
-	<-sigCh
-
-	dev.Close()
-	stack.Close()
-	dns.Stop()
-
-	if plugin != nil {
-		plugin.Stop()
-	}
-
-	tray.Stop()
-	windows.ReleaseMutex(mutex)
 }
 
 var conf struct {
@@ -141,12 +32,14 @@ var conf struct {
 	NameServer string
 	Plugin     string
 	PluginOpts string
+	IPCIDR     []string
+	Programs   []string
 	Proxy      []string
 	Direct     []string
 	Blocked    []string
 }
 
-func loadConfig(f string, matchTree *utils.Tree) error {
+func loadConfig(f string) error {
 	b, err := ioutil.ReadFile(f)
 	if err != nil {
 		return err
@@ -157,6 +50,10 @@ func loadConfig(f string, matchTree *utils.Tree) error {
 		return err
 	}
 
+	return nil
+}
+
+func loadDomainRules(matchTree *utils.Tree) {
 	matchTree.Lock()
 	defer matchTree.Unlock()
 
@@ -173,8 +70,21 @@ func loadConfig(f string, matchTree *utils.Tree) error {
 	for _, v := range conf.Blocked {
 		matchTree.UnsafeStore(v, "BLOCKED")
 	}
+}
 
-	return nil
+func loadIPRules(ipfilter *utils.IPFilter) {
+	ipfilter.Lock()
+	defer ipfilter.Unlock()
+
+	ipfilter.UnsafeReset()
+
+	for _, ip := range conf.IPCIDR {
+		if err := ipfilter.UnsafeAdd(ip); err != nil {
+			log.Logf("add ip rule %v error: %v", ip, err)
+		}
+	}
+
+	ipfilter.Sort()
 }
 
 func loadPlugin(name, opts string) (*Plugin, error) {
@@ -203,6 +113,7 @@ func loadPlugin(name, opts string) (*Plugin, error) {
 type Plugin struct {
 	exec.Cmd
 	closed chan struct{}
+	Pid    int
 }
 
 func NewPlugin(name string, args []string, w io.Writer) *Plugin {
@@ -217,8 +128,18 @@ func NewPlugin(name string, args []string, w io.Writer) *Plugin {
 	}
 }
 
-func (p *Plugin) Run() error {
-	if err := p.Cmd.Run(); err != nil {
+func (p *Plugin) Start() error {
+	if err := p.Cmd.Start(); err != nil {
+		return err
+	}
+
+	p.Pid = p.Cmd.Process.Pid
+
+	return nil
+}
+
+func (p *Plugin) Wait() error {
+	if err := p.Cmd.Wait(); err != nil {
 		select {
 		case <-p.closed:
 			return nil
@@ -228,23 +149,5 @@ func (p *Plugin) Run() error {
 	}
 
 	p.closed <- struct{}{}
-	return nil
-}
-
-func (p *Plugin) Stop() error {
-	if err := p.Cmd.Process.Signal(windows.SIGTERM); err != nil {
-		//return fmt.Errorf("signal plugin process error: %v", err) // windows is not supported
-	}
-
-	select {
-	case <-p.closed:
-		return nil
-	case <-time.After(time.Second):
-		if err := p.Cmd.Process.Kill(); err != nil {
-			return fmt.Errorf("kill plugin process error: %v", err)
-		}
-		p.closed <- struct{}{}
-	}
-
 	return nil
 }

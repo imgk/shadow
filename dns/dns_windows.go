@@ -5,8 +5,6 @@ package dns
 import (
 	"encoding/binary"
 	"fmt"
-	"net/url"
-	"strings"
 	"sync"
 
 	"golang.org/x/net/dns/dnsmessage"
@@ -15,9 +13,17 @@ import (
 	"github.com/imgk/shadowsocks-windivert/windivert"
 )
 
-var hd *windivert.Handle
+var hd windivert.Handle
+var active = make(chan struct{})
 
 func Stop() error {
+	select {
+	case <-active:
+		return nil
+	default:
+		close(active)
+	}
+
 	if err := hd.Shutdown(windivert.ShutdownBoth); err != nil {
 		hd.Close()
 		return fmt.Errorf("shutdown dns handle error: %v", err)
@@ -31,14 +37,14 @@ func Stop() error {
 }
 
 func Serve(server string) error {
-	r, err := NewResolver(server)
-	if server != "" && err != nil {
+	_, server, err := ParseUrl(server)
+	if err != nil {
 		return err
 	}
 
-	if strings.HasPrefix(server, "https://") || strings.HasPrefix(server, "tls://") {
-		u, _ := url.Parse(server)
-		server = strings.TrimSuffix(u.Host, ".") + "."
+	r, err := NewResolver(server)
+	if server != "" && err != nil {
+		return err
 	}
 
 	const filter string = "not loopback and outbound and udp and udp.DstPort = 53"
@@ -46,6 +52,7 @@ func Serve(server string) error {
 	if err != nil {
 		return fmt.Errorf("open dns handle error: %v", err)
 	}
+	defer Stop()
 	if err := hd.SetParam(windivert.QueueLength, windivert.QueueLengthMax); err != nil {
 		return fmt.Errorf("set dns handle parameter queue length error %v", err)
 	}
@@ -55,7 +62,6 @@ func Serve(server string) error {
 	if err := hd.SetParam(windivert.QueueSize, windivert.QueueSizeMax); err != nil {
 		return fmt.Errorf("set dns handle parameter queue size error %v", err)
 	}
-	defer Stop()
 
 	var aPool = sync.Pool{New: func() interface{} { return new(windivert.Address) }}
 	var bPool = sync.Pool{New: func() interface{} { return make([]byte, 1024) }}
@@ -75,6 +81,7 @@ func Serve(server string) error {
 			if err == windivert.ErrNoData {
 				return nil
 			}
+
 			return fmt.Errorf("receive dns from handle error: %v", err)
 		}
 
@@ -93,6 +100,7 @@ func Serve(server string) error {
 					log.Logf("resolve dns error: %v", err)
 					return
 				}
+
 				if m.Header.Response {
 					bb, err := m.AppendPack(b[:48])
 					if err != nil {
@@ -101,8 +109,14 @@ func Serve(server string) error {
 					}
 					n = uint(len(bb))
 				} else {
-					if server == "" || server == m.Questions[0].Name.String() {
+					if server == "" {
 						if _, err := hd.Send(b[:n], a); err != nil {
+							select {
+							case <-active:
+								return
+							default:
+							}
+
 							log.Logf("write back to dns handle error: %v", err)
 							return
 						}
@@ -135,8 +149,14 @@ func Serve(server string) error {
 					}
 					n = uint(len(bb))
 				} else {
-					if server == "" || server == m.Questions[0].Name.String() {
+					if server == "" {
 						if _, err := hd.Send(b[:n], a); err != nil {
+							select {
+							case <-active:
+								return
+							default:
+							}
+
 							log.Logf("write back to dns handle error: %v", err)
 							return
 						}
@@ -161,6 +181,12 @@ func Serve(server string) error {
 			}
 
 			if _, err := hd.Send(b[:n], a); err != nil {
+				select {
+				case <-active:
+					return
+				default:
+				}
+
 				log.Logf("write back to dns handle error: %v", err)
 				return
 			}

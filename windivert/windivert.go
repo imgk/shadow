@@ -76,8 +76,8 @@ type Socket struct { // 64 bytes
 	EndpointID       uint64
 	ParentEndpointID uint64
 	ProcessID        uint32
-	LocalAddress     [4]uint32
-	RemoteAddress    [4]uint32
+	LocalAddress     [16]uint8
+	RemoteAddress    [16]uint8
 	LocalPort        uint16
 	RemotePort       uint16
 	Protocol         uint8
@@ -89,8 +89,8 @@ type Flow struct { // 64 bytes
 	EndpointID       uint64
 	ParentEndpointID uint64
 	ProcessID        uint32
-	LocalAddress     [4]uint32
-	RemoteAddress    [4]uint32
+	LocalAddress     [16]uint8
+	RemoteAddress    [16]uint8
 	LocalPort        uint16
 	RemotePort       uint16
 	Protocol         uint8
@@ -117,7 +117,7 @@ type Address struct { // 80 bytes
 	Timestamp int64
 	layer     uint8
 	event     uint8
-	flags     uint8
+	Flags     uint8
 	_         uint8
 	length    uint32
 	union     [64]uint8
@@ -140,99 +140,99 @@ func (a *Address) SetEvent(event C.WINDIVERT_EVENT) {
 }
 
 func (a *Address) Sniffed() bool {
-	return (a.flags & uint8(0x01<<0)) == uint8(0x01<<0)
+	return (a.Flags & uint8(0x01<<0)) == uint8(0x01<<0)
 }
 
 func (a *Address) SetSniffed() {
-	a.flags |= uint8(0x01 << 0)
+	a.Flags |= uint8(0x01 << 0)
 }
 
 func (a *Address) UnsetSniffed() {
-	a.flags &= ^uint8(0x01 << 0)
+	a.Flags &= ^uint8(0x01 << 0)
 }
 
 func (a *Address) Outbound() bool {
-	return (a.flags & uint8(0x01<<1)) == uint8(0x01<<1)
+	return (a.Flags & uint8(0x01<<1)) == uint8(0x01<<1)
 }
 
 func (a *Address) SetOutbound() {
-	a.flags |= uint8(0x01 << 1)
+	a.Flags |= uint8(0x01 << 1)
 }
 
 func (a *Address) UnsetOutbound() {
-	a.flags &= ^uint8(0x01 << 1)
+	a.Flags &= ^uint8(0x01 << 1)
 }
 
 func (a *Address) Loopback() bool {
-	return (a.flags & uint8(0x01<<2)) == uint8(0x01<<2)
+	return (a.Flags & uint8(0x01<<2)) == uint8(0x01<<2)
 }
 
 func (a *Address) SetLoopback() {
-	a.flags |= uint8(0x01 << 2)
+	a.Flags |= uint8(0x01 << 2)
 }
 
 func (a *Address) UnsetLoopback() {
-	a.flags &= ^uint8(0x01 << 2)
+	a.Flags &= ^uint8(0x01 << 2)
 }
 
 func (a *Address) Impostor() bool {
-	return (a.flags & uint8(0x01<<3)) == uint8(0x01<<3)
+	return (a.Flags & uint8(0x01<<3)) == uint8(0x01<<3)
 }
 
 func (a *Address) SetImpostor() {
-	a.flags |= uint8(0x01 << 3)
+	a.Flags |= uint8(0x01 << 3)
 }
 
 func (a *Address) UnsetImpostor() {
-	a.flags &= ^uint8(0x01 << 3)
+	a.Flags &= ^uint8(0x01 << 3)
 }
 
 func (a *Address) IPv6() bool {
-	return (a.flags & uint8(0x01<<4)) == uint8(0x01<<4)
+	return (a.Flags & uint8(0x01<<4)) == uint8(0x01<<4)
 }
 
 func (a *Address) SetIPv6() {
-	a.flags |= uint8(0x01 << 4)
+	a.Flags |= uint8(0x01 << 4)
 }
 
 func (a *Address) UnsetIPv6() {
-	a.flags &= ^uint8(0x01 << 4)
+	a.Flags &= ^uint8(0x01 << 4)
 }
 
 func (a *Address) IPChecksum() bool {
-	return (a.flags & uint8(0x01<<5)) == uint8(0x01<<5)
+	return (a.Flags & uint8(0x01<<5)) == uint8(0x01<<5)
 }
 
 func (a *Address) SetIPChecksum() {
-	a.flags |= uint8(0x01 << 5)
+	a.Flags |= uint8(0x01 << 5)
 }
 
 func (a *Address) UnsetIPChecksum() {
-	a.flags &= ^uint8(0x01 << 5)
+	a.Flags &= ^uint8(0x01 << 5)
 }
 
 func (a *Address) TCPChecksum() bool {
-	return (a.flags & uint8(0x01<<6)) == uint8(0x01<<6)
+	return (a.Flags & uint8(0x01<<6)) == uint8(0x01<<6)
 }
 
 func (a *Address) SetTCPChecksum() {
-	a.flags |= uint8(0x01 << 6)
+	a.Flags |= uint8(0x01 << 6)
 }
 
 func (a *Address) UnsetTCPChecksum() {
-	a.flags &= ^uint8(0x01 << 6)
+	a.Flags &= ^uint8(0x01 << 6)
 }
 
 func (a *Address) UDPChecksum() bool {
-	return (a.flags & uint8(0x01<<7)) == uint8(0x01<<7)
+	return (a.Flags & uint8(0x01<<7)) == uint8(0x01<<7)
 }
 
 func (a *Address) SetUDPChecksum() {
-	a.flags |= uint8(0x01 << 7)
+	a.Flags |= uint8(0x01 << 7)
 }
 
 func (a *Address) UnsetUDPChecksum() {
-	a.flags &= ^uint8(0x01 << 7)
+	a.Flags &= ^uint8(0x01 << 7)
 }
 
 func (a *Address) Length() uint32 {
@@ -263,33 +263,33 @@ func (a *Address) Reflect() *Reflect {
 	return (*Reflect)(unsafe.Pointer(&a.union))
 }
 
-type Handle struct {
-	windows.Handle
-}
+type Handle windows.Handle
 
-func Open(filter string, layer C.WINDIVERT_LAYER, priority int16, flags uint64) (*Handle, error) {
-	if priority < int16(C.WINDIVERT_PRIORITY_LOWEST) || priority > int16(C.WINDIVERT_PRIORITY_HIGHEST) {
-		return nil, fmt.Errorf("Priority %v is not Correct, Max: %v, Min: %v", priority, int16(C.WINDIVERT_PRIORITY_HIGHEST), int16(C.WINDIVERT_PRIORITY_LOWEST))
+const InvalidHandle = Handle(windows.InvalidHandle)
+
+func Open(filter string, layer C.WINDIVERT_LAYER, priority int16, flags uint64) (Handle, error) {
+	if priority < PriorityLowest || priority > PriorityHighest {
+		return InvalidHandle, fmt.Errorf("Priority %v is not Correct, Max: %v, Min: %v", priority, PriorityHighest, PriorityLowest)
 	}
 
 	hd := C.WinDivertOpen(C.CString(filter), layer, C.int16_t(priority), C.uint64_t(flags))
 	if hd == C.HANDLE(C.INVALID_HANDLE_VALUE) {
-		return nil, GetLastError()
+		return InvalidHandle, GetLastError()
 	}
 
-	return &Handle{Handle: windows.Handle(hd)}, nil
+	return Handle(hd), nil
 }
 
-func (h *Handle) Recv(buffer []byte, address *Address) (uint, error) {
+func (h Handle) Recv(buffer []byte, address *Address) (uint, error) {
 	recvLen := uint(0)
 
 	if buffer == nil || len(buffer) == 0 {
-		b := C.WinDivertRecv(C.HANDLE(h.Handle), unsafe.Pointer(nil), C.uint(0), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
+		b := C.WinDivertRecv(C.HANDLE(h), unsafe.Pointer(nil), C.uint(0), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
 		if b == C.FALSE {
 			return 0, GetLastError()
 		}
 	} else {
-		b := C.WinDivertRecv(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
+		b := C.WinDivertRecv(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
 		if b == C.FALSE {
 			return 0, GetLastError()
 		}
@@ -298,11 +298,11 @@ func (h *Handle) Recv(buffer []byte, address *Address) (uint, error) {
 	return recvLen, nil
 }
 
-func (h *Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Overlapped) (uint, uint, error) {
+func (h Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Overlapped) (uint, uint, error) {
 	recvLen := uint(0)
 
 	if address == nil || len(address) == 0 {
-		b := C.WinDivertRecvEx(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.uint64_t(0), C.PWINDIVERT_ADDRESS(unsafe.Pointer(nil)), (*C.uint)(unsafe.Pointer(nil)), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
+		b := C.WinDivertRecvEx(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.uint64_t(0), C.PWINDIVERT_ADDRESS(unsafe.Pointer(nil)), (*C.uint)(unsafe.Pointer(nil)), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
 		if b == C.FALSE {
 			return 0, 0, GetLastError()
 		}
@@ -310,7 +310,7 @@ func (h *Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Ov
 		return recvLen, 0, nil
 	} else {
 		addrLen := uint(len(address)) * uint(unsafe.Sizeof(C.WINDIVERT_ADDRESS{}))
-		b := C.WinDivertRecvEx(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.uint64_t(0), C.PWINDIVERT_ADDRESS(unsafe.Pointer(&address[0])), (*C.uint)(unsafe.Pointer(&addrLen)), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
+		b := C.WinDivertRecvEx(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.uint64_t(0), C.PWINDIVERT_ADDRESS(unsafe.Pointer(&address[0])), (*C.uint)(unsafe.Pointer(&addrLen)), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
 		if b == C.FALSE {
 			return 0, 0, GetLastError()
 		}
@@ -320,9 +320,9 @@ func (h *Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Ov
 	}
 }
 
-func (h *Handle) Send(buffer []byte, address *Address) (uint, error) {
+func (h Handle) Send(buffer []byte, address *Address) (uint, error) {
 	sendLen := uint(0)
-	b := C.WinDivertSend(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&sendLen)), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(address)))
+	b := C.WinDivertSend(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&sendLen)), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(address)))
 	if b == C.FALSE {
 		return 0, GetLastError()
 	}
@@ -330,9 +330,9 @@ func (h *Handle) Send(buffer []byte, address *Address) (uint, error) {
 	return sendLen, nil
 }
 
-func (h *Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Overlapped) (uint, error) {
+func (h Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Overlapped) (uint, error) {
 	sendLen := uint(0)
-	b := C.WinDivertSendEx(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&sendLen)), C.uint64_t(0), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(&address[0])), C.uint(uint(len(address))*uint(unsafe.Sizeof(C.WINDIVERT_ADDRESS{}))), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
+	b := C.WinDivertSendEx(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&sendLen)), C.uint64_t(0), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(&address[0])), C.uint(uint(len(address))*uint(unsafe.Sizeof(C.WINDIVERT_ADDRESS{}))), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
 	if b == C.FALSE {
 		return 0, GetLastError()
 	}
@@ -340,8 +340,8 @@ func (h *Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Ov
 	return sendLen, nil
 }
 
-func (h *Handle) Shutdown(how C.WINDIVERT_SHUTDOWN) error {
-	b := C.WinDivertShutdown(C.HANDLE(h.Handle), how)
+func (h Handle) Shutdown(how C.WINDIVERT_SHUTDOWN) error {
+	b := C.WinDivertShutdown(C.HANDLE(h), how)
 	if b == C.FALSE {
 		return GetLastError()
 	}
@@ -349,8 +349,8 @@ func (h *Handle) Shutdown(how C.WINDIVERT_SHUTDOWN) error {
 	return nil
 }
 
-func (h *Handle) Close() error {
-	b := C.WinDivertClose(C.HANDLE(h.Handle))
+func (h Handle) Close() error {
+	b := C.WinDivertClose(C.HANDLE(h))
 	if b == C.FALSE {
 		return GetLastError()
 	}
@@ -358,9 +358,10 @@ func (h *Handle) Close() error {
 	return nil
 }
 
-func (h *Handle) GetParam(p C.WINDIVERT_PARAM) (uint64, error) {
+func (h Handle) GetParam(p C.WINDIVERT_PARAM) (uint64, error) {
 	v := uint64(0)
-	b := C.WinDivertGetParam(C.HANDLE(h.Handle), p, (*C.uint64_t)(unsafe.Pointer(&v)))
+
+	b := C.WinDivertGetParam(C.HANDLE(h), p, (*C.uint64_t)(unsafe.Pointer(&v)))
 	if b == C.FALSE {
 		err := GetLastError()
 		return v, err
@@ -369,25 +370,25 @@ func (h *Handle) GetParam(p C.WINDIVERT_PARAM) (uint64, error) {
 	return v, nil
 }
 
-func (h *Handle) SetParam(p C.WINDIVERT_PARAM, v uint64) error {
+func (h Handle) SetParam(p C.WINDIVERT_PARAM, v uint64) error {
 	switch p {
-	case C.WINDIVERT_PARAM_QUEUE_LENGTH:
-		if v < uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_MIN) || v > uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_MAX) {
-			return fmt.Errorf("Queue length %v is not correct, Max: %v, Min: %v", v, uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_MAX), uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_MIN))
+	case QueueLength:
+		if v < QueueLengthMin || v > QueueLengthMax {
+			return fmt.Errorf("Queue length %v is not correct, Max: %v, Min: %v", v, QueueLengthMax, QueueLengthMin)
 		}
-	case C.WINDIVERT_PARAM_QUEUE_TIME:
-		if v < uint64(C.WINDIVERT_PARAM_QUEUE_TIME_MIN) || v > uint64(C.WINDIVERT_PARAM_QUEUE_TIME_MAX) {
-			return fmt.Errorf("Queue time %v is not correct, Max: %v, Min: %v", v, uint64(C.WINDIVERT_PARAM_QUEUE_TIME_MAX), uint64(C.WINDIVERT_PARAM_QUEUE_TIME_MIN))
+	case QueueTime:
+		if v < QueueTimeMin || v > QueueTimeMax {
+			return fmt.Errorf("Queue time %v is not correct, Max: %v, Min: %v", v, QueueTimeMax, QueueTimeMin)
 		}
-	case C.WINDIVERT_PARAM_QUEUE_SIZE:
-		if v < uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_MIN) || v > uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_MAX) {
-			return fmt.Errorf("Queue size %v is not correct, Max: %v, Min: %v", v, uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_MAX), uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_MIN))
+	case QueueSize:
+		if v < QueueSizeMin || v > QueueSizeMax {
+			return fmt.Errorf("Queue size %v is not correct, Max: %v, Min: %v", v, QueueSizeMax, QueueSizeMin)
 		}
 	default:
 		return errors.New("VersionMajor and VersionMinor only can be used in function GetParam")
 	}
 
-	b := C.WinDivertSetParam(C.HANDLE(h.Handle), p, C.uint64_t(v))
+	b := C.WinDivertSetParam(C.HANDLE(h), p, C.uint64_t(v))
 	if b == C.FALSE {
 		return GetLastError()
 	}

@@ -2,6 +2,7 @@ package dns
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
@@ -24,33 +25,98 @@ func NewResolver(s string) (Resolver, error) {
 
 	switch u.Scheme {
 	case "udp":
-		_, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.Host, "53"))
+		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.Host, "53"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &UDPResolver{Addr: net.JoinHostPort(u.Host, "53"), Timeout: time.Second * 3}, nil
+		return &UDPResolver{
+			Addr:    addr.String(),
+			Timeout: time.Second * 3,
+		}, nil
 	case "tcp":
-		_, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "53"))
+		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "53"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &TCPResolver{Addr: net.JoinHostPort(u.Host, "53"), Timeout: time.Second * 3}, nil
+		return &TCPResolver{
+			Addr:    addr.String(),
+			Timeout: time.Second * 3,
+		}, nil
 	case "tls":
-		_, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "853"))
+		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "853"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &TLSResolver{Conf: &tls.Config{ServerName: u.Host}, Addr: net.JoinHostPort(u.Host, "853"), Timeout: time.Second * 3}, nil
+		return &TLSResolver{
+			Conf:    &tls.Config{ServerName: u.Host},
+			Addr:    addr.String(),
+			Timeout: time.Second * 3,
+		}, nil
 	case "https":
-		_, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "443"))
+		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "443"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &DoHWireformat{BaseUrl: s, Timeout: time.Second * 3, Client: http.Client{Timeout: time.Second * 3}}, nil
+		server := addr.String()
+		dialer := &net.Dialer{}
+		config := &tls.Config{
+			ServerName:         u.Host,
+			ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			InsecureSkipVerify: false,
+		}
+
+		transport := &http.Transport{
+			Dial: func(network, addr string) (net.Conn, error) {
+				conn, err := dialer.Dial("tcp", server)
+				if err != nil {
+					return nil, err
+				}
+
+				conn.(*net.TCPConn).SetKeepAlive(true)
+				return conn, nil
+			},
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				conn, err := dialer.DialContext(ctx, "tcp", server)
+				if err != nil {
+					return nil, err
+				}
+
+				conn.(*net.TCPConn).SetKeepAlive(true)
+				return conn, nil
+			},
+			TLSClientConfig: config,
+			DialTLS: func(network, addr string) (net.Conn, error) {
+				conn, err := dialer.Dial("tcp", server)
+				if err != nil {
+					return nil, err
+				}
+
+				conn.(*net.TCPConn).SetKeepAlive(true)
+				return tls.Client(conn, config), nil
+			},
+			//DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			//	conn, err := dialer.DialContext(ctx, "tcp", server)
+			//	if err != nil {
+			//		return nil, err
+			//	}
+
+			//	conn.(*net.TCPConn).SetKeepAlive(true)
+			//	return tls.Client(conn, config), nil
+			//},
+		}
+
+		return &DoHWireformat{
+			BaseUrl: s,
+			Timeout: time.Second * 3,
+			Client: http.Client{
+				Transport: transport,
+				Timeout:   time.Second * 3,
+			},
+		}, nil
 	default:
 		return nil, fmt.Errorf("not a valid dns protocol")
 	}

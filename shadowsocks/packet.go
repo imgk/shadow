@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sync"
 )
 
 var ErrShortPacket = errors.New("short packet")
@@ -26,8 +25,6 @@ func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
 		Cipher:     ciph,
 	}
 }
-
-var pool = sync.Pool{New: func() interface{} { return make([]byte, MaxPacketSize<<2) }}
 
 func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 	saltSize := ciph.SaltSize()
@@ -52,8 +49,8 @@ func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	buff := pool.Get().([]byte)
-	defer pool.Put(buff)
+	buff := buffer.Get().([]byte)
+	defer buffer.Put(buff)
 
 	n, addr, err := pc.PacketConn.ReadFrom(buff)
 	if err != nil {
@@ -89,8 +86,8 @@ func Pack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	buff := pool.Get().([]byte)
-	defer pool.Put(buff)
+	buff := buffer.Get().([]byte)
+	defer buffer.Put(buff)
 
 	bb, err := Pack(buff, b, pc.Cipher)
 	if err != nil {
