@@ -3,11 +3,14 @@ package windivert
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
-func DialIPv4() {
-	conn, err := net.DialTimeout("tcp4", "8.8.8.8:53", time.Second*5)
+func DialIPv4(wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	conn, err := net.DialTimeout("tcp4", "8.8.8.8:53", time.Second)
 	if err != nil {
 		return
 	}
@@ -15,8 +18,10 @@ func DialIPv4() {
 	conn.Close()
 }
 
-func DialIPv6() {
-	conn, err := net.DialTimeout("tcp6", "[2001:4860:4860::8888]:53", time.Second*5)
+func DialIPv6(wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	conn, err := net.DialTimeout("tcp6", "[2001:4860:4860::8888]:53", time.Second)
 	if err != nil {
 		return
 	}
@@ -32,8 +37,13 @@ func GetInterfaceIndex() (uint32, uint32, error) {
 	}
 	defer hd.Close()
 
-	go DialIPv4()
-	go DialIPv6()
+	wg := &sync.WaitGroup{}
+
+	wg.Add(1)
+	go DialIPv4(wg)
+
+	wg.Add(1)
+	go DialIPv6(wg)
 
 	a := new(Address)
 	b := make([]byte, 1500)
@@ -50,6 +60,8 @@ func GetInterfaceIndex() (uint32, uint32, error) {
 	if err := hd.Close(); err != nil {
 		return 0, 0, fmt.Errorf("close interface handle error: %v", err)
 	}
+
+	wg.Wait()
 
 	nw := a.Network()
 	return nw.InterfaceIndex, nw.SubInterfaceIndex, nil

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync"
 )
 
 type Addr []byte
@@ -17,6 +18,16 @@ const (
 	AddrTypeDomain = 3
 	AddrTypeIPv6   = 4
 )
+
+var addrBuffer = sync.Pool{New: func() interface{} { return make(Addr, MaxAddrLen) }}
+
+func GetAddr() Addr {
+	return addrBuffer.Get().(Addr)
+}
+
+func PutAddr(addr Addr) {
+	addrBuffer.Put(addr)
+}
 
 var ErrInvalidAddrType = errors.New("invalid address type")
 
@@ -146,35 +157,39 @@ func ResolveAddr(addr net.Addr) (Addr, error) {
 func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 	if a, ok := addr.(*net.TCPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
-			b[0] = AddrTypeIPv4
-			copy(b[1:], ip)
-			binary.BigEndian.PutUint16(b[1+net.IPv4len:], uint16(a.Port))
+			b = append(b[:0], AddrTypeIPv4)
+			b = append(b, ip...)
+			b = append(b, byte(a.Port>>8), byte(a.Port))
 
-			return b[:1+net.IPv4len+2], nil
+			return b, nil
 		} else {
-			b[0] = AddrTypeIPv6
-			copy(b[1:], a.IP[:net.IPv6len])
-			binary.BigEndian.PutUint16(b[1+net.IPv6len:], uint16(a.Port))
+			ip = a.IP.To16()
 
-			return b[:1+net.IPv6len+2], nil
+			b = append(b[:0], AddrTypeIPv6)
+			b = append(b, ip...)
+			b = append(b, byte(a.Port>>8), byte(a.Port))
+
+			return b, nil
 		}
 	}
 
 	if a, ok := addr.(*net.UDPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
-			b[0] = AddrTypeIPv4
-			copy(b[1:], ip)
-			binary.BigEndian.PutUint16(b[1+net.IPv4len:], uint16(a.Port))
+			b = append(b[:0], AddrTypeIPv4)
+			b = append(b, ip...)
+			b = append(b, byte(a.Port>>8), byte(a.Port))
 
-			return b[:1+net.IPv4len+2], nil
+			return b, nil
 		} else {
-			b[0] = AddrTypeIPv6
-			copy(b[1:], a.IP[:net.IPv6len])
-			binary.BigEndian.PutUint16(b[1+net.IPv6len:], uint16(a.Port))
+			ip = a.IP.To16()
 
-			return b[:1+net.IPv6len+2], nil
+			b = append(b[:0], AddrTypeIPv6)
+			b = append(b, ip...)
+			b = append(b, byte(a.Port>>8), byte(a.Port))
+
+			return b, nil
 		}
 	}
 
-	return nil, ErrInvalidAddrType
+	return b, ErrInvalidAddrType
 }

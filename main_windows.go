@@ -105,6 +105,8 @@ func main() {
 	defer stack.Close()
 	stack.IPFilter.Add("0.0.0.0/1")
 	stack.IPFilter.Add("128.0.0.0/1")
+	stack.IPFilter.Add("::/1")
+	stack.IPFilter.Add("ffff::/1")
 	stack.IPFilter.Sort()
 
 	go func() {
@@ -162,19 +164,13 @@ func main() {
 
 	log.Logf("shadowsocks is running...")
 	<-sigCh
+	log.Logf("shadowsocks is closing...")
 
 	dns.Stop()
 	tray.Stop()
 
 	windows.ReleaseMutex(mutex)
 	windows.CloseHandle(mutex)
-
-	if err := windivert.TryRemoveDriver(); err != nil {
-		log.Logf("try to remove windivert driver error: %v", err)
-		return
-	}
-
-	log.Logf("windivert driver is removed")
 }
 
 func (p *Plugin) Stop() error {
@@ -204,4 +200,6 @@ func loadAppRules(appfilter *utils.AppFilter) {
 	for _, v := range conf.Programs {
 		appfilter.UnsafeAdd(v)
 	}
+
+	conf.Programs = nil
 }

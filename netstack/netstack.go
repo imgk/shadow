@@ -17,6 +17,10 @@ import (
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
+const MaxUDPPacketSize = 16384 // Max 65536
+
+var buffer = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
+
 type Device interface {
 	io.Reader
 	io.WriterTo
@@ -118,8 +122,9 @@ func (conn *UDPConn) WriteTo(data []byte, target *net.UDPAddr) error {
 	case <-conn.active:
 		return io.EOF
 	default:
-		addr, err := dns.IPToDomainAddr(target.IP, make([]byte, utils.MaxAddrLen))
+		addr, err := dns.IPToDomainAddrBuffer(target.IP, ([]byte)(utils.GetAddr()))
 		if err != nil {
+			utils.PutAddr(addr)
 			conn.addr <- target
 		} else {
 			binary.BigEndian.PutUint16(addr[len(addr)-2:], uint16(target.Port))
@@ -205,8 +210,9 @@ func (s *stack) Handle(conn net.Conn, target *net.TCPAddr) error {
 		return nil
 	}
 
-	addr, err := dns.IPToDomainAddr(target.IP, make([]byte, utils.MaxAddrLen))
+	addr, err := dns.IPToDomainAddrBuffer(target.IP, ([]byte)(utils.GetAddr()))
 	if err != nil {
+		utils.PutAddr(addr)
 		log.Logf("proxy %v <-TCP-> %v", conn.LocalAddr(), target)
 		go s.HandleTCP(conn, target)
 
@@ -239,6 +245,9 @@ func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
 				return
 			}
 		}
+		if err == io.ErrClosedPipe || err == io.EOF {
+			return
+		}
 
 		log.Logf("relay error: %v", err)
 	}
@@ -257,7 +266,7 @@ func relay(c, rc DuplexConn) error {
 		c.Close()
 	} else {
 		rc.CloseWrite()
-		c.CloseWrite()
+		c.CloseRead()
 	}
 
 	if err != nil {
@@ -320,7 +329,8 @@ func (s *stack) Connect(conn core.UDPConn, target *net.UDPAddr) error {
 		return nil
 	}
 
-	addr, err := dns.IPToDomainAddr(target.IP, make([]byte, utils.MaxAddrLen))
+	addr, err := dns.IPToDomainAddrBuffer(target.IP, ([]byte)(utils.GetAddr()))
+	defer utils.PutAddr(addr)
 	if err != nil {
 		pc := NewUDPConn(conn, target)
 		s.Add(pc)
@@ -341,8 +351,6 @@ func (s *stack) Connect(conn core.UDPConn, target *net.UDPAddr) error {
 	return nil
 }
 
-var buffer = sync.Pool{New: func() interface{} { return make([]byte, 65536) }}
-
 func (s *stack) RedirectUDP(conn *DirectUDPConn) {
 	defer s.Del(conn)
 
@@ -358,6 +366,7 @@ func (s *stack) RedirectUDP(conn *DirectUDPConn) {
 					break
 				}
 			}
+
 			log.Logf("read packet error: %v", er)
 			break
 		}
@@ -436,5 +445,9 @@ func (s *stack) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (s *stack) Close() error {
+	for _, pc := range s.conns {
+		pc.Close()
+	}
+
 	return s.LWIPStack.Close()
 }

@@ -70,6 +70,10 @@ func loadDomainRules(matchTree *utils.Tree) {
 	for _, v := range conf.Blocked {
 		matchTree.UnsafeStore(v, "BLOCKED")
 	}
+
+	conf.Proxy = nil
+	conf.Direct = nil
+	conf.Blocked = nil
 }
 
 func loadIPRules(ipfilter *utils.IPFilter) {
@@ -84,7 +88,9 @@ func loadIPRules(ipfilter *utils.IPFilter) {
 		}
 	}
 
-	ipfilter.Sort()
+	ipfilter.UnsafeSort()
+
+	conf.IPCIDR = nil
 }
 
 func loadPlugin(name, opts string) (*Plugin, error) {

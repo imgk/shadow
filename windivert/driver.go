@@ -36,16 +36,20 @@ func Check() (bool, error) {
 	id := windows.GetCurrentProcessId()
 
 	a := new(Address)
+	b := make([]byte, 1500)
+
 	for {
-		_, err := hd.Recv(nil, a)
+		_, err := hd.Recv(b, a)
 		if err != nil {
 			if err == ErrNoData {
 				return true, nil
 			}
 
-			if err != ErrInsufficientBuffer {
-				return false, err
+			if err == ErrInsufficientBuffer {
+				return false, nil
 			}
+
+			return false, err
 		}
 
 		rt := a.Reflect()

@@ -98,15 +98,15 @@ func NewResolver(s string) (Resolver, error) {
 				conn.(*net.TCPConn).SetKeepAlive(true)
 				return tls.Client(conn, config), nil
 			},
-			//DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			//	conn, err := dialer.DialContext(ctx, "tcp", server)
-			//	if err != nil {
-			//		return nil, err
-			//	}
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				conn, err := dialer.DialContext(ctx, "tcp", server)
+				if err != nil {
+					return nil, err
+				}
 
-			//	conn.(*net.TCPConn).SetKeepAlive(true)
-			//	return tls.Client(conn, config), nil
-			//},
+				conn.(*net.TCPConn).SetKeepAlive(true)
+				return tls.Client(conn, config), nil
+			},
 		}
 
 		return &DoHWireformat{

@@ -13,7 +13,7 @@ import (
 	"github.com/imgk/shadowsocks-windivert/windivert"
 )
 
-var hd windivert.Handle
+var hd *windivert.Handle
 var active = make(chan struct{})
 
 func Stop() error {
@@ -77,6 +77,11 @@ func Serve(server string) error {
 			aPool.Put(a)
 			bPool.Put(b)
 			mPool.Put(m)
+
+			select {
+			case <- active:
+				return nil
+			}
 
 			if err == windivert.ErrNoData {
 				return nil

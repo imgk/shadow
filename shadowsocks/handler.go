@@ -10,7 +10,9 @@ import (
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
-var buffer = sync.Pool{New: func() interface{} { return make([]byte, 65536) }}
+const MaxUDPPacketSize = 16384 // Max 65536
+
+var buffer = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
 
 type Handler struct {
 	Cipher
@@ -41,10 +43,17 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
-	addr, err := utils.ResolveAddr(tgt)
-	if err != nil {
-		return fmt.Errorf("resolve addr error: %v", err)
+	var err error
+
+	addr, ok := tgt.(utils.Addr)
+	if !ok {
+		addr, err = utils.ResolveAddrBuffer(tgt, ([]byte)(utils.GetAddr()))
+		if err != nil {
+			utils.PutAddr(addr)
+			return fmt.Errorf("resolve addr error: %v", err)
+		}
 	}
+	defer utils.PutAddr(addr)
 
 	rc, err := net.Dial("tcp", h.server)
 	if err != nil {
@@ -72,12 +81,11 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 			if ne.Timeout() {
 				return nil
 			}
-		} else {
-			if err == io.ErrClosedPipe || err == io.EOF {
-				return nil
-			}
-
 		}
+		if err == io.ErrClosedPipe || err == io.EOF {
+			return nil
+		}
+
 		return fmt.Errorf("relay error: %v", err)
 	}
 
@@ -215,16 +223,21 @@ func copyWithChannel(conn utils.PacketConn, rc net.PacketConn, timeout time.Dura
 			return
 		}
 
-		addr, err := utils.ResolveAddr(tgt)
-		if err != nil {
-			errCh <- fmt.Errorf("resolve addr error: %v", err)
-			return
+		addr, ok := tgt.(utils.Addr)
+		if !ok {
+			addr, err = utils.ResolveAddrBuffer(tgt, ([]byte)(utils.GetAddr()))
+			if err != nil {
+				utils.PutAddr(addr)
+				errCh <- fmt.Errorf("resolve addr error: %v", err)
+				return
+			}
 		}
 
 		copy(b[utils.MaxAddrLen-len(addr):], addr)
 
 		rc.SetDeadline(time.Now().Add(timeout))
 		_, err = rc.WriteTo(b[utils.MaxAddrLen-len(addr):utils.MaxAddrLen+n], raddr)
+		utils.PutAddr(addr)
 		if err != nil {
 			errCh <- err
 			return

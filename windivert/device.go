@@ -20,8 +20,8 @@ type Device struct {
 	*io.PipeWriter
 	*utils.AppFilter
 	*utils.IPFilter
-	RecvHd Handle
-	SendHd Handle
+	RecvHd *Handle
+	SendHd *Handle
 	TCP    [65536]uint8
 	UDP    [65536]uint8
 	TCP6   [65536]uint8
@@ -36,7 +36,7 @@ func NewDevice(filter string) (*Device, error) {
 		return nil, err
 	}
 
-	filter = fmt.Sprintf("ifIdx = %d and ip and ", ifIdx) + filter
+	filter = fmt.Sprintf("ifIdx = %d and ", ifIdx) + filter
 	recv, err := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
 	if err != nil {
 		return nil, fmt.Errorf("open recv handle error: %v", err)
@@ -420,10 +420,11 @@ func (d *Device) CheckTCP6(b []byte) bool {
 	}
 
 	p := uint32(b[ipv6.HeaderLen]) | uint32(b[ipv6.HeaderLen+1])<<8
+	a := *(*[4]uint32)(unsafe.Pointer(&b[8]))
 
 	for i := range rs {
 		if rs[i].LocalPort == p {
-			if *(*uint32)(unsafe.Pointer(&b[8])) == rs[i].LocalAddr[0] && *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr[1] && *(*uint32)(unsafe.Pointer(&b[16])) == rs[i].LocalAddr[2] && *(*uint32)(unsafe.Pointer(&b[20])) == rs[i].LocalAddr[3] {
+			if a[0] == rs[i].LocalAddr[0] && a[1] == rs[i].LocalAddr[1] && a[2] == rs[i].LocalAddr[2] && a[3] == rs[i].LocalAddr[3] {
 				return d.AppFilter.Lookup(rs[i].OwningPid)
 			}
 		}
@@ -439,10 +440,11 @@ func (d *Device) CheckUDP6(b []byte) bool {
 	}
 
 	p := uint32(b[ipv6.HeaderLen]) | uint32(b[ipv6.HeaderLen+1])<<8
+	a := *(*[4]uint32)(unsafe.Pointer(&b[0]))
 
 	for i := range rs {
 		if rs[i].LocalPort == p {
-			if *(*uint32)(unsafe.Pointer(&b[8])) == rs[i].LocalAddr[0] && *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr[1] && *(*uint32)(unsafe.Pointer(&b[16])) == rs[i].LocalAddr[2] && *(*uint32)(unsafe.Pointer(&b[20])) == rs[i].LocalAddr[3] {
+			if a[0] == rs[i].LocalAddr[0] && a[1] == rs[i].LocalAddr[1] && a[2] == rs[i].LocalAddr[2] && a[3] == rs[i].LocalAddr[3] {
 				return d.AppFilter.Lookup(rs[i].OwningPid)
 			}
 		}

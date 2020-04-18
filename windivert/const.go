@@ -1,19 +1,17 @@
 package windivert
 
-// #cgo CFLAGS: -I${SRCDIR}/Divert/include
-// #include "windivert.h"
-import "C"
+type Layer int
 
 const (
-	LayerNetwork        = C.WINDIVERT_LAYER_NETWORK
-	LayerNetworkForward = C.WINDIVERT_LAYER_NETWORK_FORWARD
-	LayerFlow           = C.WINDIVERT_LAYER_FLOW
-	LayerSocket         = C.WINDIVERT_LAYER_SOCKET
-	LayerReflect        = C.WINDIVERT_LAYER_REFLECT
-	//LayerEthernet       = C.WINDIVERT_LAYER_ETHERNET
+	LayerNetwork        Layer = 0
+	LayerNetworkForward Layer = 1
+	LayerFlow           Layer = 2
+	LayerSocket         Layer = 3
+	LayerReflect        Layer = 4
+	LayerEthernet       Layer = 5
 )
 
-func LayerName(l C.WINDIVERT_LAYER) string {
+func (l Layer) String() string {
 	switch l {
 	case LayerNetwork:
 		return "WINDIVERT_LAYER_NETWORK"
@@ -25,28 +23,30 @@ func LayerName(l C.WINDIVERT_LAYER) string {
 		return "WINDIVERT_LAYER_SOCKET"
 	case LayerReflect:
 		return "WINDIVERT_LAYER_REFLECT"
-	//case LayerEthernet:
-	//	return "WINDIVERT_LAYER_ETHERNET"
+	case LayerEthernet:
+		return "WINDIVERT_LAYER_ETHERNET"
 	default:
 		return ""
 	}
 }
 
+type Event int
+
 const (
-	EventNetworkPacket   = C.WINDIVERT_EVENT_NETWORK_PACKET
-	EventFlowEstablished = C.WINDIVERT_EVENT_FLOW_ESTABLISHED
-	EventFlowDeleted     = C.WINDIVERT_EVENT_FLOW_DELETED
-	EventSocketBind      = C.WINDIVERT_EVENT_SOCKET_BIND
-	EventSocketConnect   = C.WINDIVERT_EVENT_SOCKET_CONNECT
-	EventSocketListen    = C.WINDIVERT_EVENT_SOCKET_LISTEN
-	EventSocketAccept    = C.WINDIVERT_EVENT_SOCKET_ACCEPT
-	EventSocketClose     = C.WINDIVERT_EVENT_SOCKET_CLOSE
-	EventReflectOpen     = C.WINDIVERT_EVENT_REFLECT_OPEN
-	EventReflectClose    = C.WINDIVERT_EVENT_REFLECT_CLOSE
-	//EventEthernetFrame   = C.WINDIVERT_EVENT_ETHERNET_FRAME
+	EventNetworkPacket   Event = 0
+	EventFlowEstablished Event = 1
+	EventFlowDeleted     Event = 2
+	EventSocketBind      Event = 3
+	EventSocketConnect   Event = 4
+	EventSocketListen    Event = 5
+	EventSocketAccept    Event = 6
+	EventSocketClose     Event = 7
+	EventReflectOpen     Event = 8
+	EventReflectClose    Event = 9
+	EventEthernetFrame   Event = 10
 )
 
-func EventName(e C.WINDIVERT_EVENT) string {
+func (e Event) String() string {
 	switch e {
 	case EventNetworkPacket:
 		return "WINDIVERT_EVENT_NETWORK_PACKET"
@@ -68,62 +68,96 @@ func EventName(e C.WINDIVERT_EVENT) string {
 		return "WINDIVERT_EVENT_REFLECT_OPEN"
 	case EventReflectClose:
 		return "WINDIVERT_EVENT_REFLECT_CLOSE"
-	//case EventEthernetFrame:
-	//	return "WINDIVERT_EVENT_ETHERNET_FRAME"
+	case EventEthernetFrame:
+		return "WINDIVERT_EVENT_ETHERNET_FRAME"
+	default:
+		return ""
+	}
+}
+
+type Shutdown int
+
+const (
+	ShutdownRecv Shutdown = 0
+	ShutdownSend Shutdown = 1
+	ShutdownBoth Shutdown = 2
+)
+
+func (h Shutdown) String() string {
+	switch h {
+	case ShutdownRecv:
+		return "WINDIVERT_SHUTDOWN_RECV"
+	case ShutdownSend:
+		return "WINDIVERT_SHUTDOWN_SEND"
+	case ShutdownBoth:
+		return "WINDIVERT_SHUTDOWN_BOTH"
+	default:
+		return ""
+	}
+}
+
+type Param int
+
+const (
+	QueueLength  Param = 0
+	QueueTime    Param = 1
+	QueueSize    Param = 2
+	VersionMajor Param = 3
+	VersionMinor Param = 4
+)
+
+func (p Param) String() string {
+	switch p {
+	case QueueLength:
+		return "WINDIVERT_PARAM_QUEUE_LENGTH"
+	case QueueTime:
+		return "WINDIVERT_PARAM_QUEUE_TIME"
+	case QueueSize:
+		return "WINDIVERT_PARAM_QUEUE_SIZE"
+	case VersionMajor:
+		return "WINDIVERT_PARAM_VERSION_MAJOR"
+	case VersionMinor:
+		return "WINDIVERT_PARAM_VERSION_MINOR"
 	default:
 		return ""
 	}
 }
 
 const (
-	ShutdownRecv = C.WINDIVERT_SHUTDOWN_RECV
-	ShutDownSend = C.WINDIVERT_SHUTDOWN_SEND
-	ShutdownBoth = C.WINDIVERT_SHUTDOWN_BOTH
+	FlagDefault   = 0x0000
+	FlagSniff     = 0x0001
+	FlagDrop      = 0x0002
+	FlagRecvOnly  = 0x0004
+	FlagSendOnly  = 0x0008
+	FlagNoInstall = 0x0010
+	FlagFragments = 0x0020
 )
 
 const (
-	QueueLength  = C.WINDIVERT_PARAM_QUEUE_LENGTH
-	QueueTime    = C.WINDIVERT_PARAM_QUEUE_TIME
-	QueueSize    = C.WINDIVERT_PARAM_QUEUE_SIZE
-	VersionMajor = C.WINDIVERT_PARAM_VERSION_MAJOR
-	VersionMinor = C.WINDIVERT_PARAM_VERSION_MINOR
+	PriorityDefault    = 0
+	PriorityHighest    = 3000
+	PriorityLowest     = -3000
+	QueueLengthDefault = 4096
+	QueueLengthMin     = 32
+	QueueLengthMax     = 16384
+	QueueTimeDefault   = 2000
+	QueueTimeMin       = 100
+	QueueTimeMax       = 16000
+	QueueSizeDefault   = 4194304
+	QueueSizeMin       = 65535
+	QueueSizeMax       = 33554432
 )
 
 const (
-	FlagDefault   = uint64(0)
-	FlagSniff     = uint64(C.WINDIVERT_FLAG_SNIFF)
-	FlagDrop      = uint64(C.WINDIVERT_FLAG_DROP)
-	FlagRecvOnly  = uint64(C.WINDIVERT_FLAG_RECV_ONLY)
-	FlagSendOnly  = uint64(C.WINDIVERT_FLAG_SEND_ONLY)
-	FlagNoInstall = uint64(C.WINDIVERT_FLAG_NO_INSTALL)
-	FlagFragments = uint64(C.WINDIVERT_FLAG_FRAGMENTS)
+	ChecksumDefault  = 0
+	NoIPChecksum     = 1
+	NoICMPChekcsum   = 2
+	NoICMPV6Checksum = 4
+	NoTCPChekcsum    = 8
+	NoUDPChecksum    = 16
 )
 
 const (
-	PriorityDefault    = int16(0)
-	PriorityHighest    = int16(C.WINDIVERT_PRIORITY_HIGHEST)
-	PriorityLowest     = int16(C.WINDIVERT_PRIORITY_LOWEST)
-	QueueLengthDefault = uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_DEFAULT)
-	QueueLengthMin     = uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_MIN)
-	QueueLengthMax     = uint64(C.WINDIVERT_PARAM_QUEUE_LENGTH_MAX)
-	QueueTimeDefault   = uint64(C.WINDIVERT_PARAM_QUEUE_TIME_DEFAULT)
-	QueueTimeMin       = uint64(C.WINDIVERT_PARAM_QUEUE_TIME_MIN)
-	QueueTimeMax       = uint64(C.WINDIVERT_PARAM_QUEUE_TIME_MAX)
-	QueueSizeDefault   = uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_DEFAULT)
-	QueueSizeMin       = uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_MIN)
-	QueueSizeMax       = uint64(C.WINDIVERT_PARAM_QUEUE_SIZE_MAX)
-)
-
-const (
-	ChecksumDefault  = uint64(0)
-	NoIPChecksum     = uint64(C.WINDIVERT_HELPER_NO_IP_CHECKSUM)
-	NoICMPChekcsum   = uint64(C.WINDIVERT_HELPER_NO_ICMP_CHECKSUM)
-	NoICMPV6Checksum = uint64(C.WINDIVERT_HELPER_NO_ICMPV6_CHECKSUM)
-	NoTCPChekcsum    = uint64(C.WINDIVERT_HELPER_NO_TCP_CHECKSUM)
-	NoUDPChecksum    = uint64(C.WINDIVERT_HELPER_NO_UDP_CHECKSUM)
-)
-
-const (
-	BatchMax = int(C.WINDIVERT_BATCH_MAX)
-	MTUMax   = int(C.WINDIVERT_MTU_MAX)
+	BatchMax = 0xff
+	MTUMax   = 40 + 0xffff
 )

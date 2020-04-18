@@ -36,46 +36,52 @@ func ParseUrl(s string) (listen, server string, err error) {
 	return
 }
 
-func AddrToDomainAddr(addr net.Addr, b []byte) (utils.Addr, error) {
+func AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {
 	switch addr.(type) {
 	case *net.TCPAddr:
-		a, err := IPToDomainAddr(addr.(*net.TCPAddr).IP, b)
+		a, err := IPToDomainAddr(addr.(*net.TCPAddr).IP)
 		if err != nil {
 			return nil, err
 		}
 		binary.BigEndian.PutUint16(a[len(a)-2:], uint16(addr.(*net.TCPAddr).Port))
+
 		return a, nil
 	case *net.UDPAddr:
-		a, err := IPToDomainAddr(addr.(*net.UDPAddr).IP, b)
+		a, err := IPToDomainAddr(addr.(*net.UDPAddr).IP)
 		if err != nil {
 			return nil, err
 		}
 		binary.BigEndian.PutUint16(a[len(a)-2:], uint16(addr.(*net.UDPAddr).Port))
+
 		return a, nil
 	default:
 		return nil, errors.New("not support")
 	}
 }
 
-func IPToDomainAddr(addr net.IP, b []byte) (utils.Addr, error) {
+func IPToDomainAddr(addr net.IP) (utils.Addr, error) {
+	return IPToDomainAddrBuffer(addr, make([]byte, utils.MaxAddrLen))
+}
+
+func IPToDomainAddrBuffer(addr net.IP, b []byte) (utils.Addr, error) {
 	if ip := addr.To4(); ip != nil {
 		if ip[0] != 44 || ip[1] != 44 {
-			return nil, fmt.Errorf("%v not found", addr)
+			return b, fmt.Errorf("%v not found", addr)
 		}
 
 		s := matchTree.Load(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", ip[3], ip[2]))
 		if v, ok := s.(*dnsmessage.PTRResource); ok {
-			b[0] = utils.AddrTypeDomain
-			b[1] = byte(v.PTR.Length)
-			n := copy(b[2:], v.PTR.Data[:v.PTR.Length])
+			b = append(b[:0], utils.AddrTypeDomain, byte(v.PTR.Length))
+			b = append(b, v.PTR.Data[:v.PTR.Length]...)
+			b = append(b, 0, 0)
 
-			return b[:n+4], nil
+			return b, nil
 		}
 
-		return nil, fmt.Errorf("%v not found", addr)
+		return b, fmt.Errorf("%v not found", addr)
 	}
 
-	return nil, fmt.Errorf("%v not found", addr)
+	return b, fmt.Errorf("%v not found", addr)
 }
 
 var errZeroLength = errors.New("length of questions in dns message is 0")
