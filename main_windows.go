@@ -23,6 +23,15 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, windows.SIGINT, windows.SIGTERM)
 
+	Exit := func(sigCh chan os.Signal) {
+		sigCh <- windows.SIGTERM
+	}
+
+	Close := func(mutex windows.Handle) {
+		windows.ReleaseMutex(mutex)
+		windows.CloseHandle(mutex)
+	}
+
 	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
 	if err == nil {
 		windows.CloseHandle(mutex)
@@ -36,6 +45,8 @@ func main() {
 
 		return
 	}
+	defer Close(mutex)
+
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
 	if err != nil {
 		log.Logf("wait for mutex error: %v", err)
@@ -76,7 +87,7 @@ func main() {
 		go func() {
 			if err := plugin.Wait(); err != nil {
 				log.Logf("plugin error: %v", err)
-				sigCh <- windows.SIGTERM
+				Exit(sigCh)
 
 				return
 			}
@@ -91,7 +102,7 @@ func main() {
 		return
 	}
 
-	dev, err := windivert.NewDevice("outbound")
+	dev, err := windivert.NewDevice(conf.FilterString)
 	if err != nil {
 		log.Logf("windivert error: %v", err)
 
@@ -107,12 +118,13 @@ func main() {
 	stack.IPFilter.Add("128.0.0.0/1")
 	stack.IPFilter.Add("::/1")
 	stack.IPFilter.Add("ffff::/1")
+	stack.IPFilter.SetMode(true)
 	stack.IPFilter.Sort()
 
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
 			log.Logf("netstack exit error: %v", err)
-			sigCh <- windows.SIGTERM
+			Exit(sigCh)
 
 			return
 		}
@@ -121,7 +133,7 @@ func main() {
 	go func() {
 		if err := dns.Serve(conf.NameServer); err != nil {
 			log.Logf("dns exit error: %v", err)
-			sigCh <- windows.SIGTERM
+			Exit(sigCh)
 
 			return
 		}
@@ -136,7 +148,7 @@ func main() {
 	tray.AppendMenu("Reload Rules", func() {
 		if err := loadConfig("config.json"); err != nil {
 			log.Logf("reload config file error: %v", err)
-			sigCh <- windows.SIGTERM
+			Exit(sigCh)
 
 			return
 		}
@@ -144,9 +156,7 @@ func main() {
 		loadAppRules(dev.AppFilter)
 		loadIPRules(dev.IPFilter)
 	})
-	tray.AppendMenu("Close", func() {
-		sigCh <- windows.SIGTERM
-	})
+	tray.AppendMenu("Close", func() { Exit(sigCh) })
 	if err := tray.Show(10, "Shadowsocks"); err != nil {
 		log.Logf("set icon error: %v", err)
 
@@ -156,7 +166,7 @@ func main() {
 	go func() {
 		if err := tray.Run(); err != nil {
 			log.Logf("tray run error: %v", err)
-			sigCh <- windows.SIGTERM
+			Exit(sigCh)
 
 			return
 		}
@@ -168,9 +178,6 @@ func main() {
 
 	dns.Stop()
 	tray.Stop()
-
-	windows.ReleaseMutex(mutex)
-	windows.CloseHandle(mutex)
 }
 
 func (p *Plugin) Stop() error {
@@ -196,10 +203,11 @@ func loadAppRules(appfilter *utils.AppFilter) {
 	defer appfilter.Unlock()
 
 	appfilter.UnsafeReset()
+	appfilter.UnsafeSetMode(conf.AppRules.Mode)
 
-	for _, v := range conf.Programs {
+	for _, v := range conf.AppRules.Programs {
 		appfilter.UnsafeAdd(v)
 	}
 
-	conf.Programs = nil
+	conf.AppRules.Programs = nil
 }

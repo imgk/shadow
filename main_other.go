@@ -21,6 +21,10 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, unix.SIGINT, unix.SIGTERM)
 
+	Exit := func(sigCh chan os.Signal) {
+		sigCh <- unix.SIGTERM
+	}
+
 	if err := loadConfig(file); err != nil {
 		log.Logf("load config config.json error: %v", err)
 
@@ -47,7 +51,7 @@ func main() {
 		go func() {
 			if err := plugin.Wait(); err != nil {
 				log.Logf("plugin error %v", err)
-				sigCh <- unix.SIGTERM
+				Exit(sigCh)
 
 				return
 			}
@@ -78,7 +82,7 @@ func main() {
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
 			log.Logf("netstack exit error: %v", err)
-			sigCh <- unix.SIGTERM
+			Exit(sigCh)
 
 			return
 		}
@@ -87,7 +91,7 @@ func main() {
 	go func() {
 		if err := dns.Serve(conf.NameServer); err != nil {
 			log.Logf("dns exit error: %v", err)
-			sigCh <- unix.SIGTERM
+			Exit(sigCh)
 
 			return
 		}
@@ -95,6 +99,7 @@ func main() {
 
 	log.Logf("shadowsocks is running...")
 	<-sigCh
+	log.Logf("shadowsocks is closing...")
 
 	dns.Stop()
 }

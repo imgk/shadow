@@ -7,14 +7,30 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+const (
+	MoreFragment   = 1 << 5
+	FragmentHeader = 44
+)
+
+const (
+	ICMP   = 1
+	ICMPv6 = 58
+	TCP    = 6
+	UDP    = 17
+)
+
 func CalcChecksumsEx(buffer []byte, layer Layer, address *Address, flags uint64) (err error) {
 	pseudo := [40]byte{}
 
 	switch buffer[0] >> 4 {
 	case ipv4.Version:
 		buffer[10], buffer[11] = 0, 0
-		checksum := combineChecksum(0, calcCheckSum(buffer[:ipv4.HeaderLen]))
+		checksum := combineChecksum(0, calcChecksum(buffer[:ipv4.HeaderLen]))
 		buffer[10], buffer[11] = byte(checksum>>8), byte(checksum)
+
+		if (buffer[6]&MoreFragment == MoreFragment) || ((uint32(buffer[6])<<8|uint32(buffer[7]))<<3 != 0) {
+			return
+		}
 
 		copy(pseudo[:8], buffer[12:20])
 		pseudo[9], pseudo[10], pseudo[11] = buffer[9], buffer[ipv4.HeaderLen+4], buffer[ipv4.HeaderLen+5]
@@ -22,15 +38,18 @@ func CalcChecksumsEx(buffer []byte, layer Layer, address *Address, flags uint64)
 		switch buffer[9] {
 		case TCP:
 			buffer[ipv4.HeaderLen+10], buffer[ipv4.HeaderLen+11] = 0, 0
-			checksum := combineChecksum(calcCheckSum(pseudo[:12]), calcCheckSum(buffer[ipv4.HeaderLen:]))
+			checksum := combineChecksum(calcChecksum(pseudo[:12]), calcChecksum(buffer[ipv4.HeaderLen:]))
 			buffer[ipv4.HeaderLen+10], buffer[ipv4.HeaderLen+11] = byte(checksum>>8), byte(checksum)
-			return
 		case UDP:
 			buffer[ipv4.HeaderLen+6], buffer[ipv4.HeaderLen+7] = 0, 0
-			checksum := combineChecksum(calcCheckSum(pseudo[:12]), calcCheckSum(buffer[ipv4.HeaderLen:]))
+			checksum := combineChecksum(calcChecksum(pseudo[:12]), calcChecksum(buffer[ipv4.HeaderLen:]))
 			buffer[ipv4.HeaderLen+6], buffer[ipv4.HeaderLen+7] = byte(checksum>>8), byte(checksum)
+		case ICMP:
+			buffer[ipv4.HeaderLen+2], buffer[ipv4.HeaderLen+3] = 0, 0
+			checksum := combineChecksum(0, calcChecksum(buffer[ipv4.HeaderLen:]))
+			buffer[ipv4.HeaderLen+2], buffer[ipv4.HeaderLen+3] = byte(checksum>>8), byte(checksum)
 		default:
-			return
+			err = errors.New("invalid packet")
 		}
 	case ipv6.Version:
 		copy(pseudo[:32], buffer[8:40])
@@ -39,15 +58,19 @@ func CalcChecksumsEx(buffer []byte, layer Layer, address *Address, flags uint64)
 		switch buffer[6] {
 		case TCP:
 			buffer[ipv6.HeaderLen+10], buffer[ipv6.HeaderLen+11] = 0, 0
-			checksum := combineChecksum(calcCheckSum(pseudo[:40]), calcCheckSum(buffer[ipv6.HeaderLen:]))
+			checksum := combineChecksum(calcChecksum(pseudo[:40]), calcChecksum(buffer[ipv6.HeaderLen:]))
 			buffer[ipv6.HeaderLen+10], buffer[ipv6.HeaderLen+11] = byte(checksum>>8), byte(checksum)
-			return
 		case UDP:
 			buffer[ipv6.HeaderLen+6], buffer[ipv6.HeaderLen+7] = 0, 0
-			checksum := combineChecksum(calcCheckSum(pseudo[:40]), calcCheckSum(buffer[ipv6.HeaderLen:]))
+			checksum := combineChecksum(calcChecksum(pseudo[:40]), calcChecksum(buffer[ipv6.HeaderLen:]))
 			buffer[ipv6.HeaderLen+6], buffer[ipv6.HeaderLen+7] = byte(checksum>>8), byte(checksum)
+		case ICMPv6:
+			buffer[ipv6.HeaderLen+2], buffer[ipv6.HeaderLen+3] = 0, 0
+			checksum := combineChecksum(calcChecksum(pseudo[:40]), calcChecksum(buffer[ipv6.HeaderLen:]))
+			buffer[ipv6.HeaderLen+2], buffer[ipv6.HeaderLen+3] = byte(checksum>>8), byte(checksum)
+		case FragmentHeader:
 		default:
-			return
+			err = errors.New("invalid packet")
 		}
 	default:
 		err = errors.New("invalid packet")
@@ -63,16 +86,16 @@ func combineChecksum(sum, n uint32) uint16 {
 	return uint16(^(sum + (sum >> 16)))
 }
 
-func calcCheckSum(data []byte) (sum uint32) {
+func calcChecksum(data []byte) (sum uint32) {
 	l := len(data)
 
-	if l & 1 != 0 {
+	if l&1 != 0 {
 		l--
 		sum += uint32(data[l]) << 8
 	}
 
 	for i := 0; i < l; i += 2 {
-		sum += (uint32(data[l]) << 8) | uint32(data[l+1])
+		sum += (uint32(data[i]) << 8) | uint32(data[i+1])
 	}
 
 	return

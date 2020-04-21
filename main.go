@@ -28,15 +28,24 @@ func init() {
 }
 
 var conf struct {
-	Server     string
-	NameServer string
-	Plugin     string
-	PluginOpts string
-	IPCIDR     []string
-	Programs   []string
-	Proxy      []string
-	Direct     []string
-	Blocked    []string
+	Server       string
+	NameServer   string
+	Plugin       string
+	PluginOpts   string
+	FilterString string
+	IPRules      struct {
+		Mode   bool
+		IPCIDR []string
+	}
+	AppRules struct {
+		Mode     bool
+		Programs []string
+	}
+	DomainRules struct {
+		Proxy   []string
+		Direct  []string
+		Blocked []string
+	}
 }
 
 func loadConfig(f string) error {
@@ -59,21 +68,21 @@ func loadDomainRules(matchTree *utils.Tree) {
 
 	matchTree.UnsafeReset()
 
-	for _, v := range conf.Proxy {
+	for _, v := range conf.DomainRules.Proxy {
 		matchTree.UnsafeStore(v, "PROXY")
 	}
 
-	for _, v := range conf.Direct {
+	for _, v := range conf.DomainRules.Direct {
 		matchTree.UnsafeStore(v, "DIRECT")
 	}
 
-	for _, v := range conf.Blocked {
+	for _, v := range conf.DomainRules.Blocked {
 		matchTree.UnsafeStore(v, "BLOCKED")
 	}
 
-	conf.Proxy = nil
-	conf.Direct = nil
-	conf.Blocked = nil
+	conf.DomainRules.Proxy = nil
+	conf.DomainRules.Direct = nil
+	conf.DomainRules.Blocked = nil
 }
 
 func loadIPRules(ipfilter *utils.IPFilter) {
@@ -81,8 +90,9 @@ func loadIPRules(ipfilter *utils.IPFilter) {
 	defer ipfilter.Unlock()
 
 	ipfilter.UnsafeReset()
+	ipfilter.UnsafeSetMode(conf.IPRules.Mode)
 
-	for _, ip := range conf.IPCIDR {
+	for _, ip := range conf.IPRules.IPCIDR {
 		if err := ipfilter.UnsafeAdd(ip); err != nil {
 			log.Logf("add ip rule %v error: %v", ip, err)
 		}
@@ -90,7 +100,7 @@ func loadIPRules(ipfilter *utils.IPFilter) {
 
 	ipfilter.UnsafeSort()
 
-	conf.IPCIDR = nil
+	conf.IPRules.IPCIDR = nil
 }
 
 func loadPlugin(name, opts string) (*Plugin, error) {

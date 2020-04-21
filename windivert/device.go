@@ -123,13 +123,6 @@ func (d *Device) Read(b []byte) (int, error) {
 	return 0, errors.New("not support")
 }
 
-const (
-	ICMP   = 1
-	ICMPv6 = 58
-	TCP    = 6
-	UDP    = 17
-)
-
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	a := make([]Address, BatchMax)
 	b := make([]byte, 1500*BatchMax)

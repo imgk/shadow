@@ -1,56 +1,8 @@
 package windivert
 
 import (
-	"fmt"
-	"strconv"
-	"strings"
 	"unsafe"
 )
-
-var version string
-
-func Version() string {
-	return version
-}
-
-func init() {
-	var vers = map[string]struct{}{
-		"2.0": struct{}{},
-		"2.1": struct{}{},
-		"2.2": struct{}{},
-	}
-
-	hd, err := Open("false", LayerNetwork, PriorityDefault, FlagDefault)
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := hd.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	major, err := hd.GetParam(VersionMajor)
-	if err != nil {
-		panic(err)
-	}
-
-	minor, err := hd.GetParam(VersionMinor)
-	if err != nil {
-		panic(err)
-	}
-
-	ver := strings.Join([]string{strconv.Itoa(int(major)), strconv.Itoa(int(minor))}, ".")
-	if _, ok := vers[ver]; !ok {
-		s := ""
-		for k, _ := range vers {
-			s += k
-		}
-		panic(fmt.Errorf("unsupported version %v of windivert, only support %v", ver, s))
-	}
-
-	version = ver
-}
 
 type Ethernet struct {
 	InterfaceIndex    uint32

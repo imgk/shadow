@@ -79,7 +79,7 @@ func Serve(server string) error {
 			mPool.Put(m)
 
 			select {
-			case <- active:
+			case <-active:
 				return nil
 			}
 
@@ -185,7 +185,11 @@ func Serve(server string) error {
 				return
 			}
 
-			if _, err := hd.Send(b[:n], a); err != nil {
+			hd.Lock()
+			_, err := hd.Send(b[:n], a)
+			hd.Unlock()
+
+			if err != nil {
 				select {
 				case <-active:
 					return

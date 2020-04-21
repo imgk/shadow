@@ -26,13 +26,13 @@ func CTL_CODE(DeviceType, Function, Method, Access uint32) CtlCode {
 }
 
 var (
-	IoCtlInitialize = CTL_CODE(FILE_DEVICE_NETWORK, 0x921, METHOD_OUT_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
-	IoCtlStartup    = CTL_CODE(FILE_DEVICE_NETWORK, 0x922, METHOD_IN_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
+	IoCtlInitialize = CTL_CODE(FILE_DEVICE_NETWORK, 0x921, METHOD_OUT_DIRECT, FILE_READ_DATA|FILE_WRITE_DATA)
+	IoCtlStartup    = CTL_CODE(FILE_DEVICE_NETWORK, 0x922, METHOD_IN_DIRECT, FILE_READ_DATA|FILE_WRITE_DATA)
 	IoCtlRecv       = CTL_CODE(FILE_DEVICE_NETWORK, 0x923, METHOD_OUT_DIRECT, FILE_READ_DATA)
-	IoCtlSend       = CTL_CODE(FILE_DEVICE_NETWORK, 0x924, METHOD_IN_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
-	IoCtlSetParam   = CTL_CODE(FILE_DEVICE_NETWORK, 0x925, METHOD_IN_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
+	IoCtlSend       = CTL_CODE(FILE_DEVICE_NETWORK, 0x924, METHOD_IN_DIRECT, FILE_READ_DATA|FILE_WRITE_DATA)
+	IoCtlSetParam   = CTL_CODE(FILE_DEVICE_NETWORK, 0x925, METHOD_IN_DIRECT, FILE_READ_DATA|FILE_WRITE_DATA)
 	IoCtlGetParam   = CTL_CODE(FILE_DEVICE_NETWORK, 0x926, METHOD_OUT_DIRECT, FILE_READ_DATA)
-	IoCtlShutdown   = CTL_CODE(FILE_DEVICE_NETWORK, 0x927, METHOD_IN_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
+	IoCtlShutdown   = CTL_CODE(FILE_DEVICE_NETWORK, 0x927, METHOD_IN_DIRECT, FILE_READ_DATA|FILE_WRITE_DATA)
 )
 
 func (code CtlCode) String() string {
@@ -60,40 +60,40 @@ type IoCtl struct {
 	b1, b2, b3, b4 uint32
 }
 
-type Recv struct {
+type recv struct {
 	Addr       uint64
 	AddrLenPtr uint64
 }
 
-type Send struct {
+type send struct {
 	Addr    uint64
 	AddrLen uint64
 }
 
-type Initialize struct {
+type initialize struct {
 	Layer    uint32
 	Priority uint32
 	Flags    uint64
 }
 
-type Startup struct {
+type startup struct {
 	Flags uint64
 	_     uint64
 }
 
-type Shut struct {
+type shutdown struct {
 	How uint32
 	_   uint32
 	_   uint64
 }
 
-type GetParam struct {
+type getParam struct {
 	Param uint32
 	_     uint32
 	Value uint64
 }
 
-type SetParam struct {
+type setParam struct {
 	Value uint64
 	Param uint32
 	_     uint32

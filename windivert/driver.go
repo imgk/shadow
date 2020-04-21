@@ -1,8 +1,8 @@
 package windivert
 
 import (
+	"errors"
 	"fmt"
-	"syscall"
 
 	"golang.org/x/sys/windows"
 )
@@ -45,10 +45,6 @@ func Check() (bool, error) {
 				return true, nil
 			}
 
-			if err == ErrInsufficientBuffer {
-				return false, nil
-			}
-
 			return false, err
 		}
 
@@ -59,20 +55,29 @@ func Check() (bool, error) {
 	}
 }
 
-func RemoveDriver() error {
-	var versions = map[string]string{
-		"1.0": "WinDivert1.0",
-		"1.1": "WinDivert1.1",
-		"1.2": "WinDivert1.2",
-		"1.3": "WinDivert1.3",
-		"1.4": "WinDivert1.4",
-		"2.0": "WinDivert",
-		"2.1": "WinDivert",
-		"2.2": "WinDivert",
+var DeviceName = windows.StringToUTF16Ptr("WinDivert")
+
+func InstallDriver() error {
+	Close := func(mutex windows.Handle) {
+		windows.ReleaseMutex(mutex)
+		windows.CloseHandle(mutex)
 	}
 
-	status := windows.SERVICE_STATUS{}
-	vers := versions[Version()]
+	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("WinDivertDriverInstallMutex"))
+	if err != nil {
+		return err
+	}
+	defer Close(mutex)
+
+	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
+	if err != nil {
+		return err
+	}
+	switch event {
+	case windows.WAIT_OBJECT_0, windows.WAIT_ABANDONED:
+	default:
+		return errors.New("wait for object error")
+	}
 
 	manager, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_ALL_ACCESS)
 	if err != nil {
@@ -80,38 +85,70 @@ func RemoveDriver() error {
 	}
 	defer windows.CloseServiceHandle(manager)
 
-	service, err := windows.OpenService(manager, windows.StringToUTF16Ptr(vers), windows.SERVICE_ALL_ACCESS)
+	service, err := windows.OpenService(manager, DeviceName, windows.SERVICE_ALL_ACCESS)
+	if err == nil {
+		windows.CloseServiceHandle(service)
+		return nil
+	}
+
+	service, err = windows.CreateService(manager, DeviceName, DeviceName, windows.SERVICE_ALL_ACCESS, windows.SERVICE_KERNEL_DRIVER, windows.SERVICE_DEMAND_START, windows.SERVICE_ERROR_NORMAL, windows.StringToUTF16Ptr(""), nil, nil, nil, nil, nil)
 	if err != nil {
-		if errno, ok := err.(syscall.Errno); ok {
-			if errno == windows.ERROR_SERVICE_DOES_NOT_EXIST {
-				return nil
-			}
+		if err == windows.ERROR_SERVICE_EXISTS {
+			return nil
 		}
+
+		service, err = windows.OpenService(manager, DeviceName, windows.SERVICE_ALL_ACCESS)
+		if err != nil {
+			return err
+		}
+	}
+	defer windows.CloseServiceHandle(service)
+
+	if err := windows.StartService(service, 0, nil); err != nil && err != windows.ERROR_SERVICE_ALREADY_RUNNING {
+		return err
+	}
+
+	if err := windows.DeleteService(service); err != nil && err != windows.ERROR_SERVICE_MARKED_FOR_DELETE {
+		return err
+	}
+
+	return nil
+}
+
+func RemoveDriver() error {
+	status := windows.SERVICE_STATUS{}
+
+	manager, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_ALL_ACCESS)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseServiceHandle(manager)
+
+	service, err := windows.OpenService(manager, DeviceName, windows.SERVICE_ALL_ACCESS)
+	if err != nil {
+		if err == windows.ERROR_SERVICE_DOES_NOT_EXIST {
+			return nil
+		}
+
 		return err
 	}
 	defer windows.CloseServiceHandle(service)
 
 	if err := windows.ControlService(service, windows.SERVICE_CONTROL_STOP, &status); err != nil {
-		if errno, ok := err.(syscall.Errno); ok {
-			if errno == windows.ERROR_SERVICE_NOT_ACTIVE {
-				return nil
-			}
+		if err == windows.ERROR_SERVICE_NOT_ACTIVE {
+			return nil
 		}
+
 		return err
 	}
 
 	if err := windows.DeleteService(service); err != nil {
-		if errno, ok := err.(syscall.Errno); ok {
-			if errno == windows.ERROR_SERVICE_MARKED_FOR_DELETE {
-				return nil
-			}
+		if err == windows.ERROR_SERVICE_MARKED_FOR_DELETE {
+			return nil
 		}
+
 		return err
 	}
 
-	if err := windows.CloseServiceHandle(service); err != nil {
-		return err
-	}
-
-	return windows.CloseServiceHandle(manager)
+	return nil
 }

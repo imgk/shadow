@@ -13,9 +13,9 @@ func IPv4Mask(i uint32) net.IPMask {
 
 func IPv6Mask(a, b, c, d uint32) net.IPMask {
 	return net.IPMask([]byte{
-		byte(a >> 24), byte(a >> 16), byte(a >> 8), byte(a), 
-		byte(b >> 24), byte(b >> 16), byte(b >> 8), byte(b), 
-		byte(c >> 24), byte(c >> 16), byte(c >> 8), byte(c), 
+		byte(a >> 24), byte(a >> 16), byte(a >> 8), byte(a),
+		byte(b >> 24), byte(b >> 16), byte(b >> 8), byte(b),
+		byte(c >> 24), byte(c >> 16), byte(c >> 8), byte(c),
 		byte(d >> 24), byte(d >> 16), byte(d >> 8), byte(d)},
 	)
 }
@@ -26,9 +26,9 @@ func IPv4Addr(i uint32) net.IP {
 
 func IPv6Addr(a, b, c, d uint32) net.IP {
 	return net.IP([]byte{
-		byte(a >> 24), byte(a >> 16), byte(a >> 8), byte(a), 
-		byte(b >> 24), byte(b >> 16), byte(b >> 8), byte(b), 
-		byte(c >> 24), byte(c >> 16), byte(c >> 8), byte(c), 
+		byte(a >> 24), byte(a >> 16), byte(a >> 8), byte(a),
+		byte(b >> 24), byte(b >> 16), byte(b >> 8), byte(b),
+		byte(c >> 24), byte(c >> 16), byte(c >> 8), byte(c),
 		byte(d >> 24), byte(d >> 16), byte(d >> 8), byte(d)},
 	)
 }
@@ -47,29 +47,30 @@ type Element6 struct {
 
 type IPFilter struct {
 	sync.RWMutex
-	E  []*Element
-	E6 []*Element6
+	mode bool
+	E    []*Element
+	E6   []*Element6
 }
 
 func Mask4(ones int) uint32 {
-	return ^uint32(0) << (32-ones)
+	return ^uint32(0) << (32 - ones)
 }
 
 func Mask6(ones int) [4]uint32 {
 	if ones < 33 {
-		return [4]uint32{^uint32(0)<<(32-ones), 0, 0, 0}
+		return [4]uint32{^uint32(0) << (32 - ones), 0, 0, 0}
 	}
 
 	if ones < 65 {
-		return [4]uint32{^uint32(0), ^uint32(0)<<(64-ones), 0, 0}
+		return [4]uint32{^uint32(0), ^uint32(0) << (64 - ones), 0, 0}
 	}
 
 	if ones < 97 {
-		return [4]uint32{^uint32(0), ^uint32(0), ^uint32(0)<<(96-ones), 0}
+		return [4]uint32{^uint32(0), ^uint32(0), ^uint32(0) << (96 - ones), 0}
 	}
 
 	if ones < 129 {
-		return [4]uint32{^uint32(0), ^uint32(0), ^uint32(0), ^uint32(0)<<(128-ones)}
+		return [4]uint32{^uint32(0), ^uint32(0), ^uint32(0), ^uint32(0) << (128 - ones)}
 	}
 
 	return [4]uint32{^uint32(0), ^uint32(0), ^uint32(0), ^uint32(0)}
@@ -78,6 +79,7 @@ func Mask6(ones int) [4]uint32 {
 func NewIPFilter() *IPFilter {
 	f := &IPFilter{
 		RWMutex: sync.RWMutex{},
+		mode:    true,
 		E:       make([]*Element, 32),
 		E6:      make([]*Element6, 128),
 	}
@@ -85,7 +87,7 @@ func NewIPFilter() *IPFilter {
 	// index = ones - 1
 	for i := range f.E {
 		f.E[i] = &Element{
-			N: Mask4(i+1),
+			N: Mask4(i + 1),
 			R: make(map[uint32]struct{}),
 			C: 0,
 		}
@@ -94,7 +96,7 @@ func NewIPFilter() *IPFilter {
 	// index = ones - 1
 	for i := range f.E6 {
 		f.E6[i] = &Element6{
-			N: Mask6(i+1),
+			N: Mask6(i + 1),
 			R: make(map[[4]uint32]struct{}),
 			C: 0,
 		}
@@ -122,6 +124,17 @@ func (f *IPFilter) String() string {
 	return s
 }
 
+func (f *IPFilter) SetMode(mode bool) {
+	f.Lock()
+	defer f.Unlock()
+
+	f.UnsafeSetMode(mode)
+}
+
+func (f *IPFilter) UnsafeSetMode(mode bool) {
+	f.mode = mode
+}
+
 func (f *IPFilter) Reset() {
 	f.Lock()
 	defer f.Unlock()
@@ -133,7 +146,7 @@ func (f *IPFilter) UnsafeReset() {
 	f.E = f.E[:0]
 	for i := 0; i < 32; i++ {
 		f.E = append(f.E, &Element{
-			N: Mask4(i+1),
+			N: Mask4(i + 1),
 			R: make(map[uint32]struct{}),
 			C: 0,
 		})
@@ -142,7 +155,7 @@ func (f *IPFilter) UnsafeReset() {
 	f.E6 = f.E6[:0]
 	for i := 0; i < 128; i++ {
 		f.E6 = append(f.E6, &Element6{
-			N: Mask6(i+1),
+			N: Mask6(i + 1),
 			R: make(map[[4]uint32]struct{}),
 			C: 0,
 		})
@@ -207,7 +220,7 @@ func (f *IPFilter) AddCIDR(ip net.IP, mask net.IPMask) error {
 			(uint32(ip[12]) << 24) | (uint32(ip[13]) << 16) | (uint32(ip[14]) << 8) | uint32(ip[15]),
 		}
 
-		e.R[[4]uint32{addr[0]&e.N[0], addr[1]&e.N[1], addr[2]&e.N[2], addr[3]&e.N[3]}] = struct{}{}
+		e.R[[4]uint32{addr[0] & e.N[0], addr[1] & e.N[1], addr[2] & e.N[2], addr[3] & e.N[3]}] = struct{}{}
 
 		return nil
 	}
@@ -292,7 +305,7 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 	if ipv4 == nil {
 		ipv6 := ip.To16()
 		if ipv6 == nil {
-			return false
+			return false == f.mode
 		}
 
 		addr := [4]uint32{
@@ -303,13 +316,13 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 		}
 
 		for _, e := range f.E6 {
-			if _, ok := e.R[[4]uint32{addr[0]&e.N[0], addr[1]&e.N[1], addr[2]&e.N[2], addr[3]&e.N[3]}]; ok {
+			if _, ok := e.R[[4]uint32{addr[0] & e.N[0], addr[1] & e.N[1], addr[2] & e.N[2], addr[3] & e.N[3]}]; ok {
 				e.C++
-				return true
+				return true == f.mode
 			}
 		}
 
-		return false
+		return false == f.mode
 	}
 
 	addr := (uint32(ipv4[0]) << 24) | (uint32(ipv4[1]) << 16) | (uint32(ipv4[2]) << 8) | uint32(ipv4[3])
@@ -317,9 +330,9 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 	for _, e := range f.E {
 		if _, ok := e.R[addr&e.N]; ok {
 			e.C++
-			return true
+			return true == f.mode
 		}
 	}
 
-	return false
+	return false == f.mode
 }
