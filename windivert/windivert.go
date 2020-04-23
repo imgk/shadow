@@ -3,11 +3,13 @@ package windivert
 // #cgo CFLAGS: -I${SRCDIR}/Divert/include
 // #define WINDIVERTEXPORT static
 // #include "Divert/dll/windivert.c"
-import "C"
+// import "C"
 
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -15,11 +17,63 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func init() {
+	var vers = map[string]struct{}{
+		"2.0": struct{}{},
+		"2.1": struct{}{},
+		"2.2": struct{}{},
+	}
+
+	hd, err := Open("false", LayerNetwork, PriorityDefault, FlagDefault)
+	if err != nil {
+		panic(err)
+	}
+	defer hd.Close()
+
+	major, err := hd.GetParam(VersionMajor)
+	if err != nil {
+		panic(err)
+	}
+
+	minor, err := hd.GetParam(VersionMinor)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := hd.Shutdown(ShutdownBoth); err != nil {
+		panic(err)
+	}
+
+	ver := strings.Join([]string{strconv.Itoa(int(major)), strconv.Itoa(int(minor))}, ".")
+	if _, ok := vers[ver]; !ok {
+		s := ""
+		for k, _ := range vers {
+			s += k
+		}
+		panic(fmt.Errorf("unsupported version %v of windivert, only support %v", ver, s))
+	}
+}
+
 var (
 	kernel32    = windows.NewLazySystemDLL("kernel32.dll")
 	heapAlloc   = kernel32.NewProc("HeapAlloc")
 	heapCreate  = kernel32.NewProc("HeapCreate")
 	heapDestroy = kernel32.NewProc("HeapDestroy")
+)
+
+var (
+	winDivert              = windows.NewLazySystemDLL("WinDivert.dll")
+	winDivertOpen          = winDivert.NewProc("WinDivertOpen")
+	winDivertRecv          = winDivert.NewProc("WinDivertRecv")
+	winDivertRecvEx        = winDivert.NewProc("WinDivertRecvEx")
+	winDivertSend          = winDivert.NewProc("WinDivertSend")
+	winDivertSendEx        = winDivert.NewProc("WinDivertSendEx")
+	winDivertShutdown      = winDivert.NewProc("WinDivertShutdown")
+	winDivertClose         = winDivert.NewProc("WinDivertClose")
+	winDivertSetParam      = winDivert.NewProc("WinDivertSetParam")
+	winDivertGetParam      = winDivert.NewProc("WinDivertGetParam")
+	winDivertCompileFilter = winDivert.NewProc("WinDivertCompileFilter")
+	winDivertAnalyzeFilter = winDivert.NewProc("WinDivertAnalyzeFilter")
 )
 
 const (
@@ -70,9 +124,57 @@ type version struct {
 	_     [4]uint64
 }
 
-func CompileFilter() {}
+type FilterError int
 
-func AnalyzeFilter() {}
+func (e FilterError) Error() string {
+	switch int(e) {
+	case 0:
+		return "WINDIVERT_ERROR_NONE"
+	case 1:
+		return "WINDIVERT_ERROR_NO_MEMORY"
+	case 2:
+		return "WINDIVERT_ERROR_TOO_DEEP"
+	case 3:
+		return "WINDIVERT_ERROR_TOO_LONG"
+	case 4:
+		return "WINDIVERT_ERROR_BAD_TOKEN"
+	case 5:
+		return "WINDIVERT_ERROR_BAD_TOKEN_FOR_LAYER"
+	case 6:
+		return "WINDIVERT_ERROR_UNEXPECTED_TOKEN"
+	case 7:
+		return "WINDIVERT_ERROR_INDEX_OOB"
+	case 8:
+		return "WINDIVERT_ERROR_OUTPUT_TOO_SHORT"
+	case 9:
+		return "WINDIVERT_ERROR_BAD_OBJECT"
+	case 10:
+		return "WINDIVERT_ERROR_ASSERTION_FAILED"
+	default:
+		return ""
+	}
+}
+
+func CompileFilter(filter string, pool windows.Handle, layer Layer, object *filter) (uint, error) {
+	filterPtr, err := windows.BytePtrFromString(filter)
+	if err != nil {
+		return 0, err
+	}
+
+	objLen := uint(0)
+
+	ret, _, _ := winDivertCompileFilter.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(pool), uintptr(layer), uintptr(unsafe.Pointer(object)), uintptr(unsafe.Pointer(&objLen)))
+	if ret != 0 {
+		return 0, FilterError(ret>>32)
+	}
+
+	return objLen, nil
+}
+
+func AnalyzeFilter(layer Layer, object *filter, objLen uint) uint64 {
+	ret, _, _ := winDivertAnalyzeFilter.Call(uintptr(layer), uintptr(unsafe.Pointer(object)), uintptr(objLen))
+	return uint64(ret)
+}
 
 func IoControlEx(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, bufLen uint32, overlapped *windows.Overlapped) (iolen uint32, err error) {
 	err = windows.DeviceIoControl(h, uint32(code), (*byte)(ioctl), uint32(unsafe.Sizeof(IoCtl{})), buf, bufLen, &iolen, overlapped)
@@ -110,10 +212,20 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 		return nil, fmt.Errorf("Priority %v is not Correct, Max: %v, Min: %v", priority, PriorityHighest, PriorityLowest)
 	}
 
-	hd := C.WinDivertOpen(C.CString(filter), C.WINDIVERT_LAYER(layer), C.int16_t(priority), C.uint64_t(flags))
-	if windows.Handle(hd) == windows.InvalidHandle {
-		return nil, Error(C.GetLastError())
+	filterPtr, err := windows.BytePtrFromString(filter)
+	if err != nil {
+		return nil, err
 	}
+
+	hd, _, err := winDivertOpen.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(layer), uintptr(priority), uintptr(flags))
+	if windows.Handle(hd) == windows.InvalidHandle {
+		return nil, Error(err.(syscall.Errno))
+	}
+
+	//hd := C.WinDivertOpen(C.CString(filter), C.WINDIVERT_LAYER(layer), C.int16_t(priority), C.uint64_t(flags))
+	//if windows.Handle(hd) == windows.InvalidHandle {
+	//	return nil, Error(C.GetLastError())
+	//}
 
 	rEvent, _ := windows.CreateEvent(nil, 0, 0, nil)
 	wEvent, _ := windows.CreateEvent(nil, 0, 0, nil)
@@ -225,11 +337,11 @@ func (h *Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Ov
 }
 
 func (h *Handle) Shutdown(how Shutdown) error {
-	shut := shutdown{
+	shutdown := shutdown{
 		How: uint32(how),
 	}
 
-	_, err := IoControl(h.Handle, IoCtlShutdown, unsafe.Pointer(&shut), nil, 0)
+	_, err := IoControl(h.Handle, IoCtlShutdown, unsafe.Pointer(&shutdown), nil, 0)
 	if err != nil {
 		return Error(err.(syscall.Errno))
 	}

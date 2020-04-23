@@ -91,24 +91,21 @@ func (d *Device) Close() error {
 		close(d.active)
 		close(d.event)
 	}
+	defer d.SendHd.Close()
+	defer d.RecvHd.Close()
 
 	d.PipeReader.Close()
 	d.PipeWriter.Close()
 
 	if err := d.SendHd.Shutdown(ShutdownBoth); err != nil {
-		d.SendHd.Close()
-		d.RecvHd.Close()
 		return fmt.Errorf("shutdown send handle error: %v", err)
 	}
 
 	if err := d.RecvHd.Shutdown(ShutdownBoth); err != nil {
-		d.SendHd.Close()
-		d.RecvHd.Close()
 		return fmt.Errorf("shutdown recv handle error: %v", err)
 	}
 
 	if err := d.RecvHd.Close(); err != nil {
-		d.SendHd.Close()
 		return fmt.Errorf("close recv handle error: %v", err)
 	}
 

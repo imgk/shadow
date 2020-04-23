@@ -53,7 +53,6 @@ func GetInterfaceIndex() (uint32, uint32, error) {
 	}
 
 	if err := hd.Shutdown(ShutdownBoth); err != nil {
-		hd.Close()
 		return 0, 0, fmt.Errorf("shutdown interface handle error: %v", err)
 	}
 
