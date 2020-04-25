@@ -65,7 +65,7 @@ func Handshake(conn net.Conn, clientHello []byte, auth *Auth) (utils.Addr, error
 	}
 
 	b := make([]byte, utils.MaxAddrLen)
-	
+
 	b[0], b[1], b[2], b[3] = 5, 2, AuthNone, AuthUserPass
 	if _, err := conn.Write(b[:4]); err != nil {
 		return nil, err

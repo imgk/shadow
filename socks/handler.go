@@ -34,8 +34,8 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}
 
 	return &Handler{
-		Auth: auth,
-		server: server,
+		Auth:    auth,
+		server:  server,
 		timeout: timeout,
 	}, nil
 }
@@ -264,7 +264,7 @@ func copyWithChannel(conn utils.PacketConn, rc net.PacketConn, timeout time.Dura
 			}
 		}
 
-		offset := utils.MaxAddrLen-len(addr)
+		offset := utils.MaxAddrLen - len(addr)
 		copy(b[3+offset:], addr)
 
 		b[offset], b[offset+1], b[offset] = 0, 0, 0

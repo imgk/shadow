@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	MoreFragment   = 1 << 5
+	MoreFragment = 1 << 5
 )
 
 func CalcChecksumsEx(buffer []byte, layer Layer, address *Address, flags uint64) (err error) {
