@@ -43,6 +43,8 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+	defer conn.Close()
+
 	var err error
 
 	addr, ok := tgt.(utils.Addr)
@@ -61,6 +63,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	rc = NewConn(rc, h.Cipher)
+	defer rc.Close()
 
 	if _, err := rc.Write(addr); err != nil {
 		return fmt.Errorf("write to server %v error: %v", h.server, err)

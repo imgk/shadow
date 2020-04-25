@@ -67,6 +67,8 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+	defer conn.Close()
+
 	target := pool.Get().([]byte)
 	defer pool.Put(target)
 
@@ -93,6 +95,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	rc = tls.Client(rc, h.Config)
+	defer rc.Close()
 
 	if _, err := rc.Write(target[:n+2]); err != nil {
 		return fmt.Errorf("write to server %v error: %v", h.server, err)
@@ -206,6 +209,7 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	rc = tls.Client(rc, h.Config)
+	defer rc.Close()
 
 	if _, err := rc.Write(target[:n+2]); err != nil {
 		return fmt.Errorf("write to server %v error: %v", h.server, err)

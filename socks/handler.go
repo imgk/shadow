@@ -165,6 +165,7 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 	if err != nil {
 		return err
 	}
+	defer rc.Close()
 
 	target := pool.Get().([]byte)
 	defer pool.Put(target)
