@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
+	"github.com/imgk/shadowsocks-windivert/internal/iana"
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
@@ -30,39 +31,48 @@ type Device struct {
 	event  chan struct{}
 }
 
-func NewDevice(filter string) (*Device, error) {
-	ifIdx, subIfIdx, err := GetInterfaceIndex()
-	if err != nil {
-		return nil, err
+func NewDevice(filter string) (dev *Device, err error) {
+	CloseWhenError := func(hd *Handle) {
+		if err != nil {
+			hd.Close()
+		}
+	}
+
+	ifIdx, subIfIdx, er := GetInterfaceIndex()
+	if er != nil {
+		err = er
+		return
 	}
 
 	filter = fmt.Sprintf("ifIdx = %d and ", ifIdx) + filter
-	recv, err := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
-	if err != nil {
-		return nil, fmt.Errorf("open recv handle error: %v", err)
+	recv, er := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
+	if er != nil {
+		err = fmt.Errorf("open recv handle error: %v", er)
+		return
 	}
+	defer CloseWhenError(recv)
 
-	if err := recv.SetParam(QueueLength, QueueLengthMax); err != nil {
-		recv.Close()
-		return nil, fmt.Errorf("set recv handle parameter queue length error %v", err)
+	if er := recv.SetParam(QueueLength, QueueLengthMax); er != nil {
+		err = fmt.Errorf("set recv handle parameter queue length error %v", er)
+		return
 	}
-	if err := recv.SetParam(QueueTime, QueueTimeMax); err != nil {
-		recv.Close()
-		return nil, fmt.Errorf("set recv handle parameter queue time error %v", err)
+	if er := recv.SetParam(QueueTime, QueueTimeMax); er != nil {
+		err = fmt.Errorf("set recv handle parameter queue time error %v", er)
+		return
 	}
-	if err := recv.SetParam(QueueSize, QueueSizeMax); err != nil {
-		recv.Close()
-		return nil, fmt.Errorf("set recv handle parameter queue size error %v", err)
+	if er := recv.SetParam(QueueSize, QueueSizeMax); er != nil {
+		err = fmt.Errorf("set recv handle parameter queue size error %v", er)
+		return
 	}
 
 	send, err := Open("false", LayerNetwork, PriorityDefault, FlagDefault)
 	if err != nil {
-		recv.Close()
-		return nil, fmt.Errorf("open send handle error: %v", err)
+		err = fmt.Errorf("open send handle error: %v", err)
+		return
 	}
 
 	r, w := io.Pipe()
-	dev := &Device{
+	dev = &Device{
 		Address:    new(Address),
 		PipeReader: r,
 		PipeWriter: w,
@@ -80,7 +90,7 @@ func NewDevice(filter string) (*Device, error) {
 	nw.InterfaceIndex = ifIdx
 	nw.SubInterfaceIndex = subIfIdx
 
-	return dev, nil
+	return
 }
 
 func (d *Device) Close() error {
@@ -219,7 +229,7 @@ const (
 
 func (d *Device) CheckIPv4(b []byte) bool {
 	switch b[9] {
-	case TCP:
+	case iana.ProtocolTCP:
 		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
 		switch d.TCP[p] {
 		case 0:
@@ -257,7 +267,7 @@ func (d *Device) CheckIPv4(b []byte) bool {
 
 			return true
 		}
-	case UDP:
+	case iana.ProtocolUDP:
 		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
 		switch d.UDP[p] {
 		case 0:
@@ -331,7 +341,7 @@ func (d *Device) CheckUDP4(b []byte) bool {
 
 func (d *Device) CheckIPv6(b []byte) bool {
 	switch b[6] {
-	case TCP:
+	case iana.ProtocolTCP:
 		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
 		switch d.TCP6[p] {
 		case 0:
@@ -369,7 +379,7 @@ func (d *Device) CheckIPv6(b []byte) bool {
 
 			return true
 		}
-	case UDP:
+	case iana.ProtocolUDP:
 		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
 		switch d.UDP6[p] {
 		case 0:

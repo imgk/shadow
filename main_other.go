@@ -13,7 +13,6 @@ import (
 	"github.com/imgk/shadowsocks-windivert/dns"
 	"github.com/imgk/shadowsocks-windivert/log"
 	"github.com/imgk/shadowsocks-windivert/netstack"
-	"github.com/imgk/shadowsocks-windivert/shadowsocks"
 	"github.com/imgk/shadowsocks-windivert/tun"
 )
 
@@ -59,7 +58,7 @@ func main() {
 		}()
 	}
 
-	handler, err := shadowsocks.NewHandler(conf.Server, time.Minute)
+	handler, err := NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		log.Logf("shadowsocks error %v", err)
 

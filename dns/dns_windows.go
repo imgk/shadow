@@ -5,9 +5,12 @@ package dns
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"sync"
 
 	"golang.org/x/net/dns/dnsmessage"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 
 	"github.com/imgk/shadowsocks-windivert/log"
 	"github.com/imgk/shadowsocks-windivert/windivert"
@@ -23,9 +26,9 @@ func Stop() error {
 	default:
 		close(active)
 	}
+	defer hd.Close()
 
 	if err := hd.Shutdown(windivert.ShutdownBoth); err != nil {
-		hd.Close()
 		return fmt.Errorf("shutdown dns handle error: %v", err)
 	}
 
@@ -53,15 +56,6 @@ func Serve(server string) error {
 		return fmt.Errorf("open dns handle error: %v", err)
 	}
 	defer Stop()
-	if err := hd.SetParam(windivert.QueueLength, windivert.QueueLengthMax); err != nil {
-		return fmt.Errorf("set dns handle parameter queue length error %v", err)
-	}
-	if err := hd.SetParam(windivert.QueueTime, windivert.QueueTimeMax); err != nil {
-		return fmt.Errorf("set dns handle parameter queue time error %v", err)
-	}
-	if err := hd.SetParam(windivert.QueueSize, windivert.QueueSizeMax); err != nil {
-		return fmt.Errorf("set dns handle parameter queue size error %v", err)
-	}
 
 	var aPool = sync.Pool{New: func() interface{} { return new(windivert.Address) }}
 	var bPool = sync.Pool{New: func() interface{} { return make([]byte, 1024) }}
@@ -204,27 +198,27 @@ func Serve(server string) error {
 }
 
 func SendBack4(b []byte) {
-	t := [4]byte{}
+	t := [net.IPv4len]byte{}
 
-	copy(t[:], b[12:16])
-	copy(b[12:16], b[16:20])
-	copy(b[16:20], t[:])
-	copy(b[22:24], b[20:22])
-	copy(b[20:22], []byte{0, 53})
+	copy(t[:], b[12:12+net.IPv4len])
+	copy(b[12:12+net.IPv4len], b[16:16+net.IPv4len])
+	copy(b[16:16+net.IPv4len], t[:])
+	b[ipv4.HeaderLen+2], b[ipv4.HeaderLen+3] = b[ipv4.HeaderLen+0], b[ipv4.HeaderLen+1]
+	b[ipv4.HeaderLen+0], b[ipv4.HeaderLen+1] = 0, 53
 
 	binary.BigEndian.PutUint16(b[2:4], uint16(len(b)))
-	binary.BigEndian.PutUint16(b[24:26], uint16(len(b)-20))
+	binary.BigEndian.PutUint16(b[ipv4.HeaderLen+4:ipv4.HeaderLen+6], uint16(len(b)-ipv4.HeaderLen))
 }
 
 func SendBack6(b []byte) {
-	t := [16]byte{}
+	t := [net.IPv6len]byte{}
 
-	copy(t[:], b[8:24])
-	copy(b[8:24], b[24:40])
-	copy(b[24:40], t[:])
-	copy(b[42:44], b[40:42])
-	copy(b[40:42], []byte{0, 53})
+	copy(t[:], b[8:8+net.IPv6len])
+	copy(b[8:8+net.IPv6len], b[24:24+net.IPv6len])
+	copy(b[24:24+net.IPv6len], t[:])
+	b[ipv6.HeaderLen+2], b[ipv6.HeaderLen+3] = b[ipv6.HeaderLen+0], b[ipv6.HeaderLen+1]
+	b[ipv6.HeaderLen+0], b[ipv6.HeaderLen+1] = 0, 53
 
-	binary.BigEndian.PutUint16(b[4:6], uint16(len(b)-40))
-	binary.BigEndian.PutUint16(b[44:46], uint16(len(b)-40))
+	binary.BigEndian.PutUint16(b[4:6], uint16(len(b)-ipv6.HeaderLen))
+	binary.BigEndian.PutUint16(b[ipv6.HeaderLen+4:ipv6.HeaderLen+6], uint16(len(b)-ipv6.HeaderLen))
 }

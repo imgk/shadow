@@ -51,7 +51,11 @@ func NewResolver(s string) (Resolver, error) {
 		}
 
 		return &TLSResolver{
-			Conf:    &tls.Config{ServerName: u.Host},
+			Conf: &tls.Config{
+				ServerName:         u.Host,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+				InsecureSkipVerify: false,
+			},
 			Addr:    addr.String(),
 			Timeout: time.Second * 3,
 		}, nil

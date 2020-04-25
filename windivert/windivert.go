@@ -8,6 +8,7 @@ package windivert
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -165,7 +166,7 @@ func CompileFilter(filter string, pool windows.Handle, layer Layer, object *filt
 
 	ret, _, _ := winDivertCompileFilter.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(pool), uintptr(layer), uintptr(unsafe.Pointer(object)), uintptr(unsafe.Pointer(&objLen)))
 	if ret != 0 {
-		return 0, FilterError(ret>>32)
+		return 0, FilterError(ret >> 32)
 	}
 
 	return objLen, nil
@@ -217,7 +218,10 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 		return nil, err
 	}
 
+	runtime.LockOSThread()
 	hd, _, err := winDivertOpen.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(layer), uintptr(priority), uintptr(flags))
+	runtime.UnlockOSThread()
+
 	if windows.Handle(hd) == windows.InvalidHandle {
 		return nil, Error(err.(syscall.Errno))
 	}
@@ -231,8 +235,8 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 	wEvent, _ := windows.CreateEvent(nil, 0, 0, nil)
 
 	return &Handle{
-		Mutex:       sync.Mutex{},
-		Handle:      windows.Handle(hd),
+		Mutex:  sync.Mutex{},
+		Handle: windows.Handle(hd),
 		rOverlapped: windows.Overlapped{
 			HEvent: rEvent,
 		},

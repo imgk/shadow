@@ -1,4 +1,4 @@
-package shadowsocks
+package socks
 
 import (
 	"fmt"
@@ -10,18 +10,21 @@ import (
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
-const MaxUDPPacketSize = 16384 // Max 65536
+const (
+	MaxUDPPacketSize = 16384 // Max 65536
+)
 
-var buffer = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
+var buff = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
+var pool = sync.Pool{New: func() interface{} { return make([]byte, 3+utils.MaxAddrLen) }}
 
 type Handler struct {
-	Cipher
+	*Auth
 	server  string
 	timeout time.Duration
 }
 
-func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseUrl(url)
+func NewHandler(s string, timeout time.Duration) (*Handler, error) {
+	auth, server, err := ParseUrl(s)
 	if err != nil {
 		return nil, err
 	}
@@ -30,14 +33,9 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	ciph, err := NewCipher(cipher, password)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Handler{
-		Cipher:  ciph,
-		server:  server,
+		Auth: auth,
+		server: server,
 		timeout: timeout,
 	}, nil
 }
@@ -45,25 +43,34 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	var err error
 
+	target := pool.Get().([]byte)
+	defer pool.Put(target)
+
+	target[0], target[1], target[2] = 5, Connect, 0
+	n := 3
+
 	addr, ok := tgt.(utils.Addr)
 	if !ok {
-		addr, err = utils.ResolveAddrBuffer(tgt, ([]byte)(utils.GetAddr()))
+		addr, err = utils.ResolveAddrBuffer(tgt, target[3:])
 		if err != nil {
-			utils.PutAddr(addr)
 			return fmt.Errorf("resolve addr error: %v", err)
 		}
+		n = 3 + len(addr)
+	} else {
+		copy(target[3:], addr)
+		n = 3 + len(addr)
+		utils.PutAddr(addr)
 	}
-	defer utils.PutAddr(addr)
 
 	rc, err := net.Dial("tcp", h.server)
 	if err != nil {
-		return fmt.Errorf("dial server %v error: %v", h.server, err)
+		return err
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
-	rc = NewConn(rc, h.Cipher)
 
-	if _, err := rc.Write(addr); err != nil {
-		return fmt.Errorf("write to server %v error: %v", h.server, err)
+	_, err = Handshake(rc, target[:n], h.Auth)
+	if err != nil {
+		return err
 	}
 
 	l, ok := conn.(DuplexConn)
@@ -82,7 +89,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 				return nil
 			}
 		}
-		if err == io.ErrClosedPipe || err == io.EOF {
+		if err == io.EOF {
 			return nil
 		}
 
@@ -154,23 +161,45 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 	defer conn.Close()
 
-	raddr, err := net.ResolveUDPAddr("udp", h.server)
-	if err != nil {
-		return fmt.Errorf("parse udp address %v error: %v", h.server, err)
-	}
-
 	rc, err := net.ListenPacket("udp", "")
 	if err != nil {
-		conn.Close()
 		return err
 	}
-	rc = NewPacketConn(rc, h.Cipher)
+
+	target := pool.Get().([]byte)
+	defer pool.Put(target)
+
+	target[0], target[1], target[2] = 5, Associate, 0
+	n := 3
+
+	addr, err := utils.ResolveAddrBuffer(rc.LocalAddr(), target[3:])
+	if err != nil {
+		return fmt.Errorf("resolve addr error: %v", err)
+	}
+	n = 3 + len(addr)
+
+	c, err := net.Dial("tcp", h.server)
+	if err != nil {
+		return err
+	}
+	c.(*net.TCPConn).SetKeepAlive(true)
+	defer c.Close()
+
+	addr, err = Handshake(c, target[:n], h.Auth)
+	if err != nil {
+		return err
+	}
+
+	raddr, err := utils.ResolveUDPAddr(addr)
+	if err != nil {
+		return err
+	}
 
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := buffer.Get().([]byte)
-	defer buffer.Put(b)
+	b := buff.Get().([]byte)
+	defer buff.Put(b)
 
 	for {
 		rc.SetDeadline(time.Now().Add(h.timeout))
@@ -185,13 +214,13 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 			break
 		}
 
-		raddr, er := utils.ParseAddr(b[:n])
+		raddr, er := utils.ParseAddr(b[3:n])
 		if er != nil {
 			err = fmt.Errorf("parse addr error: %v", er)
 			break
 		}
 
-		_, er = conn.WriteFrom(b[len(raddr):n], raddr)
+		_, er = conn.WriteFrom(b[3+len(raddr):n], raddr)
 		if er != nil {
 			err = fmt.Errorf("write packet error: %v", er)
 			break
@@ -200,6 +229,7 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 
 	conn.Close()
 	rc.Close()
+	c.Close()
 
 	if err != nil {
 		<-errCh
@@ -210,11 +240,11 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 }
 
 func copyWithChannel(conn utils.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := buffer.Get().([]byte)
-	defer buffer.Put(b)
+	b := buff.Get().([]byte)
+	defer buff.Put(b)
 
 	for {
-		n, tgt, err := conn.ReadTo(b[utils.MaxAddrLen:])
+		n, tgt, err := conn.ReadTo(b[3+utils.MaxAddrLen:])
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
@@ -234,10 +264,13 @@ func copyWithChannel(conn utils.PacketConn, rc net.PacketConn, timeout time.Dura
 			}
 		}
 
-		copy(b[utils.MaxAddrLen-len(addr):], addr)
+		offset := utils.MaxAddrLen-len(addr)
+		copy(b[3+offset:], addr)
+
+		b[offset], b[offset+1], b[offset] = 0, 0, 0
 
 		rc.SetDeadline(time.Now().Add(timeout))
-		_, err = rc.WriteTo(b[utils.MaxAddrLen-len(addr):utils.MaxAddrLen+n], raddr)
+		_, err = rc.WriteTo(b[offset:3+utils.MaxAddrLen+n], raddr)
 		utils.PutAddr(addr)
 		if err != nil {
 			errCh <- err

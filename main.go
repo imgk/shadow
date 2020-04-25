@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,10 @@ import (
 	"time"
 
 	"github.com/imgk/shadowsocks-windivert/log"
+	"github.com/imgk/shadowsocks-windivert/netstack"
+	"github.com/imgk/shadowsocks-windivert/shadowsocks"
+	"github.com/imgk/shadowsocks-windivert/socks"
+	"github.com/imgk/shadowsocks-windivert/trojan"
 	"github.com/imgk/shadowsocks-windivert/utils"
 )
 
@@ -25,6 +30,24 @@ func init() {
 	flag.Parse()
 
 	log.SetMode(*mode)
+}
+
+func NewHandler(s string, timeout time.Duration) (netstack.Handler, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+
+	switch u.Scheme {
+	case "ss":
+		return shadowsocks.NewHandler(s, timeout)
+	case "trojan":
+		return trojan.NewHandler(s, timeout)
+	case "socks":
+		return socks.NewHandler(s, timeout)
+	default:
+		return nil, errors.New("not a supported scheme")
+	}
 }
 
 var conf struct {
