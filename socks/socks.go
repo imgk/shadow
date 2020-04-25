@@ -95,7 +95,7 @@ func Handshake(conn net.Conn, clientHello []byte, auth *Auth) (utils.Addr, error
 		return nil, Error(b[1])
 	}
 
-	return utils.ReadAddr(conn)
+	return utils.ReadAddrBuffer(conn, clientHello)
 }
 
 func HandshakeWithoutAuth(conn net.Conn, clientHello []byte) (utils.Addr, error) {
@@ -126,7 +126,7 @@ func HandshakeWithoutAuth(conn net.Conn, clientHello []byte) (utils.Addr, error)
 		return nil, Error(b[1])
 	}
 
-	return utils.ReadAddr(conn)
+	return utils.ReadAddrBuffer(conn, clientHello)
 }
 
 type Auth struct {
