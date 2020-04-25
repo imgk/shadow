@@ -41,6 +41,8 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+	defer conn.Close()
+
 	var err error
 
 	target := pool.Get().([]byte)
