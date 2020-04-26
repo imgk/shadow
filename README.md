@@ -5,7 +5,8 @@ A shadowsocks client for Windows, Linux and MacOS.
 ## How to use it
 
 ### Windows
-See [releases](https://github.com/imgk/shadowsocks-windivert/releases).
+
+1. Download [WinDivert](https://github.com/basil00/Divert/releases) and put `WinDivert.dll` and `WinDivert64.sys` in `C:\Windows\system32`. Run shadowsocks.exe with administrator privilege.
 
 ### Linux and Openwrt Router
 
@@ -55,7 +56,30 @@ sudo route -n add -net 8.8.4.4 192.168.0.1
 ```
 ## Config File
 
+1. Support socks5, shadowsocks, trojan
+
+```
+socks://username:password@server:port
+ss://DUMMY:password@server:port
+ss://password@server:port
+```
+
 Currently shadowsocks only support CHACHA20-IETF-POLY1305, AES-256-GCM and DUMMY for no encryption/decryption.
+
+2. Support DNS over https and DNS over TLS
+
+```
+local:port=https://rubyfish.cn/dns-query
+local:port=tls://rubyfish.cn/
+```
+
+3. Filter String
+
+Visit [WinDivert document](https://www.reqrypt.org/windivert-doc.html#filter_language) for details.
+
+4. `Mode` about IP rules and program rules
+
+If `true`, items in the lists will be proxied.
 
 ## Plugin
 
