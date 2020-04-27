@@ -148,7 +148,7 @@ func main() {
 		return
 	}
 	tray.AppendMenu("Reload Rules", func() {
-		if err := loadConfig("config.json"); err != nil {
+		if err := loadConfig(file); err != nil {
 			log.Logf("reload config file error: %v", err)
 			Exit(sigCh)
 
