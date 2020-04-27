@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 
-	"github.com/imgk/shadowsocks-windivert/log"
+	"github.com/imgk/shadow/log"
 )
 
 var active = make(chan struct{})

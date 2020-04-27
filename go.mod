@@ -1,4 +1,4 @@
-module github.com/imgk/shadowsocks-windivert
+module github.com/imgk/shadow
 
 go 1.14
 

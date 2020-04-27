@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imgk/shadowsocks-windivert/utils"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/utils"
 )
 
 const (
@@ -186,7 +187,7 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 	errCh <- err
 }
 
-func (h *Handler) HandlePacket(conn utils.PacketConn) error {
+func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
 	target := pool.Get().([]byte)
@@ -276,7 +277,7 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 	return <-errCh
 }
 
-func copyWithChannel(conn utils.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
+func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
 	b := buff.Get().([]byte)
 	defer buff.Put(b)
 

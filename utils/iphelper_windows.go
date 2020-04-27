@@ -23,9 +23,9 @@ const (
 )
 
 var (
-	iphlpapi            = windows.NewLazySystemDLL("iphlpapi.dll")
-	getExtendedTcpTable = iphlpapi.NewProc("GetExtendedTcpTable")
-	getExtendedUdpTable = iphlpapi.NewProc("GetExtendedUdpTable")
+	iphlpapi            = windows.MustLoadDLL("iphlpapi.dll")
+	getExtendedTcpTable = iphlpapi.MustFindProc("GetExtendedTcpTable")
+	getExtendedUdpTable = iphlpapi.MustFindProc("GetExtendedUdpTable")
 )
 
 func GetTCPTable() ([]TCPRow, error) {

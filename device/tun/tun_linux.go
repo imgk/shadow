@@ -1,4 +1,4 @@
-// +build darwin
+// +build linux
 
 package tun
 
@@ -10,6 +10,8 @@ func NewDevice(n string) (*Device, error) {
 	config := water.Config{
 		DeviceType: water.TUN,
 	}
+	config.Name = n
+	config.Persist = true
 
 	dev, err := water.New(config)
 	if err != nil {
@@ -17,7 +19,7 @@ func NewDevice(n string) (*Device, error) {
 	}
 
 	return &Device{
-		Name: dev.Name(),
+		Name:      dev.Name(),
 		active:    make(chan struct{}),
 		Interface: dev,
 	}, nil

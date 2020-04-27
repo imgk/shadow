@@ -7,7 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imgk/shadowsocks-windivert/utils"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/utils"
 )
 
 const MaxUDPPacketSize = 16384 // Max 65536
@@ -154,7 +155,7 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 	errCh <- err
 }
 
-func (h *Handler) HandlePacket(conn utils.PacketConn) error {
+func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
 	raddr, err := net.ResolveUDPAddr("udp", h.server)
@@ -212,7 +213,7 @@ func (h *Handler) HandlePacket(conn utils.PacketConn) error {
 	return <-errCh
 }
 
-func copyWithChannel(conn utils.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
+func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
 	b := buffer.Get().([]byte)
 	defer buffer.Put(b)
 

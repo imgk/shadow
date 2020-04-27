@@ -56,25 +56,23 @@ func init() {
 }
 
 var (
-	kernel32    = windows.NewLazySystemDLL("kernel32.dll")
-	heapAlloc   = kernel32.NewProc("HeapAlloc")
-	heapCreate  = kernel32.NewProc("HeapCreate")
-	heapDestroy = kernel32.NewProc("HeapDestroy")
+	kernel32    = windows.MustLoadDLL("kernel32.dll")
+	heapAlloc   = kernel32.MustFindProc("HeapAlloc")
+	heapCreate  = kernel32.MustFindProc("HeapCreate")
+	heapDestroy = kernel32.MustFindProc("HeapDestroy")
 )
 
 var (
-	winDivert              = windows.NewLazySystemDLL("WinDivert.dll")
-	winDivertOpen          = winDivert.NewProc("WinDivertOpen")
-	winDivertRecv          = winDivert.NewProc("WinDivertRecv")
-	winDivertRecvEx        = winDivert.NewProc("WinDivertRecvEx")
-	winDivertSend          = winDivert.NewProc("WinDivertSend")
-	winDivertSendEx        = winDivert.NewProc("WinDivertSendEx")
-	winDivertShutdown      = winDivert.NewProc("WinDivertShutdown")
-	winDivertClose         = winDivert.NewProc("WinDivertClose")
-	winDivertSetParam      = winDivert.NewProc("WinDivertSetParam")
-	winDivertGetParam      = winDivert.NewProc("WinDivertGetParam")
-	winDivertCompileFilter = winDivert.NewProc("WinDivertCompileFilter")
-	winDivertAnalyzeFilter = winDivert.NewProc("WinDivertAnalyzeFilter")
+	winDivert         = windows.MustLoadDLL("WinDivert.dll")
+	winDivertOpen     = winDivert.MustFindProc("WinDivertOpen")
+	winDivertRecv     = winDivert.MustFindProc("WinDivertRecv")
+	winDivertRecvEx   = winDivert.MustFindProc("WinDivertRecvEx")
+	winDivertSend     = winDivert.MustFindProc("WinDivertSend")
+	winDivertSendEx   = winDivert.MustFindProc("WinDivertSendEx")
+	winDivertShutdown = winDivert.MustFindProc("WinDivertShutdown")
+	winDivertClose    = winDivert.MustFindProc("WinDivertClose")
+	winDivertSetParam = winDivert.MustFindProc("WinDivertSetParam")
+	winDivertGetParam = winDivert.MustFindProc("WinDivertGetParam")
 )
 
 const (
@@ -157,24 +155,11 @@ func (e FilterError) Error() string {
 }
 
 func CompileFilter(filter string, pool windows.Handle, layer Layer, object *filter) (uint, error) {
-	filterPtr, err := windows.BytePtrFromString(filter)
-	if err != nil {
-		return 0, err
-	}
-
-	objLen := uint(0)
-
-	ret, _, _ := winDivertCompileFilter.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(pool), uintptr(layer), uintptr(unsafe.Pointer(object)), uintptr(unsafe.Pointer(&objLen)))
-	if ret != 0 {
-		return 0, FilterError(ret >> 32)
-	}
-
-	return objLen, nil
+	return 0, nil
 }
 
 func AnalyzeFilter(layer Layer, object *filter, objLen uint) uint64 {
-	ret, _, _ := winDivertAnalyzeFilter.Call(uintptr(layer), uintptr(unsafe.Pointer(object)), uintptr(objLen))
-	return uint64(ret)
+	return 0
 }
 
 func IoControlEx(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, bufLen uint32, overlapped *windows.Overlapped) (iolen uint32, err error) {

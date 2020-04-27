@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	kernel32                   = windows.NewLazySystemDLL("kernel32.dll")
-	queryFullProcessImageNameW = kernel32.NewProc("QueryFullProcessImageNameW").Addr()
+	kernel32                   = windows.MustLoadDLL("kernel32.dll")
+	queryFullProcessImageNameW = kernel32.MustFindProc("QueryFullProcessImageNameW").Addr()
 )
 
 var buffer = sync.Pool{New: func() interface{} { return make([]uint16, windows.MAX_LONG_PATH) }}

@@ -6,7 +6,7 @@ A shadowsocks client for Windows, Linux and MacOS.
 
 ### Windows
 
-1. Download [WinDivert](https://github.com/basil00/Divert/releases) and put `WinDivert.dll` and `WinDivert64.sys` in `C:\Windows\system32`. Run shadowsocks.exe with administrator privilege.
+1. Download [WinDivert](https://github.com/basil00/Divert/releases) and put `WinDivert.dll` and `WinDivert64.sys` in `%windir%\System32` or in the directory which has `shadowsocks.exe`. Run shadowsocks.exe with administrator privilege.
 
 ### Linux and Openwrt Router
 

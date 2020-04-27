@@ -12,8 +12,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/imgk/shadowsocks-windivert/log"
-	"github.com/imgk/shadowsocks-windivert/windivert"
+	"github.com/imgk/shadow/device/windivert"
+	"github.com/imgk/shadow/log"
 )
 
 var hd *windivert.Handle

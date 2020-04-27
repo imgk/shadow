@@ -6,7 +6,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/imgk/shadowsocks-windivert/utils"
+	"github.com/imgk/shadow/utils"
 )
 
 const (
@@ -22,33 +22,32 @@ const (
 type Error byte
 
 func (e Error) Error() string {
-	switch byte(e) {
-	case 0:
+	switch e {
+	case ErrSuccess:
 		return "succeeded"
-	case 1:
+	case ErrGeneralFailure:
 		return "general socks server failure"
-	case 2:
+	case ErrConnectionNotAllowed:
 		return "connection not allowed by ruleset"
-	case 3:
+	case ErrNetworkUnreachable:
 		return "Network unreachable"
-	case 4:
+	case ErrHostUnreachable:
 		return "Host unreachable"
-	case 5:
+	case ErrConnectionRefused:
 		return "Connection refused"
-	case 6:
+	case ErrTTLExpired:
 		return "TTL expired"
-	case 7:
+	case ErrCommandNotSupported:
 		return "Command not supported"
-	case 8:
+	case ErrAddressNotSupported:
 		return "Address type not supported"
-	case 9:
-		return "to X’FF’ unassigned"
 	default:
-		return "SOCKS error: " + strconv.Itoa(int(e))
+		return "socks error: " + strconv.Itoa(int(e))
 	}
 }
 
 const (
+	ErrSuccess              = Error(0)
 	ErrGeneralFailure       = Error(1)
 	ErrConnectionNotAllowed = Error(2)
 	ErrNetworkUnreachable   = Error(3)

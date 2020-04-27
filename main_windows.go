@@ -10,35 +10,38 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/imgk/shadowsocks-windivert/dns"
-	"github.com/imgk/shadowsocks-windivert/log"
-	"github.com/imgk/shadowsocks-windivert/netstack"
-	"github.com/imgk/shadowsocks-windivert/systray"
-	"github.com/imgk/shadowsocks-windivert/utils"
-	"github.com/imgk/shadowsocks-windivert/windivert"
+	"github.com/imgk/shadow/device/windivert"
+	"github.com/imgk/shadow/dns"
+	"github.com/imgk/shadow/log"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/systray"
+	"github.com/imgk/shadow/utils"
 )
+
+var Mutex = windows.StringToUTF16Ptr("SHADOW-MUTEX")
+
+func Exit(sigCh chan os.Signal) {
+	sigCh <- windows.SIGTERM
+}
+
+func Close(mutex windows.Handle) {
+	windows.ReleaseMutex(mutex)
+	windows.CloseHandle(mutex)
+}
 
 func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, windows.SIGINT, windows.SIGTERM)
 
-	Exit := func(sigCh chan os.Signal) {
-		sigCh <- windows.SIGTERM
-	}
-
-	Close := func(mutex windows.Handle) {
-		windows.ReleaseMutex(mutex)
-		windows.CloseHandle(mutex)
-	}
-
-	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
+	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, Mutex)
 	if err == nil {
 		windows.CloseHandle(mutex)
-		log.Logf("shadowsocks-windivert is already running")
+		log.Logf("shadow is already running")
 
 		return
 	}
-	mutex, err = windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("SHADOWSOCKS-WINDIVERT"))
+	mutex, err = windows.CreateMutex(nil, false, Mutex)
 	if err != nil {
 		log.Logf("create mutex error: %v", err)
 
@@ -94,7 +97,7 @@ func main() {
 		}()
 	}
 
-	handler, err := NewHandler(conf.Server, time.Minute)
+	handler, err := protocol.NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		log.Logf("shadowsocks error %v", err)
 

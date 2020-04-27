@@ -11,8 +11,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/imgk/shadowsocks-windivert/internal/iana"
-	"github.com/imgk/shadowsocks-windivert/utils"
+	"github.com/imgk/shadow/internal/iana"
+	"github.com/imgk/shadow/utils"
 )
 
 type Device struct {

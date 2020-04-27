@@ -10,19 +10,20 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/imgk/shadowsocks-windivert/dns"
-	"github.com/imgk/shadowsocks-windivert/log"
-	"github.com/imgk/shadowsocks-windivert/netstack"
-	"github.com/imgk/shadowsocks-windivert/tun"
+	"github.com/imgk/shadow/device/tun"
+	"github.com/imgk/shadow/dns"
+	"github.com/imgk/shadow/log"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/protocol"
 )
+
+func Exit(sigCh chan os.Signal) {
+	sigCh <- unix.SIGTERM
+}
 
 func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, unix.SIGINT, unix.SIGTERM)
-
-	Exit := func(sigCh chan os.Signal) {
-		sigCh <- unix.SIGTERM
-	}
 
 	if err := loadConfig(file); err != nil {
 		log.Logf("load config config.json error: %v", err)
@@ -58,7 +59,7 @@ func main() {
 		}()
 	}
 
-	handler, err := NewHandler(conf.Server, time.Minute)
+	handler, err := protocol.NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		log.Logf("shadowsocks error %v", err)
 

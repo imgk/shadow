@@ -9,12 +9,12 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "FileDescription", "Shadowsocks"
+            VALUE "FileDescription", "Shadow"
             VALUE "FileVersion", "1.0"
             VALUE "LegalCopyright", "Copyright © John Xiong"
-            VALUE "InternalName", "shadowsocks windivert"
-            VALUE "OriginalFilename", "shadowsocks-windivert.exe"
-            VALUE "ProductName", "Shadowsocks-WinDivert"
+            VALUE "InternalName", "shadow"
+            VALUE "OriginalFilename", "shadow.exe"
+            VALUE "ProductName", "Shadow"
             VALUE "ProductVersion", "1.0"
         END
     END

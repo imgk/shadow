@@ -11,10 +11,10 @@ import (
 
 	"github.com/eycorsican/go-tun2socks/core"
 
-	"github.com/imgk/shadowsocks-windivert/dns"
-	"github.com/imgk/shadowsocks-windivert/log"
-	// "github.com/imgk/shadowsocks-windivert/netstack/core"
-	"github.com/imgk/shadowsocks-windivert/utils"
+	"github.com/imgk/shadow/dns"
+	"github.com/imgk/shadow/log"
+	// "github.com/imgk/shadow/netstack/core"
+	"github.com/imgk/shadow/utils"
 )
 
 const MaxUDPPacketSize = 16384 // Max 65536
@@ -31,7 +31,15 @@ type Device interface {
 
 type Handler interface {
 	Handle(net.Conn, net.Addr) error
-	HandlePacket(utils.PacketConn) error
+	HandlePacket(PacketConn) error
+}
+
+type PacketConn interface {
+	LocalAddr() net.Addr
+	WriteFrom([]byte, net.Addr) (int, error)
+	WriteTo([]byte, *net.UDPAddr) error
+	ReadTo([]byte) (int, net.Addr, error)
+	io.Closer
 }
 
 type DirectUDPConn struct {
@@ -183,7 +191,7 @@ type stack struct {
 	core.LWIPStack
 	*utils.IPFilter
 	Handler
-	conns map[net.Addr]utils.PacketConn
+	conns map[net.Addr]PacketConn
 }
 
 func NewStack(handler Handler, w io.Writer) *stack {
@@ -192,7 +200,7 @@ func NewStack(handler Handler, w io.Writer) *stack {
 		LWIPStack: core.NewLWIPStack(),
 		IPFilter:  utils.NewIPFilter(),
 		Handler:   handler,
-		conns:     make(map[net.Addr]utils.PacketConn),
+		conns:     make(map[net.Addr]PacketConn),
 	}
 
 	core.RegisterTCPConnHandler(s)
@@ -389,14 +397,14 @@ func (s *stack) HandleUDP(conn *UDPConn) {
 	}
 }
 
-func (s *stack) Add(conn utils.PacketConn) {
+func (s *stack) Add(conn PacketConn) {
 	s.Lock()
 	defer s.Unlock()
 
 	s.conns[conn.LocalAddr()] = conn
 }
 
-func (s *stack) Del(conn utils.PacketConn) {
+func (s *stack) Del(conn PacketConn) {
 	s.Lock()
 	defer s.Unlock()
 

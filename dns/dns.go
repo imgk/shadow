@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 
-	"github.com/imgk/shadowsocks-windivert/utils"
+	"github.com/imgk/shadow/utils"
 )
 
 var (
