@@ -457,11 +457,14 @@ func (d *Device) writeLoop() {
 	t := time.NewTicker(time.Millisecond)
 	defer t.Stop()
 
+	const f = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5)
+
 	a := make([]Address, BatchMax)
 	b := make([]byte, 1500*BatchMax)
 
 	for i := range a {
 		a[i] = *d.Address
+		a[i].Flags |= f
 	}
 
 	n, m := 0, 0
