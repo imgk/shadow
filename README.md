@@ -59,18 +59,18 @@ sudo route -n add -net 8.8.4.4 192.168.0.1
 1. Support socks5, shadowsocks, trojan
 
 ```
+ss://ciphername:password@server:port
 socks://username:password@server:port
-ss://DUMMY:password@server:port
 trojan://password@server:port
 ```
 
 Currently shadowsocks only support CHACHA20-IETF-POLY1305, AES-256-GCM and DUMMY for no encryption/decryption.
 
-2. Support DNS over https and DNS over TLS
+2. Support DNS over HTTPS and DNS over TLS
 
 ```
 local:port=https://rubyfish.cn/dns-query
-local:port=tls://rubyfish.cn/
+local:port=tls://rubyfish.cn
 ```
 
 3. Filter String
