@@ -56,7 +56,7 @@ func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
 
 	rc, err := net.DialTCP("tcp", nil, target)
 	if err != nil {
-		log.Logf("dial remote % error: %v", target, err)
+		log.Logf("dial remote %v error: %v", target, err)
 		return
 	}
 	defer rc.Close()
