@@ -151,9 +151,6 @@ func (conn *duplexConn) CloseWrite() error {
 }
 
 func relay(c, rc DuplexConn) error {
-	defer c.Close()
-	defer rc.Close()
-
 	errCh := make(chan error, 1)
 	go copyWaitError(c, rc, errCh)
 

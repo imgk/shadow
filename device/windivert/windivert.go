@@ -1,10 +1,5 @@
 package windivert
 
-// #cgo CFLAGS: -I${SRCDIR}/Divert/include
-// #define WINDIVERTEXPORT static
-// #include "Divert/dll/windivert.c"
-// import "C"
-
 import (
 	"errors"
 	"fmt"
@@ -211,11 +206,6 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 		return nil, Error(err.(syscall.Errno))
 	}
 
-	//hd := C.WinDivertOpen(C.CString(filter), C.WINDIVERT_LAYER(layer), C.int16_t(priority), C.uint64_t(flags))
-	//if windows.Handle(hd) == windows.InvalidHandle {
-	//	return nil, Error(C.GetLastError())
-	//}
-
 	rEvent, _ := windows.CreateEvent(nil, 0, 0, nil)
 	wEvent, _ := windows.CreateEvent(nil, 0, 0, nil)
 
@@ -244,14 +234,6 @@ func (h Handle) Recv(buffer []byte, address *Address) (uint, error) {
 	}
 
 	return uint(iolen), nil
-
-	//recvLen := uint(0)
-	//b := C.WinDivertRecv(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.PWINDIVERT_ADDRESS(unsafe.Pointer(address)))
-	//if b == C.FALSE {
-	//	return 0, Error(C.GetLastError())
-	//}
-
-	//return recvLen, nil
 }
 
 func (h *Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Overlapped) (uint, uint, error) {
@@ -267,17 +249,6 @@ func (h *Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Ov
 	}
 
 	return uint(iolen), addrLen / uint(unsafe.Sizeof(Address{})), nil
-
-	//recvLen := uint(0)
-
-	//addrLen := uint(len(address)) * uint(unsafe.Sizeof(C.WINDIVERT_ADDRESS{}))
-	//b := C.WinDivertRecvEx(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&recvLen)), C.uint64_t(0), C.PWINDIVERT_ADDRESS(unsafe.Pointer(&address[0])), (*C.uint)(unsafe.Pointer(&addrLen)), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
-	//if b == C.FALSE {
-	//	return 0, 0, GetLastError()
-	//}
-	//addrLen /= uint(unsafe.Sizeof(C.WINDIVERT_ADDRESS{}))
-
-	//return recvLen, addrLen, nil
 }
 
 func (h *Handle) Send(buffer []byte, address *Address) (uint, error) {
@@ -292,14 +263,6 @@ func (h *Handle) Send(buffer []byte, address *Address) (uint, error) {
 	}
 
 	return uint(iolen), nil
-
-	//sendLen := uint(0)
-	//b := C.WinDivertSend(C.HANDLE(h.Handle), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&sendLen)), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(address)))
-	//if b == C.FALSE {
-	//	return 0, Error(C.GetLastError())
-	//}
-
-	//return sendLen, nil
 }
 
 func (h *Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Overlapped) (uint, error) {
@@ -314,15 +277,6 @@ func (h *Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Ov
 	}
 
 	return uint(iolen), nil
-
-	//sendLen := uint(0)
-
-	//b := C.WinDivertSendEx(C.HANDLE(h), unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.uint)(unsafe.Pointer(&sendLen)), C.uint64_t(0), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(&address[0])), C.uint(uint(len(address))*uint(unsafe.Sizeof(C.WINDIVERT_ADDRESS{}))), C.LPOVERLAPPED(unsafe.Pointer(overlapped)))
-	//if b == C.FALSE {
-	//	return 0, GetLastError()
-	//}
-
-	//return sendLen, nil
 }
 
 func (h *Handle) Shutdown(how Shutdown) error {
@@ -336,13 +290,6 @@ func (h *Handle) Shutdown(how Shutdown) error {
 	}
 
 	return nil
-
-	//b := C.WinDivertShutdown(C.HANDLE(h.Handle), C.WINDIVERT_SHUTDOWN(how))
-	//if b == C.FALSE {
-	//	return Error(C.GetLastError())
-	//}
-
-	//return nil
 }
 
 func (h *Handle) Close() error {
@@ -355,13 +302,6 @@ func (h *Handle) Close() error {
 	}
 
 	return nil
-
-	//b := C.WinDivertClose(C.HANDLE(h.Handle))
-	//if b == C.FALSE {
-	//	return Error(C.GetLastError())
-	//}
-
-	//return nil
 }
 
 func (h *Handle) GetParam(p Param) (uint64, error) {
@@ -376,15 +316,6 @@ func (h *Handle) GetParam(p Param) (uint64, error) {
 	}
 
 	return getParam.Value, nil
-
-	//v := uint64(0)
-
-	//b := C.WinDivertGetParam(C.HANDLE(h.Handle), C.WINDIVERT_PARAM(p), (*C.uint64_t)(unsafe.Pointer(&v)))
-	//if b == C.FALSE {
-	//	return v, Error(C.GetLastError())
-	//}
-
-	//return v, nil
 }
 
 func (h *Handle) SetParam(p Param, v uint64) error {
@@ -416,23 +347,4 @@ func (h *Handle) SetParam(p Param, v uint64) error {
 	}
 
 	return nil
-
-	//b := C.WinDivertSetParam(C.HANDLE(h.Handle), C.WINDIVERT_PARAM(p), C.uint64_t(v))
-	//if b == C.FALSE {
-	//	return Error(C.GetLastError())
-	//}
-
-	//return nil
-}
-
-func CalcChecksums(buffer []byte, layer Layer, address *Address, flags uint64) error {
-	return CalcChecksumsEx(buffer, layer, address, flags)
-
-	//b := C.WinDivertHelperCalcChecksums(unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), C.WINDIVERT_LAYER(layer), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(address)), C.uint64_t(flags))
-	//b := C.WinDivertHelperCalcChecksums(unsafe.Pointer(&buffer[0]), C.uint(len(buffer)), (*C.WINDIVERT_ADDRESS)(unsafe.Pointer(address)), C.uint64_t(flags))
-	//if b == 0 {
-	//	return Error(C.GetLastError())
-	//}
-
-	//return nil
 }

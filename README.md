@@ -1,6 +1,6 @@
-# Shadowsocks-WinDivert
+# Shadow
 
-A shadowsocks client for Windows, Linux and MacOS.
+A shadowsocks, trojan and socks5 client for Windows, Linux and MacOS.
 
 ## How to use it
 

@@ -70,6 +70,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 		return err
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
+	defer rc.Close()
 
 	_, err = Handshake(rc, target[:n], h.Auth)
 	if err != nil {
@@ -125,9 +126,6 @@ func (conn *duplexConn) CloseWrite() error {
 }
 
 func relay(c, rc DuplexConn) error {
-	defer c.Close()
-	defer rc.Close()
-
 	errCh := make(chan error, 1)
 	go copyWaitError(c, rc, errCh)
 

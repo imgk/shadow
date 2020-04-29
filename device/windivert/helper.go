@@ -13,7 +13,7 @@ const (
 	MoreFragment = 1 << 5
 )
 
-func CalcChecksumsEx(buffer []byte, layer Layer, address *Address, flags uint64) (err error) {
+func CalcChecksums(buffer []byte, layer Layer, address *Address, flags uint64) (err error) {
 	pseudo := [40]byte{}
 
 	switch buffer[0] >> 4 {

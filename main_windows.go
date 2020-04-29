@@ -116,12 +116,6 @@ func main() {
 
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
-	stack.IPFilter.Add("0.0.0.0/1")
-	stack.IPFilter.Add("128.0.0.0/1")
-	stack.IPFilter.Add("::/1")
-	stack.IPFilter.Add("ffff::/1")
-	stack.IPFilter.SetMode(true)
-	stack.IPFilter.Sort()
 
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
