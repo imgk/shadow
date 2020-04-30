@@ -3,7 +3,7 @@
     "NameServer": "127.0.0.1:5300=https://rubyfish.cn/dns-query",
     "Plugin": "obfs-local.exe",
     "PluginOpts": "-s server_ip -p 443 -l 8388 --obfs tls --obfs-host www.example.com",
-    "FilterString": "outbound",
+    "FilterString": "",
     "IPRules": {
         "Mode": true,
         "IPCIDR": [

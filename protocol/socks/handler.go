@@ -269,7 +269,7 @@ func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.D
 		offset := utils.MaxAddrLen - len(addr)
 		copy(b[3+offset:], addr)
 
-		b[offset], b[offset+1], b[offset] = 0, 0, 0
+		b[offset], b[offset+1], b[offset+2] = 0, 0, 0
 
 		rc.SetDeadline(time.Now().Add(timeout))
 		_, err = rc.WriteTo(b[offset:3+utils.MaxAddrLen+n], raddr)

@@ -6,7 +6,7 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and MacOS.
 
 ### Windows
 
-1. Download [WinDivert](https://github.com/basil00/Divert/releases) and put `WinDivert.dll` and `WinDivert64.sys` in `%windir%\System32` or in the directory which has `shadowsocks.exe`. Run shadowsocks.exe with administrator privilege.
+1. Download [WinDivert](https://github.com/basil00/Divert/releases) and put `WinDivert.dll` and `WinDivert64.sys` in the directory which has `shadowsocks.exe`. Run shadowsocks.exe with administrator privilege.
 
 ### Linux and Openwrt Router
 
@@ -73,7 +73,24 @@ local:port=https://rubyfish.cn/dns-query
 local:port=tls://rubyfish.cn
 ```
 
-3. Filter String
+3. Filter String (Windows only)
+
+```
+# server address is 127.0.0.1 or ::1
+outbound
+
+# type of server address is ipv4
+outbound and (ip ? ip.DstAddr != serverip : true)
+
+# type of server address is ipv6
+outbound and (ip ? true : ipv6.DstAddr != serverip)
+
+# domain rules only
+outbound and packet[16] == 44 and packet[17] == 44
+
+# ipv4 only
+outbound and ip
+```
 
 Visit [WinDivert document](https://www.reqrypt.org/windivert-doc.html#filter_language) for details.
 

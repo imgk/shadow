@@ -33,17 +33,11 @@ func (s *stack) Handle(conn net.Conn, target *net.TCPAddr) error {
 
 func (s *stack) Connect(conn core.UDPConn, target *net.UDPAddr) error {
 	if target == nil {
-		rc, err := net.ListenPacket("udp", "")
-		if err != nil {
-			log.Logf("listen packet conn error: %v", err)
-			return err
-		}
-
-		pc := NewDirectUDPConn(conn, rc)
+		pc := NewUDPConn(conn, nil)
 		s.Add(pc)
 
-		log.Logf("direct %v <-UDP-> any", conn.LocalAddr())
-		go s.RedirectUDP(pc)
+		log.Logf("proxy %v <-UDP-> any", conn.LocalAddr())
+		go s.HandleUDP(pc)
 
 		return nil
 	}

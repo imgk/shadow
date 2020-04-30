@@ -24,7 +24,7 @@ const (
 	Assocaite = 3
 )
 
-var buff = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
+var buff = sync.Pool{New: func() interface{} { return make([]byte, 3+utils.MaxAddrLen+MaxUDPPacketSize) }}
 var pool = sync.Pool{New: func() interface{} { return make([]byte, HexLen+2+1+utils.MaxAddrLen+2) }}
 
 type Handler struct {
@@ -40,7 +40,8 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	if _, err := net.ResolveUDPAddr("udp", server); err != nil {
+	addr, err := net.ResolveUDPAddr("udp", server)
+	if err != nil {
 		return nil, err
 	}
 
@@ -56,7 +57,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			InsecureSkipVerify: false,
 		},
 		timeout: timeout,
-		server:  server,
+		server:  addr.String(),
 		hex:     [HexLen + 2]byte{},
 	}
 
