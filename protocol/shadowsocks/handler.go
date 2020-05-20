@@ -4,16 +4,13 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/utils"
 )
 
-const MaxUDPPacketSize = 16384 // Max 65536
-
-var buffer = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
+const MaxUDPPacketSize = 4096 // Max 65536
 
 type Handler struct {
 	Cipher
@@ -50,13 +47,11 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	addr, ok := tgt.(utils.Addr)
 	if !ok {
-		addr, err = utils.ResolveAddrBuffer(tgt, ([]byte)(utils.GetAddr()))
+		addr, err = utils.ResolveAddrBuffer(tgt, make([]byte, utils.MaxAddrLen))
 		if err != nil {
-			utils.PutAddr(addr)
 			return fmt.Errorf("resolve addr error: %v", err)
 		}
 	}
-	defer utils.PutAddr(addr)
 
 	rc, err := net.Dial("tcp", h.server)
 	if err != nil {
@@ -118,11 +113,47 @@ func (conn *duplexConn) CloseWrite() error {
 	return conn.SetWriteDeadline(time.Now())
 }
 
+func Copy(w io.Writer, r io.Reader) (n int64, err error) {
+	if wt, ok := r.(io.WriterTo); ok {
+		return wt.WriteTo(w)
+	}
+	if rt, ok := w.(io.ReaderFrom); ok {
+		return rt.ReadFrom(r)
+	}
+
+	b := make([]byte, 4096)
+	for {
+		nr, er := r.Read(b)
+		if nr > 0 {
+			nw, ew := w.Write(b[:nr])
+			if nw > 0 {
+				n += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+
+	return n, err
+}
+
 func relay(c, rc DuplexConn) error {
 	errCh := make(chan error, 1)
 	go copyWaitError(c, rc, errCh)
 
-	_, err := io.Copy(rc, c)
+	_, err := Copy(rc, c)
 	if err != nil {
 		rc.Close()
 		c.Close()
@@ -140,7 +171,7 @@ func relay(c, rc DuplexConn) error {
 }
 
 func copyWaitError(c, rc DuplexConn, errCh chan error) {
-	_, err := io.Copy(c, rc)
+	_, err := Copy(c, rc)
 	if err != nil {
 		c.Close()
 		rc.Close()
@@ -170,9 +201,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := buffer.Get().([]byte)
-	defer buffer.Put(b)
-
+	b := make([]byte, 32+utils.MaxAddrLen+MaxUDPPacketSize)
 	for {
 		rc.SetDeadline(time.Now().Add(h.timeout))
 		n, _, er := rc.ReadFrom(b)
@@ -211,27 +240,24 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 }
 
 func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := buffer.Get().([]byte)
-	defer buffer.Put(b)
-
+	b := make([]byte, 32+utils.MaxAddrLen+MaxUDPPacketSize)
 	for {
 		n, tgt, err := conn.ReadTo(b[utils.MaxAddrLen:])
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
-				return
+				break
 			}
 			errCh <- err
-			return
+			break
 		}
 
 		addr, ok := tgt.(utils.Addr)
 		if !ok {
-			addr, err = utils.ResolveAddrBuffer(tgt, ([]byte)(utils.GetAddr()))
+			addr, err = utils.ResolveAddrBuffer(tgt, make([]byte, utils.MaxAddrLen))
 			if err != nil {
-				utils.PutAddr(addr)
 				errCh <- fmt.Errorf("resolve addr error: %v", err)
-				return
+				break
 			}
 		}
 
@@ -239,10 +265,11 @@ func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.D
 
 		rc.SetDeadline(time.Now().Add(timeout))
 		_, err = rc.WriteTo(b[utils.MaxAddrLen-len(addr):utils.MaxAddrLen+n], raddr)
-		utils.PutAddr(addr)
 		if err != nil {
 			errCh <- err
-			return
+			break
 		}
 	}
+
+	return
 }

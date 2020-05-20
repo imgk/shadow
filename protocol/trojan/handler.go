@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/imgk/shadow/netstack"
@@ -16,16 +15,13 @@ import (
 
 const (
 	HexLen           = 56
-	MaxUDPPacketSize = 16384 // Max 65536
+	MaxUDPPacketSize = 4096 // Max 65536
 )
 
 const (
 	Connect   = 1
 	Assocaite = 3
 )
-
-var buff = sync.Pool{New: func() interface{} { return make([]byte, 3+utils.MaxAddrLen+MaxUDPPacketSize) }}
-var pool = sync.Pool{New: func() interface{} { return make([]byte, HexLen+2+1+utils.MaxAddrLen+2) }}
 
 type Handler struct {
 	*tls.Config
@@ -71,8 +67,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	target := pool.Get().([]byte)
-	defer pool.Put(target)
+	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
 
 	n := copy(target, h.hex[:])
 	target[HexLen+2] = Connect
@@ -87,7 +82,6 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	} else {
 		copy(target[HexLen+2+1:], addr)
 		n = HexLen + 2 + 1 + len(addr)
-		utils.PutAddr(addr)
 	}
 	target[n], target[n+1] = 0x0d, 0x0a
 
@@ -119,7 +113,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 				return nil
 			}
 		}
-		if err == io.EOF {
+		if err == io.ErrClosedPipe || err == io.EOF {
 			return nil
 		}
 
@@ -151,11 +145,47 @@ func (conn *duplexConn) CloseWrite() error {
 	return conn.SetWriteDeadline(time.Now())
 }
 
+func Copy(w io.Writer, r io.Reader) (n int64, err error) {
+	if wt, ok := r.(io.WriterTo); ok {
+		return wt.WriteTo(w)
+	}
+	if rt, ok := w.(io.ReaderFrom); ok {
+		return rt.ReadFrom(r)
+	}
+
+	b := make([]byte, 4096)
+	for {
+		nr, er := r.Read(b)
+		if nr > 0 {
+			nw, ew := w.Write(b[:nr])
+			if nw > 0 {
+				n += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+
+	return n, err
+}
+
 func relay(c, rc DuplexConn) error {
 	errCh := make(chan error, 1)
 	go copyWaitError(c, rc, errCh)
 
-	_, err := io.Copy(rc, c)
+	_, err := Copy(rc, c)
 	if err != nil {
 		rc.Close()
 		c.Close()
@@ -173,7 +203,7 @@ func relay(c, rc DuplexConn) error {
 }
 
 func copyWaitError(c, rc DuplexConn, errCh chan error) {
-	_, err := io.Copy(c, rc)
+	_, err := Copy(c, rc)
 	if err != nil {
 		c.Close()
 		rc.Close()
@@ -188,8 +218,7 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
-	target := pool.Get().([]byte)
-	defer pool.Put(target)
+	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
 
 	n := copy(target, h.hex[:])
 	target[HexLen+2] = Assocaite
@@ -217,9 +246,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, errCh)
 
-	b := buff.Get().([]byte)
-	defer buff.Put(b)
-
+	b := make([]byte, MaxUDPPacketSize)
 	for {
 		rc.SetDeadline(time.Now().Add(h.timeout))
 		raddr, er := utils.ReadAddrBuffer(rc, b)
@@ -276,9 +303,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 }
 
 func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
-	b := buff.Get().([]byte)
-	defer buff.Put(b)
-
+	b := make([]byte, MaxUDPPacketSize)
 	b[utils.MaxAddrLen+2], b[utils.MaxAddrLen+3] = 0x0d, 0x0a
 
 	for {
@@ -286,20 +311,19 @@ func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duratio
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
-				return
+				break
 			}
 			errCh <- err
-			return
+			break
 		}
 		b[utils.MaxAddrLen], b[utils.MaxAddrLen+1] = byte(n>>8), byte(n)
 
 		addr, ok := tgt.(utils.Addr)
 		if !ok {
-			addr, err = utils.ResolveAddrBuffer(tgt, ([]byte)(utils.GetAddr()))
+			addr, err = utils.ResolveAddrBuffer(tgt, make([]byte, utils.MaxAddrLen))
 			if err != nil {
-				utils.PutAddr(addr)
 				errCh <- fmt.Errorf("resolve addr error: %v", err)
-				return
+				break
 			}
 		}
 
@@ -307,10 +331,11 @@ func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duratio
 
 		rc.SetDeadline(time.Now().Add(timeout))
 		_, err = rc.Write(b[utils.MaxAddrLen-len(addr) : utils.MaxAddrLen+4+n])
-		utils.PutAddr(addr)
 		if err != nil {
 			errCh <- err
-			return
+			break
 		}
 	}
+
+	return
 }

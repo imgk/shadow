@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ type Resolver interface {
 func NewResolver(s string) (Resolver, error) {
 	u, err := url.Parse(s)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse url %v error: %v", s, err)
+		return nil, fmt.Errorf("parse url %v error: %v", s, err)
 	}
 
 	switch u.Scheme {
@@ -134,23 +135,23 @@ type UDPResolver struct {
 func (r *UDPResolver) Resolve(b []byte, n int) (int, error) {
 	conn, err := net.Dial("udp", r.Addr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to dial %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("dial %v, error: %v", r.Addr, err)
 	}
 	defer conn.Close()
 
-	_, err = conn.Write(b[2 : 2+n])
+	_, err = conn.Write(b[2:2+n])
 	if err != nil {
-		return 0, fmt.Errorf("failed to write to %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
 	}
 
 	err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
 	if err != nil {
-		return 0, fmt.Errorf("failed to set read deadline, error: %v", err)
+		return 0, fmt.Errorf("set read deadline, error: %v", err)
 	}
 
 	n, err = conn.Read(b[2:])
 	if err != nil {
-		return 0, fmt.Errorf("failed to read from %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("read from %v, error: %v", r.Addr, err)
 	}
 
 	return n, nil
@@ -164,29 +165,29 @@ type TCPResolver struct {
 func (r *TCPResolver) Resolve(b []byte, n int) (int, error) {
 	conn, err := net.Dial("tcp", r.Addr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to dial %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("dial %v, error: %v", r.Addr, err)
 	}
 	defer conn.Close()
 
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
 	_, err = conn.Write(b[:2+n])
 	if err != nil {
-		return 0, fmt.Errorf("failed to write to %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
 	}
 
 	err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
 	if err != nil {
-		return 0, fmt.Errorf("failed to set read deadline, error: %v", err)
+		return 0, fmt.Errorf("set read deadline, error: %v", err)
 	}
 
 	_, err = io.ReadFull(conn, b[:2])
 	if err != nil {
-		return 0, fmt.Errorf("failed to read lenfth from %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("read lenfth from %v, error: %v", r.Addr, err)
 	}
 
 	n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
 	if err != nil {
-		return 0, fmt.Errorf("failed to read payload from %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("read payload from %v, error: %v", r.Addr, err)
 	}
 
 	return n, nil
@@ -201,29 +202,29 @@ type TLSResolver struct {
 func (r *TLSResolver) Resolve(b []byte, n int) (int, error) {
 	conn, err := tls.Dial("tcp", r.Addr, r.Conf)
 	if err != nil {
-		return 0, fmt.Errorf("failed to dial %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("dial %v, error: %v", r.Addr, err)
 	}
 	defer conn.Close()
 
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
 	_, err = conn.Write(b[:2+n])
 	if err != nil {
-		return 0, fmt.Errorf("failed to write to %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
 	}
 
 	err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
 	if err != nil {
-		return 0, fmt.Errorf("failed to set read deadline, error: %v", err)
+		return 0, fmt.Errorf("set read deadline, error: %v", err)
 	}
 
 	_, err = io.ReadFull(conn, b[:2])
 	if err != nil {
-		return 0, fmt.Errorf("failed to read length from %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("read length from %v, error: %v", r.Addr, err)
 	}
 
 	n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
 	if err != nil {
-		return 0, fmt.Errorf("failed to read payload from %v, error: %v", r.Addr, err)
+		return 0, fmt.Errorf("read payload from %v, error: %v", r.Addr, err)
 	}
 
 	return n, nil
@@ -248,6 +249,41 @@ func (r *DoHWireformat) Resolve(b []byte, n int) (int, error) {
 		return 0, err
 	}
 	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("bad http response code: %v", res.StatusCode)
+	}
+
+	n = 2
+	for {
+		nr, err := res.Body.Read(b[n:])
+		n += nr
+		if err != nil {
+			if err == io.EOF {
+				return n - 2, nil
+			}
+			return n - 2, err
+		}
+	}
+}
+
+func (r *DoHWireformat) Get(b []byte, n int) (int, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s?%s=%s", r.BaseUrl, "dns", base64.RawURLEncoding.EncodeToString(b)), nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Add("accept", "application/dns-message")
+	req.Header.Add("content-type", "application/dns-message")
+
+	res, err := r.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("bad http response code: %v", res.StatusCode)
+	}
 
 	n = 2
 	for {

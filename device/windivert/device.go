@@ -21,8 +21,7 @@ type Device struct {
 	*io.PipeWriter
 	*utils.AppFilter
 	*utils.IPFilter
-	RecvHd *Handle
-	SendHd *Handle
+	*Handle
 	TCP    [65536]uint8
 	UDP    [65536]uint8
 	TCP6   [65536]uint8
@@ -45,29 +44,23 @@ func NewDevice(filter string) (dev *Device, err error) {
 	}
 
 	filter = fmt.Sprintf("ifIdx = %d and ", ifIdx) + filter
-	recv, er := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
+	hd, er := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
 	if er != nil {
-		err = fmt.Errorf("open recv handle error: %v", er)
+		err = fmt.Errorf("open handle error: %v", er)
 		return
 	}
-	defer CloseWhenError(recv)
+	defer CloseWhenError(hd)
 
-	if er := recv.SetParam(QueueLength, QueueLengthMax); er != nil {
-		err = fmt.Errorf("set recv handle parameter queue length error %v", er)
+	if er := hd.SetParam(QueueLength, QueueLengthMax); er != nil {
+		err = fmt.Errorf("set handle parameter queue length error %v", er)
 		return
 	}
-	if er := recv.SetParam(QueueTime, QueueTimeMax); er != nil {
-		err = fmt.Errorf("set recv handle parameter queue time error %v", er)
+	if er := hd.SetParam(QueueTime, QueueTimeMax); er != nil {
+		err = fmt.Errorf("set handle parameter queue time error %v", er)
 		return
 	}
-	if er := recv.SetParam(QueueSize, QueueSizeMax); er != nil {
-		err = fmt.Errorf("set recv handle parameter queue size error %v", er)
-		return
-	}
-
-	send, err := Open("false", LayerNetwork, PriorityDefault, FlagDefault)
-	if err != nil {
-		err = fmt.Errorf("open send handle error: %v", err)
+	if er := hd.SetParam(QueueSize, QueueSizeMax); er != nil {
+		err = fmt.Errorf("set handle parameter queue size error %v", er)
 		return
 	}
 
@@ -78,8 +71,7 @@ func NewDevice(filter string) (dev *Device, err error) {
 		PipeWriter: w,
 		AppFilter:  utils.NewAppFilter(),
 		IPFilter:   utils.NewIPFilter(),
-		RecvHd:     recv,
-		SendHd:     send,
+		Handle:     hd,
 		active:     make(chan struct{}),
 		event:      make(chan struct{}, 1),
 	}
@@ -101,26 +93,17 @@ func (d *Device) Close() error {
 		close(d.active)
 		close(d.event)
 	}
-	defer d.SendHd.Close()
-	defer d.RecvHd.Close()
+	defer d.Handle.Close()
 
 	d.PipeReader.Close()
 	d.PipeWriter.Close()
 
-	if err := d.SendHd.Shutdown(ShutdownBoth); err != nil {
-		return fmt.Errorf("shutdown send handle error: %v", err)
+	if err := d.Handle.Shutdown(ShutdownBoth); err != nil {
+		return fmt.Errorf("shutdown handle error: %v", err)
 	}
 
-	if err := d.RecvHd.Shutdown(ShutdownBoth); err != nil {
-		return fmt.Errorf("shutdown recv handle error: %v", err)
-	}
-
-	if err := d.RecvHd.Close(); err != nil {
-		return fmt.Errorf("close recv handle error: %v", err)
-	}
-
-	if err := d.SendHd.Close(); err != nil {
-		return fmt.Errorf("close send handle error: %v", err)
+	if err := d.Handle.Close(); err != nil {
+		return fmt.Errorf("close handle error: %v", err)
 	}
 
 	return nil
@@ -137,7 +120,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	const f = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5) | uint8(0x01<<3)
 
 	for {
-		nr, nx, er := d.RecvHd.RecvEx(b, a, nil)
+		nr, nx, er := d.Handle.RecvEx(b, a, nil)
 		if er != nil {
 			select {
 			case <-d.active:
@@ -148,6 +131,9 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 			}
 
 			return
+		}
+		if nr < 1 || nx < 1 {
+			continue
 		}
 
 		n += int64(nr)
@@ -203,7 +189,9 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 			}
 		}
 
-		_, er = d.RecvHd.SendEx(b[:nr], a[:nx], nil)
+		d.Handle.Lock()
+		_, er = d.Handle.SendEx(b[:nr], a[:nx], nil)
+		d.Handle.Unlock()
 		if er != nil && er != ErrHostUnreachable {
 			select {
 			case <-d.active:
@@ -269,6 +257,7 @@ func (d *Device) CheckIPv4(b []byte) bool {
 		}
 	case iana.ProtocolUDP:
 		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
+
 		switch d.UDP[p] {
 		case 0:
 			if d.IPFilter.Lookup(net.IP(b[16:20])) {
@@ -282,6 +271,10 @@ func (d *Device) CheckIPv4(b []byte) bool {
 				d.UDP[p] = 2
 				time.AfterFunc(time.Minute, func() { d.UDP[p] = 0 })
 
+				return true
+			}
+
+			if (uint32(b[ipv4.HeaderLen+2])<<8 | uint32(b[ipv4.HeaderLen+3])) == 53 {
 				return true
 			}
 
@@ -381,6 +374,7 @@ func (d *Device) CheckIPv6(b []byte) bool {
 		}
 	case iana.ProtocolUDP:
 		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
+
 		switch d.UDP6[p] {
 		case 0:
 			if d.IPFilter.Lookup(net.IP(b[24:40])) {
@@ -394,6 +388,10 @@ func (d *Device) CheckIPv6(b []byte) bool {
 				d.UDP6[p] = 2
 				time.AfterFunc(time.Minute, func() { d.UDP6[p] = 0 })
 
+				return true
+			}
+
+			if (uint32(b[ipv4.HeaderLen+2])<<8 | uint32(b[ipv4.HeaderLen+3])) == 53 {
 				return true
 			}
 
@@ -472,7 +470,9 @@ func (d *Device) writeLoop() {
 		select {
 		case <-t.C:
 			if m > 0 {
-				_, err := d.SendHd.SendEx(b[:n], a[:m], nil)
+				d.Handle.Lock()
+				_, err := d.Handle.SendEx(b[:n], a[:m], nil)
+				d.Handle.Unlock()
 				if err != nil {
 					select {
 					case <-d.active:
@@ -501,7 +501,9 @@ func (d *Device) writeLoop() {
 			m++
 
 			if m == BatchMax {
-				_, err := d.SendHd.SendEx(b[:n], a[:m], nil)
+				d.Handle.Lock()
+				_, err := d.Handle.SendEx(b[:n], a[:m], nil)
+				d.Handle.Unlock()
 				if err != nil {
 					select {
 					case <-d.active:

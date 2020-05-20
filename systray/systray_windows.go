@@ -2,6 +2,7 @@
  * Copyright (C) 2019 The Systray Authors. All Rights Reserved.
  */
 
+// https://github.com/tadvi/systray
 package systray
 
 import (

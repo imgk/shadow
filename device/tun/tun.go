@@ -1,20 +1,27 @@
 package tun
 
 import (
+	"errors"
 	"io"
-
-	"github.com/songgao/water"
+	"os"
 )
 
 type Device struct {
 	Name   string
 	active chan struct{}
-	*water.Interface
+	tun    *os.File
+	rBuf   []byte
+	wBuf   []byte
 }
 
 func (d *Device) Read(b []byte) (int, error) {
-	n, err := d.Interface.Read(b)
+	n, err := d.tun.Read(d.rBuf)
+	n = copy(b, d.rBuf[4:n])
 	if err != nil {
+		if errors.Is(err, os.ErrClosed) {
+			err = io.EOF
+		}
+
 		select {
 		case <-d.active:
 			return n, io.EOF
@@ -27,12 +34,10 @@ func (d *Device) Read(b []byte) (int, error) {
 }
 
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
-	b := make([]byte, 1500)
-
 	for {
-		nr, er := d.Read(b)
+		nr, er := d.tun.Read(d.rBuf)
 		if nr > 0 {
-			nw, ew := w.Write(b[:nr])
+			nw, ew := w.Write(d.rBuf[4:nr])
 			n += int64(nw)
 
 			if ew != nil {
@@ -42,55 +47,13 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 		}
 
 		if er != nil {
-			if er == io.EOF {
-				break
-			}
-
 			err = er
 			break
 		}
 	}
 
-	return
-}
-
-func (d *Device) Write(b []byte) (int, error) {
-	n, err := d.Interface.Write(b)
-	if err != nil {
-		select {
-		case <-d.active:
-			return n, io.EOF
-		default:
-			return n, err
-		}
-	}
-
-	return n, err
-}
-
-func (d *Device) ReadFrom(r io.Reader) (n int64, err error) {
-	b := make([]byte, 1500)
-
-	for {
-		nr, er := r.Read(b)
-		if nr > 0 {
-			nw, ew := d.Write(b[:nr])
-			n += int64(nw)
-
-			if ew != nil {
-				err = ew
-				break
-			}
-		}
-
-		if er != nil {
-			if er == io.EOF {
-				break
-			}
-
-			err = er
-			break
-		}
+	if errors.Is(err, os.ErrClosed) || errors.Is(err, io.EOF) {
+		err = nil
 	}
 
 	return
@@ -104,5 +67,5 @@ func (d *Device) Close() error {
 		close(d.active)
 	}
 
-	return d.Interface.Close()
+	return d.tun.Close()
 }

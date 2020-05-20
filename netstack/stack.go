@@ -4,14 +4,17 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sync"
 	"time"
+
+	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/eycorsican/go-tun2socks/core"
 
+	"github.com/imgk/shadow/dns"
 	"github.com/imgk/shadow/log"
-	"github.com/imgk/shadow/utils"
 )
+
+const MaxUDPPacketSize = 4096 // Max 65536
 
 type Stack interface {
 	io.Reader
@@ -19,30 +22,6 @@ type Stack interface {
 	io.Writer
 	io.ReaderFrom
 	io.Closer
-}
-
-type stack struct {
-	sync.RWMutex
-	core.LWIPStack
-	*utils.IPFilter
-	Handler
-	conns map[net.Addr]PacketConn
-}
-
-func NewStack(handler Handler, w io.Writer) *stack {
-	s := &stack{
-		RWMutex:   sync.RWMutex{},
-		LWIPStack: core.NewLWIPStack(),
-		IPFilter:  utils.NewIPFilter(),
-		Handler:   handler,
-		conns:     make(map[net.Addr]PacketConn),
-	}
-
-	core.RegisterTCPConnHandler(s)
-	core.RegisterUDPConnHandler(s)
-	core.RegisterOutputFn(w.Write)
-
-	return s
 }
 
 type DuplexConn interface {
@@ -75,11 +54,47 @@ func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
 	}
 }
 
+func Copy(w io.Writer, r io.Reader) (n int64, err error) {
+	if wt, ok := r.(io.WriterTo); ok {
+		return wt.WriteTo(w)
+	}
+	if rt, ok := w.(io.ReaderFrom); ok {
+		return rt.ReadFrom(r)
+	}
+
+	b := make([]byte, 4096)
+	for {
+		nr, er := r.Read(b)
+		if nr > 0 {
+			nw, ew := w.Write(b[:nr])
+			if nw > 0 {
+				n += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+
+	return n, err
+}
+
 func relay(c, rc DuplexConn) error {
 	errCh := make(chan error)
 	go copyWaitError(c, rc, errCh)
 
-	_, err := io.Copy(rc, c)
+	_, err := Copy(rc, c)
 	if err != nil {
 		rc.Close()
 		c.Close()
@@ -97,7 +112,7 @@ func relay(c, rc DuplexConn) error {
 }
 
 func copyWaitError(c, rc DuplexConn, errCh chan error) {
-	_, err := io.Copy(c, rc)
+	_, err := Copy(c, rc)
 	if err != nil {
 		c.Close()
 		rc.Close()
@@ -115,9 +130,75 @@ func (s *stack) HandleTCP(conn net.Conn, addr net.Addr) {
 	}
 }
 
-func (s *stack) RedirectUDP(conn *DirectUDPConn) {
-	b := buffer.Get().([]byte)
+func CloseTimeout(conn *UDPConn, timer *time.Timer, sigCh chan struct{}) {
+	select {
+	case <-sigCh:
+		return
+	case <-timer.C:
+		conn.Close()
+	}
+}
 
+func (s *stack) HandleMessage(conn *UDPConn) {
+	b := make([]byte, 1024)
+	m := new(dnsmessage.Message)
+
+	timer := time.NewTimer(time.Minute)
+	sigCh := make(chan struct{})
+
+	go CloseTimeout(conn, timer, sigCh)
+
+	for {
+		timer.Reset(time.Minute)
+		n, raddr, err := conn.ReadTo(b[2:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			log.Logf("receive dns from packet conn error: %v", err)
+			continue
+		}
+
+		if err := m.Unpack(b[2:2+n]); err != nil {
+			log.Logf("parse dns error: %v", err)
+			continue
+		}
+
+		if m, err = dns.ResolveDNS(m); err != nil {
+			log.Logf("resolve dns error: %v", err)
+			continue
+		}
+
+		if m.Header.Response {
+			bb, err := m.AppendPack(b[:2])
+			if err != nil {
+				log.Logf("append pack dns message error: %v", err)
+				continue
+			}
+			n = len(bb) - 2
+		} else {
+			nr, err := dns.Resolve(b, n)
+			if err != nil {
+				log.Logf("resolve dns error: %v", err)
+				continue
+			}
+			n = nr
+		}
+
+		if _, err := conn.WriteFrom(b[2:2+n], raddr); err != nil {
+			log.Logf("write back to packet conn error: %v", err)
+		}
+	}
+
+	sigCh <- struct{}{}
+
+	s.Del(conn)
+	conn.Close()
+}
+
+func (s *stack) RedirectUDP(conn *DirectUDPConn) {
+	b := make([]byte, MaxUDPPacketSize)
 	for {
 		conn.PacketConn.SetDeadline(time.Now().Add(time.Minute))
 		n, raddr, er := conn.PacketConn.ReadFrom(b)
@@ -141,7 +222,7 @@ func (s *stack) RedirectUDP(conn *DirectUDPConn) {
 
 	s.Del(conn)
 	conn.Close()
-	buffer.Put(b)
+	return
 }
 
 func (s *stack) HandleUDP(conn *UDPConn) {
@@ -207,9 +288,11 @@ func (s *stack) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (s *stack) Close() error {
+	s.Lock()
 	for _, pc := range s.conns {
 		pc.Close()
 	}
+	s.Unlock()
 
 	return s.LWIPStack.Close()
 }

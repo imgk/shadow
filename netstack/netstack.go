@@ -6,18 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 
 	"github.com/eycorsican/go-tun2socks/core"
 
 	"github.com/imgk/shadow/dns"
-	// "github.com/imgk/shadow/netstack/core"
 	"github.com/imgk/shadow/utils"
 )
-
-const MaxUDPPacketSize = 16384 // Max 65536
-
-var buffer = sync.Pool{New: func() interface{} { return make([]byte, MaxUDPPacketSize) }}
 
 type Device interface {
 	io.Reader
@@ -141,9 +135,8 @@ func (conn *UDPConn) WriteTo(data []byte, target *net.UDPAddr) error {
 	case <-conn.active:
 		return io.EOF
 	default:
-		addr, err := dns.IPToDomainAddrBuffer(target.IP, ([]byte)(utils.GetAddr()))
+		addr, err := dns.IPToDomainAddrBuffer(target.IP, make([]byte, utils.MaxAddrLen))
 		if err != nil {
-			utils.PutAddr(addr)
 			conn.addr <- target
 		} else {
 			binary.BigEndian.PutUint16(addr[len(addr)-2:], uint16(target.Port))

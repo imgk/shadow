@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
@@ -16,24 +15,20 @@ import (
 var (
 	counter   = uint16(time.Now().Unix())
 	matchTree = utils.NewTree(".")
+	resolver  = Resolver(nil)
 )
+
+func SetResolver(server string) (err error) {
+	resolver, err = NewResolver(server)
+	return
+}
+
+func Resolve(b []byte, n int) (int, error) {
+	return resolver.Resolve(b, n)
+}
 
 func MatchTree() *utils.Tree {
 	return matchTree
-}
-
-func ParseUrl(s string) (listen, server string, err error) {
-	ss := strings.Split(s, "=")
-
-	if len(ss) != 2 {
-		err = errors.New("incorrect dns config")
-		return
-	}
-
-	listen = ss[0]
-	server = ss[1]
-
-	return
 }
 
 func AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {

@@ -1,6 +1,6 @@
 // +build !windows
 
-package main
+package app
 
 import (
 	"fmt"
@@ -21,18 +21,24 @@ func Exit(sigCh chan os.Signal) {
 	sigCh <- unix.SIGTERM
 }
 
-func main() {
+func Run() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, unix.SIGINT, unix.SIGTERM)
 
-	if err := loadConfig(file); err != nil {
+	if err := LoadConfig(file); err != nil {
 		log.Logf("load config config.json error: %v", err)
 
 		return
 	}
-	loadDomainRules(dns.MatchTree())
+	LoadDomainRules(dns.MatchTree())
 
-	plugin, err := loadPlugin(conf.Plugin, conf.PluginOpts)
+	if err := dns.SetResolver(conf.NameServer); err != nil {
+		log.Logf("dns server error")
+		
+		return
+	}
+
+	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
 		log.Logf("plugin %v error: %v", conf.Plugin, err)
 
@@ -73,11 +79,11 @@ func main() {
 		return
 	}
 	defer dev.Close()
-	log.Logf("using tun mode, tun device name: %v", dev.Name)
+	log.Logf("tun device name: %v", dev.Name)
 
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
-	loadIPRules(stack.IPFilter)
+	LoadIPRules(stack.IPFilter)
 
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
@@ -88,20 +94,9 @@ func main() {
 		}
 	}()
 
-	go func() {
-		if err := dns.Serve(conf.NameServer); err != nil {
-			log.Logf("dns exit error: %v", err)
-			Exit(sigCh)
-
-			return
-		}
-	}()
-
 	log.Logf("shadowsocks is running...")
 	<-sigCh
 	log.Logf("shadowsocks is closing...")
-
-	dns.Stop()
 }
 
 func (p *Plugin) Stop() error {

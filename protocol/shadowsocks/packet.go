@@ -13,6 +13,8 @@ var _zerononce [128]byte
 type PacketConn struct {
 	net.PacketConn
 	Cipher
+	rBuff []byte
+	wBuff []byte
 }
 
 func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
@@ -23,6 +25,8 @@ func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
 	return &PacketConn{
 		PacketConn: pc,
 		Cipher:     ciph,
+		rBuff:      make([]byte, MaxUDPPacketSize),
+		wBuff:      make([]byte, MaxUDPPacketSize),
 	}
 }
 
@@ -49,15 +53,12 @@ func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	buff := buffer.Get().([]byte)
-	defer buffer.Put(buff)
-
-	n, addr, err := pc.PacketConn.ReadFrom(buff)
+	n, addr, err := pc.PacketConn.ReadFrom(pc.rBuff)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	bb, err := Unpack(b, buff[:n], pc.Cipher)
+	bb, err := Unpack(b, pc.rBuff[:n], pc.Cipher)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -86,10 +87,7 @@ func Pack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	buff := buffer.Get().([]byte)
-	defer buffer.Put(buff)
-
-	bb, err := Pack(buff, b, pc.Cipher)
+	bb, err := Pack(pc.wBuff, b, pc.Cipher)
 	if err != nil {
 		return 0, err
 	}

@@ -11,9 +11,15 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/imgk/shadow/device/windivert/c"
 )
 
 func init() {
+	if err := InstallDriver(); err != nil {
+		panic(err)
+	}
+
 	var vers = map[string]struct{}{
 		"2.0": struct{}{},
 		"2.1": struct{}{},
@@ -55,19 +61,6 @@ var (
 	heapAlloc   = kernel32.MustFindProc("HeapAlloc")
 	heapCreate  = kernel32.MustFindProc("HeapCreate")
 	heapDestroy = kernel32.MustFindProc("HeapDestroy")
-)
-
-var (
-	winDivert         = windows.MustLoadDLL("WinDivert.dll")
-	winDivertOpen     = winDivert.MustFindProc("WinDivertOpen")
-	winDivertRecv     = winDivert.MustFindProc("WinDivertRecv")
-	winDivertRecvEx   = winDivert.MustFindProc("WinDivertRecvEx")
-	winDivertSend     = winDivert.MustFindProc("WinDivertSend")
-	winDivertSendEx   = winDivert.MustFindProc("WinDivertSendEx")
-	winDivertShutdown = winDivert.MustFindProc("WinDivertShutdown")
-	winDivertClose    = winDivert.MustFindProc("WinDivertClose")
-	winDivertSetParam = winDivert.MustFindProc("WinDivertSetParam")
-	winDivertGetParam = winDivert.MustFindProc("WinDivertGetParam")
 )
 
 const (
@@ -149,6 +142,12 @@ func (e FilterError) Error() string {
 	}
 }
 
+const (
+	WINDIVERT_MIN_POOL_SIZE = 12288
+	WINDIVERT_MAX_POOL_SIZE = 131072
+	WINDIVERT_FILTER_MAXLEN = 256
+)
+
 func CompileFilter(filter string, pool windows.Handle, layer Layer, object *filter) (uint, error) {
 	return 0, nil
 }
@@ -181,6 +180,16 @@ func IoControl(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, 
 	return
 }
 
+func FlagExclude(flags, flag1, flag2 uint64) bool {
+	return flags & (flag1 | flag2) != (flag1 | flag2)
+}
+
+func ValidateFlag(flags uint64) bool {
+	FlagAll := FlagSniff | FlagDrop | FlagRecvOnly | FlagSendOnly | FlagNoInstall | FlagFragments
+
+	return (flags & ^uint64(FlagAll) == 0) && FlagExclude(flags, FlagSniff, FlagDrop) && FlagExclude(flags, FlagRecvOnly, FlagSendOnly)
+}
+
 type Handle struct {
 	sync.Mutex
 	windows.Handle
@@ -193,17 +202,12 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 		return nil, fmt.Errorf("Priority %v is not Correct, Max: %v, Min: %v", priority, PriorityHighest, PriorityLowest)
 	}
 
-	filterPtr, err := windows.BytePtrFromString(filter)
-	if err != nil {
-		return nil, err
-	}
-
 	runtime.LockOSThread()
-	hd, _, err := winDivertOpen.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(layer), uintptr(priority), uintptr(flags))
+	hd, err := c.Open(filter, int(layer), priority, flags)
 	runtime.UnlockOSThread()
 
-	if windows.Handle(hd) == windows.InvalidHandle {
-		return nil, Error(err.(syscall.Errno))
+	if err != nil {
+		return nil, Error(err.(windows.Errno))
 	}
 
 	rEvent, _ := windows.CreateEvent(nil, 0, 0, nil)
@@ -221,7 +225,7 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 	}, nil
 }
 
-func (h Handle) Recv(buffer []byte, address *Address) (uint, error) {
+func (h *Handle) Recv(buffer []byte, address *Address) (uint, error) {
 	addrLen := uint(unsafe.Sizeof(Address{}))
 	recv := recv{
 		Addr:       uint64(uintptr(unsafe.Pointer(address))),

@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync"
 )
 
 type Addr []byte
@@ -18,16 +17,6 @@ const (
 	AddrTypeDomain = 3
 	AddrTypeIPv6   = 4
 )
-
-var addrBuffer = sync.Pool{New: func() interface{} { return make(Addr, MaxAddrLen) }}
-
-func GetAddr() Addr {
-	return addrBuffer.Get().(Addr)
-}
-
-func PutAddr(addr Addr) {
-	addrBuffer.Put(addr)
-}
 
 var ErrInvalidAddrType = errors.New("invalid address type")
 

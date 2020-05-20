@@ -3,9 +3,15 @@ package windivert
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
+
+var windivertsys = "C:\\Windows\\System32\\WinDivert" + strconv.Itoa(32 << (^uint(0)>>63)) + ".sys"
+const types = 7
 
 func TryRemoveDriver() error {
 	b, err := Check()
@@ -57,17 +63,17 @@ func Check() (bool, error) {
 
 var DeviceName = windows.StringToUTF16Ptr("WinDivert")
 
-func InstallDriver() error {
-	Close := func(mutex windows.Handle) {
-		windows.ReleaseMutex(mutex)
-		windows.CloseHandle(mutex)
-	}
+func CloseMutex(mutex windows.Handle) {
+	windows.ReleaseMutex(mutex)
+	windows.CloseHandle(mutex)
+}
 
+func InstallDriver() error {
 	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("WinDivertDriverInstallMutex"))
 	if err != nil {
 		return err
 	}
-	defer Close(mutex)
+	defer CloseMutex(mutex)
 
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
 	if err != nil {
@@ -91,7 +97,12 @@ func InstallDriver() error {
 		return nil
 	}
 
-	service, err = windows.CreateService(manager, DeviceName, DeviceName, windows.SERVICE_ALL_ACCESS, windows.SERVICE_KERNEL_DRIVER, windows.SERVICE_DEMAND_START, windows.SERVICE_ERROR_NORMAL, windows.StringToUTF16Ptr(""), nil, nil, nil, nil, nil)
+	sys, err := GetDriverFileName()
+	if err != nil {
+		return err
+	}
+
+	service, err = windows.CreateService(manager, DeviceName, DeviceName, windows.SERVICE_ALL_ACCESS, windows.SERVICE_KERNEL_DRIVER, windows.SERVICE_DEMAND_START, windows.SERVICE_ERROR_NORMAL, windows.StringToUTF16Ptr(sys), nil, nil, nil, nil, nil)
 	if err != nil {
 		if err == windows.ERROR_SERVICE_EXISTS {
 			return nil
@@ -147,6 +158,63 @@ func RemoveDriver() error {
 			return nil
 		}
 
+		return err
+	}
+
+	return nil
+}
+
+func GetDriverFileName() (string, error) {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\EventLog\\System\\WinDivert", registry.QUERY_VALUE)
+	if err != nil {
+		if _, err := os.Stat(windivertsys); err != nil {
+			if er := Download(); er != nil {
+				return "", fmt.Errorf("file error: %w, download error: %w", err, er)
+			}
+		}
+
+		if err := RegisterEventSource(windivertsys); err != nil {
+			return "", err
+		}
+
+		return windivertsys, nil
+	}
+	defer key.Close()
+
+	val, _, err := key.GetStringValue("EventMessageFile")
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := os.Stat(val); err != nil {
+		if _, err := os.Stat(windivertsys); err != nil {
+			if er := Download(); er != nil {
+				return "", fmt.Errorf("file error: %w, download error: %w", err, er)
+			}
+		}
+
+		if err := RegisterEventSource(windivertsys); err != nil {
+			return "", err
+		}
+
+		return windivertsys, nil
+	}
+
+	return val, nil
+}
+
+func RegisterEventSource(sys string) error {
+	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\EventLog\\System\\WinDivert", registry.ALL_ACCESS)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+
+	if err := key.SetStringValue("EventMessageFile", sys); err != nil {
+		return err
+	}
+
+	if err := key.SetDWordValue("TypesSupported", types); err != nil {
 		return err
 	}
 
