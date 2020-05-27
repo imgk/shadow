@@ -1,13 +1,20 @@
 package trojan
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"time"
+
+	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/net/websocket"
 
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/utils"
@@ -23,15 +30,59 @@ const (
 	Assocaite = 3
 )
 
+var (
+	salt = [...]byte{48, 149, 6, 18, 13, 193, 247, 116, 197, 135, 236, 175, 190, 209, 146, 48}
+)
+
+type Conn struct {
+	net.Conn
+	io.Reader
+	io.Writer
+}
+
+func NewConn(conn net.Conn, block cipher.Block) (*Conn, error) {
+	iv := make([]byte, aes.BlockSize)
+
+	if _, err := rand.Read(iv); err != nil {
+		return nil, err
+	}
+
+	if _, err := conn.Write(iv); err != nil {
+		return nil, err
+	}
+
+	return &Conn{
+		Conn:   conn,
+		Reader: cipher.StreamReader{
+			S: cipher.NewCTR(block, iv),
+			R: conn,
+		},
+		Writer: cipher.StreamWriter{
+			S: cipher.NewCTR(block, iv),
+			W: conn,
+		},
+	}, nil
+}
+
+func (conn *Conn) Read(b []byte) (int, error) {
+	return conn.Reader.Read(b)
+}
+
+func (conn *Conn) Write(b []byte) (int, error) {
+	return conn.Writer.Write(b)
+}
+
 type Handler struct {
 	*tls.Config
-	timeout time.Duration
-	server  string
-	hex     [HexLen + 2]byte
+	cipher.Block
+	timeout   time.Duration
+	server    string
+	hex       [HexLen + 2]byte
+	websocket *websocket.Config
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, password, err := ParseUrl(url)
+	server, password, path, err := ParseUrl(url)
 	if err != nil {
 		return nil, err
 	}
@@ -46,15 +97,31 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
+	var block cipher.Block
+	var config *websocket.Config
+	if path != "" {
+		block, err = aes.NewCipher(pbkdf2.Key([]byte(password), salt[:], 32, aes.BlockSize, sha256.New))
+		if err != nil {
+			return nil, err
+		}
+
+		config, err = websocket.NewConfig("wss://"+host+path, "https://"+host)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	hd := &Handler{
 		Config: &tls.Config{
 			ServerName:         host,
 			ClientSessionCache: tls.NewLRUClientSessionCache(32),
 			InsecureSkipVerify: false,
 		},
-		timeout: timeout,
-		server:  addr.String(),
-		hex:     [HexLen + 2]byte{},
+		Block:     block,
+		timeout:   timeout,
+		server:    addr.String(),
+		hex:       [HexLen + 2]byte{},
+		websocket: config,
 	}
 
 	hash := sha256.Sum224([]byte(password))
@@ -64,19 +131,17 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	return hd, nil
 }
 
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
-	defer conn.Close()
-
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, error) {
 	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
 
 	n := copy(target, h.hex[:])
-	target[HexLen+2] = Connect
+	target[HexLen+2] = cmd
 
 	addr, ok := tgt.(utils.Addr)
 	if !ok {
 		addr, err := utils.ResolveAddrBuffer(tgt, target[HexLen+2+1:])
 		if err != nil {
-			return fmt.Errorf("resolve addr error: %v", err)
+			return nil, fmt.Errorf("resolve addr error: %w", err)
 		}
 		n = HexLen + 2 + 1 + len(addr)
 	} else {
@@ -87,15 +152,44 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	rc, err := net.Dial("tcp", h.server)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	rc = tls.Client(rc, h.Config)
-	defer rc.Close()
+
+	if h.websocket == nil {
+		if _, err := rc.Write(target[:n+2]); err != nil {
+			return nil, fmt.Errorf("write to server %v error: %w", h.server, err)
+		}
+	
+		return rc, nil
+	}
+
+	rc, err = websocket.NewClient(h.websocket, rc)
+	if err != nil {
+		return nil, fmt.Errorf("new websocket client error: %w", err)
+	}
+
+	rc, err = NewConn(rc, h.Block)
+	if err != nil {
+		return nil, fmt.Errorf("new obfs conn error: %w", err)
+	}
 
 	if _, err := rc.Write(target[:n+2]); err != nil {
-		return fmt.Errorf("write to server %v error: %v", h.server, err)
+		return nil, fmt.Errorf("write to server %v error: %w", h.server, err)
 	}
+
+	return rc, nil
+}
+
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+	defer conn.Close()
+
+	rc, err := h.Dial(tgt, Connect)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
 
 	l, ok := conn.(DuplexConn)
 	if !ok {
@@ -113,7 +207,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 				return nil
 			}
 		}
-		if err == io.ErrClosedPipe || err == io.EOF {
+		if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 			return nil
 		}
 
@@ -133,15 +227,15 @@ type duplexConn struct {
 	net.Conn
 }
 
-func NewDuplexConn(conn net.Conn) *duplexConn {
-	return &duplexConn{Conn: conn}
+func NewDuplexConn(conn net.Conn) duplexConn {
+	return duplexConn{Conn: conn}
 }
 
-func (conn *duplexConn) CloseRead() error {
+func (conn duplexConn) CloseRead() error {
 	return conn.SetReadDeadline(time.Now())
 }
 
-func (conn *duplexConn) CloseWrite() error {
+func (conn duplexConn) CloseWrite() error {
 	return conn.SetWriteDeadline(time.Now())
 }
 
@@ -218,30 +312,11 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
-	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
-
-	n := copy(target, h.hex[:])
-	target[HexLen+2] = Assocaite
-
-	src := conn.LocalAddr()
-	addr, err := utils.ResolveAddrBuffer(src, target[HexLen+2+1:])
-	if err != nil {
-		return fmt.Errorf("resolve addr error: %v", err)
-	}
-	n = HexLen + 2 + 1 + len(addr)
-	target[n], target[n+1] = 0x0d, 0x0a
-
-	rc, err := net.Dial("tcp", h.server)
+	rc, err := h.Dial(conn.LocalAddr(), Assocaite)
 	if err != nil {
 		return err
 	}
-	rc.(*net.TCPConn).SetKeepAlive(true)
-	rc = tls.Client(rc, h.Config)
 	defer rc.Close()
-
-	if _, err := rc.Write(target[:n+2]); err != nil {
-		return fmt.Errorf("write to server %v error: %v", h.server, err)
-	}
 
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, errCh)

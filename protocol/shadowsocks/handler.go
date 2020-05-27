@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -81,7 +82,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 				return nil
 			}
 		}
-		if err == io.ErrClosedPipe || err == io.EOF {
+		if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 			return nil
 		}
 
@@ -101,15 +102,15 @@ type duplexConn struct {
 	net.Conn
 }
 
-func NewDuplexConn(conn net.Conn) *duplexConn {
-	return &duplexConn{Conn: conn}
+func NewDuplexConn(conn net.Conn) duplexConn {
+	return duplexConn{Conn: conn}
 }
 
-func (conn *duplexConn) CloseRead() error {
+func (conn duplexConn) CloseRead() error {
 	return conn.SetReadDeadline(time.Now())
 }
 
-func (conn *duplexConn) CloseWrite() error {
+func (conn duplexConn) CloseWrite() error {
 	return conn.SetWriteDeadline(time.Now())
 }
 

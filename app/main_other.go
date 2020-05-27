@@ -4,8 +4,10 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -34,7 +36,7 @@ func Run() {
 
 	if err := dns.SetResolver(conf.NameServer); err != nil {
 		log.Logf("dns server error")
-		
+
 		return
 	}
 
@@ -72,13 +74,44 @@ func Run() {
 		return
 	}
 
-	dev, err := tun.NewDevice("utun")
+	name := "utun"
+	if tunName := os.Getenv("TunName"); tunName != "" {
+		name = tunName
+	}
+	dev, err := tun.NewDevice(name)
 	if err != nil {
 		log.Logf("tun device error: %v", err)
 
 		return
 	}
 	defer dev.Close()
+	if cidr := os.Getenv("TunAddr"); cidr != "" {
+		addr, mask, gateway, err := GetInterfaceConfig(cidr)
+		if err != nil {
+			log.Logf("parse TunAddr error: %v", err)
+
+			return
+		}
+
+		if err := dev.Activate(addr, mask, gateway); err != nil {
+			log.Logf("activate tun error: %v", err)
+
+			return
+		}
+
+		log.Logf("addr: %v, mask: %v, gateway: %v", addr, mask, gateway)
+	}
+	if cidr := os.Getenv("TunRoute"); cidr != "" {
+		addr := strings.Split(cidr, ";")
+
+		if err := dev.AddRoute(addr); err != nil {
+			log.Logf("add tun route table error: %v", err)
+
+			return
+		}
+
+		log.Logf("add target: %v to route table", cidr)
+	}
 	log.Logf("tun device name: %v", dev.Name)
 
 	stack := netstack.NewStack(handler, dev)
@@ -120,4 +153,26 @@ func (p *Plugin) Stop() error {
 	}
 
 	return nil
+}
+
+func GetInterfaceConfig(cidr string) (addr, mask, gateway string, err error) {
+	ip, ipNet, er := net.ParseCIDR(cidr)
+	if er != nil {
+		err = er
+		return
+	}
+
+	ip = ip.To4()
+	if ip == nil {
+		err = fmt.Errorf("not ipv4 address")
+		return
+	}
+
+	addr = ip.String()
+	mask = net.IP(ipNet.Mask).String()
+	ip = ipNet.IP
+	ip[3] += 1
+	gateway = ip.String()
+
+	return
 }

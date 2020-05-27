@@ -191,7 +191,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 		}
 	}
 
-	sigCh <- struct{}{}
+	close(sigCh)
 
 	s.Del(conn)
 	conn.Close()

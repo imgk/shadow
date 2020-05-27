@@ -4,52 +4,49 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and MacOS.
 
 ## How to use it
 
+```
+➜  ~ go/bin/shadow -h
+Usage of go/bin/shadow:
+  -c string
+    	config file (default "config.json")
+  -v	enable verbose mode
+```
+
+```
+TunName=utun8 TunAddr=192.168.0.11/24 shadow -c /etc/shadow.json -v
+```
+
 ### Windows
 
-1. Run shadow.exe with administrator privilege.
+1. Put config.json and shadow.exe in same directory, then run shadow.exe with administrator privilege.
 
 ### Linux and Openwrt Router
 
-1. setup `8.8.8.8#53` as dnsmasq name server upstream
-
-2. add a line in `/etc/iproute2/rt_tables`
-```
-200 gfwlist
-```
-
-3. Setup device and route table.
-```
-#for Linux
-ip address add dev utun 192.168.0.2/24
-ip link set up dev utun
-
-ipset -N gfwlist hash:net
-ipset add gfwlist 44.44.0.0/16
-ipset add gfwlist 8.8.8.8
-
-iptables -t mangle -N fwmark
-iptables -t mangle -A PREROUTING -j fwmark
-iptables -t mangle -A OUTPUT -j fwmark
-iptables -t mangle -A fwmark -m set --match-set gfwlist dst -j MARK --set-mark 1
-
-ip route add default via 192.168.0.1 dev utun table gfwlist
-ip rule add fwmark 1 table gfwlist
-
-#for openwrt router
-iptables -I FORWARD -o utun -j ACCEPT
-iptables -t nat -I POSTROUTING -o utun -j ACCEPT
-```
-### MacOS
 1. set system dns server to 8.8.8.8
 
-2. configure interface and route table
+2. change route table.
 
 ```
-sudo ifconfig [tunname] inet 192.168.0.2 netmask 255.255.255.0 192.168.0.1
+#for Linux
+route add -net 44.44.0.0 netmask 255.255.0.0 dev $TunName
+route add -net 8.8.8.8 netmask 255.255.255.255 dev $TunName
 
-sudo route -n add -net 44.44.0.0/16 192.168.0.1
-sudo route -n add -net 8.8.8.8 192.168.0.1
+#for openwrt router
+iptables -I FORWARD -o $TunName -j ACCEPT
+iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
 ```
+
+### MacOS
+
+1. set system dns server to 8.8.8.8
+
+2. change route table
+
+```
+sudo route -n add -net 44.44.0.0/16 -interface $TunName
+sudo route -n add -net 8.8.8.8 -interface $TunName
+```
+
 ## Config File
 
 1. Support socks5, shadowsocks, trojan
@@ -57,10 +54,12 @@ sudo route -n add -net 8.8.8.8 192.168.0.1
 ```
 ss://ciphername:password@server:port
 socks://username:password@server:port
-trojan://password@server:port
+trojan://password@server:port[/websocket-path]
 ```
 
 Currently shadowsocks only support CHACHA20-IETF-POLY1305, AES-256-GCM and DUMMY for no encryption/decryption.
+
+For websocket for trojan, set double tls to off and obfs to on. The obfs password is same to trojan password.
 
 2. Support DNS over HTTPS and DNS over TLS
 

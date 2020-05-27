@@ -5,7 +5,7 @@ import (
 	"net/url"
 )
 
-func ParseUrl(s string) (server, password string, err error) {
+func ParseUrl(s string) (server, password, path string, err error) {
 	u, er := url.Parse(s)
 	if er != nil {
 		err = er
@@ -22,7 +22,9 @@ func ParseUrl(s string) (server, password string, err error) {
 		password = s
 	} else {
 		err = errors.New("incomplete trojan url")
+		return
 	}
 
+	path = u.Path
 	return
 }

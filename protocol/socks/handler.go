@@ -1,6 +1,7 @@
 package socks
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -37,21 +38,16 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}, nil
 }
 
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
-	defer conn.Close()
-
-	var err error
-
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, utils.Addr, error) {
 	target := make([]byte, 3+utils.MaxAddrLen)
 
-	target[0], target[1], target[2] = 5, Connect, 0
+	target[0], target[1], target[2] = 5, cmd, 0
 	n := 3
 
-	addr, ok := tgt.(utils.Addr)
-	if !ok {
-		addr, err = utils.ResolveAddrBuffer(tgt, target[3:])
+	if addr, ok := tgt.(utils.Addr); !ok {
+		addr, err := utils.ResolveAddrBuffer(tgt, target[3:])
 		if err != nil {
-			return fmt.Errorf("resolve addr error: %v", err)
+			return nil, nil, fmt.Errorf("resolve addr error: %w", err)
 		}
 		n = 3 + len(addr)
 	} else {
@@ -59,17 +55,28 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 		n = 3 + len(addr)
 	}
 
-	rc, err := net.Dial("tcp", h.server)
+	conn, err := net.Dial("tcp", h.server)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	rc.(*net.TCPConn).SetKeepAlive(true)
-	defer rc.Close()
+	conn.(*net.TCPConn).SetKeepAlive(true)
 
-	_, err = Handshake(rc, target[:n], h.Auth)
+	addr, err := Handshake(conn, target[:n], h.Auth)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return conn, addr, nil
+}
+
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+	defer conn.Close()
+
+	rc, _, err := h.Dial(tgt, Connect)
 	if err != nil {
 		return err
 	}
+	defer rc.Close()
 
 	l, ok := conn.(DuplexConn)
 	if !ok {
@@ -87,7 +94,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 				return nil
 			}
 		}
-		if err == io.ErrClosedPipe || err == io.EOF {
+		if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 			return nil
 		}
 
@@ -107,15 +114,15 @@ type duplexConn struct {
 	net.Conn
 }
 
-func NewDuplexConn(conn net.Conn) *duplexConn {
-	return &duplexConn{Conn: conn}
+func NewDuplexConn(conn net.Conn) duplexConn {
+	return duplexConn{Conn: conn}
 }
 
-func (conn *duplexConn) CloseRead() error {
+func (conn duplexConn) CloseRead() error {
 	return conn.SetReadDeadline(time.Now())
 }
 
-func (conn *duplexConn) CloseWrite() error {
+func (conn duplexConn) CloseWrite() error {
 	return conn.SetWriteDeadline(time.Now())
 }
 
@@ -192,39 +199,22 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
-	rc, err := net.ListenPacket("udp", "")
+	c, addr, err := h.Dial(conn.LocalAddr(), Associate)
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
-
-	target := make([]byte, 3+utils.MaxAddrLen)
-
-	target[0], target[1], target[2] = 5, Associate, 0
-	n := 3
-
-	addr, err := utils.ResolveAddrBuffer(rc.LocalAddr(), target[3:])
-	if err != nil {
-		return fmt.Errorf("resolve addr error: %v", err)
-	}
-	n = 3 + len(addr)
-
-	c, err := net.Dial("tcp", h.server)
-	if err != nil {
-		return err
-	}
-	c.(*net.TCPConn).SetKeepAlive(true)
 	defer c.Close()
-
-	addr, err = Handshake(c, target[:n], h.Auth)
-	if err != nil {
-		return err
-	}
 
 	raddr, err := utils.ResolveUDPAddr(addr)
 	if err != nil {
 		return err
 	}
+
+	rc, err := net.ListenPacket("udp", "")
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
 
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
