@@ -112,6 +112,7 @@ func NewResolver(s string) (Resolver, error) {
 				conn.(*net.TCPConn).SetKeepAlive(true)
 				return tls.Client(conn, config), nil
 			},
+			ForceAttemptHTTP2: true,
 		}
 
 		return &DoHWireformat{
