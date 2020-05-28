@@ -15,6 +15,27 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+import "os/exec"
+
+func modifyRouteTable(cidr []string, cmdType byte, name string) error {
+	cmd := (*exec.Cmd)(nil)
+	for _, item := range cidr {
+		switch cmdType {
+		case 1:
+			cmd = exec.Command("route", "-n", "add", "-net", item, "-interface", name)
+		case 2:
+			cmd = exec.Command("route", "-n", "delete", "-net", item, "-interface", name)
+		default:
+			return fmt.Errorf("not supported cmd")
+		}
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("cmd: %v error: %w", cmd, err)
+		}
+	}
+
+	return nil
+}
+
 const utunControlName = "com.apple.net.utun_control"
 const _IOC_OUT = 0x40000000
 const _IOC_IN = 0x80000000
@@ -287,11 +308,13 @@ type rtMessageHeader struct {
 }
 
 func (d *Device) AddRoute(cidr []string) error {
-	return d.modifyRouteTable(cidr, 1) /* RTM_ADD 0x1 */
+	//return d.modifyRouteTable(cidr, 1) /* RTM_ADD 0x1 */
+	return modifyRouteTable(cidr, 1, d.Name)
 }
 
 func (d *Device) DelRoute(cidr []string) error {
-	return d.modifyRouteTable(cidr, 2) /* RTM_DELETE 0x02 */
+	//return d.modifyRouteTable(cidr, 2) /* RTM_DELETE 0x02 */
+	return modifyRouteTable(cidr, 2, d.Name)
 }
 
 func (d *Device) modifyRouteTable(cidr []string, cmd byte) error {
@@ -307,43 +330,52 @@ func (d *Device) modifyRouteTable(cidr []string, cmd byte) error {
 	}
 	defer unix.Close(fd)
 
+	Roundup := func (a uintptr) uintptr {
+		if a > 0 {
+			return 1 + ((a - 1) | (unsafe.Sizeof(uint32(0)) - 1))
+		}
+
+		return unsafe.Sizeof(uint32(0))
+	}
+
+	l := Roundup(unix.SizeofSockaddrInet4)
+
 	type message struct {
-		hdr     rtMessageHeader
-		dest    unix.RawSockaddrInet4
-		gateway unix.RawSockaddrInet4
-		mask    unix.RawSockaddrInet4
+		hdr rtMessageHeader
+		bb  [512]byte
+	}
+
+	interf, err := net.InterfaceByName(d.Name)
+	if err != nil {
+		return err
 	}
 
 	msgSlice := make([]byte, unsafe.Sizeof(message{}))
 
 	msg := (*message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen  = uint16(unsafe.Sizeof(message{}))
+	msg.hdr.rtm_msglen  = uint16(unsafe.Sizeof(rtMessageHeader{})+l+l+l)
 	msg.hdr.rtm_version = 5 /* RTM_VERSION 5 */
 	msg.hdr.rtm_type    = cmd
-	msg.hdr.rtm_index   = 0
-	msg.hdr.rtm_pid     = 0
+	msg.hdr.rtm_index   = uint16(interf.Index)
+	msg.hdr.rtm_flags   = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_IFSCOPE
 	msg.hdr.rtm_addrs   = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
+	msg.hdr.rtm_pid     = 0
 	msg.hdr.rtm_seq     = 0
 	msg.hdr.rtm_errno   = 0
-	msg.hdr.rtm_flags   = unix.RTF_UP | unix.RTF_GATEWAY
+	msg.hdr.rtm_inits   = 0
 
-	msg.dest = unix.RawSockaddrInet4{
-			Len:    unix.SizeofSockaddrInet4,
-			Family: unix.AF_INET,
-			Addr:   [4]byte{},
-	}
+	msg_dest := (*unix.RawSockaddrInet4)(unsafe.Pointer(&msg.bb))
+	msg_dest.Len = unix.SizeofSockaddrInet4
+	msg_dest.Family = unix.AF_INET
 
-	msg.gateway = unix.RawSockaddrInet4{
-			Len:    unix.SizeofSockaddrInet4,
-			Family: unix.AF_INET,
-			Addr:   d.Conf4.Gateway,
-	}
+	msg_gateway := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb))+l))
+	msg_gateway.Len = unix.SizeofSockaddrInet4
+	msg_gateway.Family = unix.AF_INET
+	msg_gateway.Addr = d.Conf4.Addr
 
-	msg.mask = unix.RawSockaddrInet4{
-			Len:    unix.SizeofSockaddrInet4,
-			Family: unix.AF_INET,
-			Addr:   [4]byte{},
-	}
+	msg_mask := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb))+l+l))
+	msg_mask.Len = unix.SizeofSockaddrInet4
+	msg_mask.Family = unix.AF_INET
 
 	for i, item := range cidr {
 		msg.hdr.rtm_seq = i
@@ -359,10 +391,10 @@ func (d *Device) modifyRouteTable(cidr []string, cmd byte) error {
 		}
 		mask := ipNet.Mask
 
-		msg.dest.Addr = [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}
-		msg.mask.Addr = [4]byte{mask[0], mask[1], mask[2], mask[3]}
+		msg_dest.Addr = [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}
+		msg_mask.Addr = [4]byte{mask[0], mask[1], mask[2], mask[3]}
 
-		if _, err := unix.Write(fd, msgSlice); err != nil {
+		if _, err := unix.Write(fd, msgSlice[:msg.hdr.rtm_msglen]); err != nil {
 			return fmt.Errorf("write to socket error: %w", err)
 		}
 	}

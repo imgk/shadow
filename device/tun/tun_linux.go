@@ -180,23 +180,20 @@ func (d *Device) Activate(addr, mask, gateway string) error {
 }
 
 //https://github.com/torvalds/linux/blob/master/include/uapi/linux/route.h
-type rtentry struct {
-	_       [8]byte
-	Dst     unix.RawSockaddrInet4
-	Gateway unix.RawSockaddrInet4
-	Genmask unix.RawSockaddrInet4
-	Flags   uint16
-	_       [14]byte
-	Tos     uint8
-	Class   uint8
-	_       [3]int16
-	Metric  int16
-	_       [6]byte
-	Dev     uintptr
-	Mtu     uint64
-	Window  uint64
-	Irtt    uint16
-	_       [6]byte
+type rtEntry struct {
+	rt_pad1    uint32
+	rt_dst     unix.RawSockaddrInet4
+	rt_gateway unix.RawSockaddrInet4
+	rt_genmask unix.RawSockaddrInet4
+	rt_flags   uint16
+	rt_pad2    int16
+	rt_pad3    uint32
+	rt_pad4    uintptr
+	rt_metric  int16
+	rt_dev     uintptr
+	rt_mtu     uint32
+	rt_window  uint32
+	rt_irtt    uint16
 }
 
 func (d *Device) AddRoute(cidr []string) error {
@@ -219,21 +216,21 @@ func (d *Device) modifyRouteTable(cidr []string, cmd uintptr) error {
 	nameBytes := [16]byte{}
 	copy(nameBytes[:], []byte(d.Name))
 
-	route := rtentry{
-		Dst: unix.RawSockaddrInet4{
+	route := rtEntry{
+		rt_dst: unix.RawSockaddrInet4{
 			Family: unix.AF_INET,
 			Addr:   [4]byte{},
 		},
-		Gateway: unix.RawSockaddrInet4{
+		rt_gateway: unix.RawSockaddrInet4{
 			Family: unix.AF_INET,
 			Addr:   d.Conf4.Gateway,
 		},
-		Genmask: unix.RawSockaddrInet4{
+		rt_genmask: unix.RawSockaddrInet4{
 			Family: unix.AF_INET,
 			Addr:   [4]byte{},
 		},
-		Flags: unix.RTF_UP | unix.RTF_GATEWAY,
-		Dev:   uintptr(unsafe.Pointer(&nameBytes)),
+		rt_flags: unix.RTF_UP | unix.RTF_GATEWAY,
+		rt_dev:   uintptr(unsafe.Pointer(&nameBytes)),
 	}
 
 	for _, item := range cidr {
@@ -248,8 +245,8 @@ func (d *Device) modifyRouteTable(cidr []string, cmd uintptr) error {
 		}
 		mask := ipNet.Mask
 
-		route.Dst.Addr = [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}
-		route.Genmask.Addr = [4]byte{mask[0], mask[1], mask[2], mask[3]}
+		route.rt_dst.Addr = [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}
+		route.rt_genmask.Addr = [4]byte{mask[0], mask[1], mask[2], mask[3]}
 
 		if _, _, errno := unix.Syscall(unix.SYS_IOCTL, fd, cmd, uintptr(unsafe.Pointer(&route))); errno != 0 {
 			return os.NewSyscallError("ioctl: SIOCADDRT/SIOCDELRT", errno)

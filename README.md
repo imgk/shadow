@@ -12,10 +12,6 @@ Usage of go/bin/shadow:
   -v	enable verbose mode
 ```
 
-```
-TunName=utun8 TunAddr=192.168.0.11/24 shadow -c /etc/shadow.json -v
-```
-
 ### Windows
 
 1. Put config.json and shadow.exe in same directory, then run shadow.exe with administrator privilege.
@@ -24,14 +20,12 @@ TunName=utun8 TunAddr=192.168.0.11/24 shadow -c /etc/shadow.json -v
 
 1. set system dns server to 8.8.8.8
 
-2. change route table.
+```
+sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
+```
 
 ```
-#for Linux
-route add -net 44.44.0.0 netmask 255.255.0.0 dev $TunName
-route add -net 8.8.8.8 netmask 255.255.255.255 dev $TunName
-
-#for openwrt router
+# configure firewall if necessary
 iptables -I FORWARD -o $TunName -j ACCEPT
 iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
 ```
@@ -40,11 +34,8 @@ iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
 
 1. set system dns server to 8.8.8.8
 
-2. change route table
-
 ```
-sudo route -n add -net 44.44.0.0/16 -interface $TunName
-sudo route -n add -net 8.8.8.8 -interface $TunName
+sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
 ```
 
 ## Config File
