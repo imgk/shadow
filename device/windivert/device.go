@@ -223,24 +223,20 @@ func (d *Device) CheckIPv4(b []byte) bool {
 		case 0:
 			if b[ipv4.HeaderLen+13]&SYN != SYN {
 				d.TCP[p] = 1
-
 				return false
 			}
 
 			if d.IPFilter.Lookup(net.IP(b[16:20])) {
 				d.TCP[p] = 2
-
 				return true
 			}
 
 			if d.CheckTCP4(b) {
 				d.TCP[p] = 2
-
 				return true
 			}
 
 			d.TCP[p] = 1
-
 			return false
 		case 1:
 			if b[ipv4.HeaderLen+13]&FIN == FIN {
@@ -263,14 +259,12 @@ func (d *Device) CheckIPv4(b []byte) bool {
 			if d.IPFilter.Lookup(net.IP(b[16:20])) {
 				d.UDP[p] = 2
 				time.AfterFunc(time.Minute, func() { d.UDP[p] = 0 })
-
 				return true
 			}
 
 			if d.CheckUDP4(b) {
 				d.UDP[p] = 2
 				time.AfterFunc(time.Minute, func() { d.UDP[p] = 0 })
-
 				return true
 			}
 
@@ -340,24 +334,20 @@ func (d *Device) CheckIPv6(b []byte) bool {
 		case 0:
 			if b[ipv6.HeaderLen+13]&SYN != SYN {
 				d.TCP6[p] = 1
-
 				return false
 			}
 
 			if d.IPFilter.Lookup(net.IP(b[24:40])) {
 				d.TCP6[p] = 2
-
 				return true
 			}
 
 			if d.CheckTCP6(b) {
 				d.TCP6[p] = 2
-
 				return true
 			}
 
 			d.TCP6[p] = 1
-
 			return false
 		case 1:
 			if b[ipv6.HeaderLen+13]&FIN == FIN {
@@ -380,14 +370,12 @@ func (d *Device) CheckIPv6(b []byte) bool {
 			if d.IPFilter.Lookup(net.IP(b[24:40])) {
 				d.UDP6[p] = 2
 				time.AfterFunc(time.Minute, func() { d.UDP6[p] = 0 })
-
 				return true
 			}
 
 			if d.CheckUDP6(b) {
 				d.UDP6[p] = 2
 				time.AfterFunc(time.Minute, func() { d.UDP6[p] = 0 })
-
 				return true
 			}
 
@@ -397,7 +385,6 @@ func (d *Device) CheckIPv6(b []byte) bool {
 
 			d.UDP6[p] = 1
 			time.AfterFunc(time.Minute, func() { d.UDP6[p] = 0 })
-
 			return false
 		case 1:
 			return false

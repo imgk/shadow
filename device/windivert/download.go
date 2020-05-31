@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -15,7 +15,7 @@ func Download() error {
 	var (
 		ver = "2.2.0"
 		url = "https://github.com/basil00/Divert/releases/download/v" + ver + "/WinDivert-" + ver + "-A.zip"
-		sys = "WinDivert" + strconv.Itoa(32 << (^uint(0)>>63)) + ".sys"
+		sys = "WinDivert" + strconv.Itoa(32<<(^uint(0)>>63)) + ".sys"
 	)
 
 	if _, err := os.Stat(windivertsys); err == nil {

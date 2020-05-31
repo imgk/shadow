@@ -10,7 +10,8 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-var windivertsys = "C:\\Windows\\System32\\WinDivert" + strconv.Itoa(32 << (^uint(0)>>63)) + ".sys"
+var windivertsys = "C:\\Windows\\System32\\WinDivert" + strconv.Itoa(32<<(^uint(0)>>63)) + ".sys"
+
 const types = 7
 
 func TryRemoveDriver() error {

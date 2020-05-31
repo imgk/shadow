@@ -160,7 +160,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 			continue
 		}
 
-		if err := m.Unpack(b[2:2+n]); err != nil {
+		if err := m.Unpack(b[2 : 2+n]); err != nil {
 			log.Logf("parse dns error: %v", err)
 			continue
 		}

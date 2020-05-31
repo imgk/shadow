@@ -5,16 +5,20 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	mrand "math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/net/websocket"
+
+	tls "github.com/refraction-networking/utls"
+	"github.com/xtaci/smux"
 
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/utils"
@@ -30,29 +34,27 @@ const (
 	Assocaite = 3
 )
 
-var (
-	salt = [...]byte{48, 149, 6, 18, 13, 193, 247, 116, 197, 135, 236, 175, 190, 209, 146, 48}
-)
-
 type Conn struct {
 	net.Conn
 	io.Reader
 	io.Writer
 }
 
-func NewConn(conn net.Conn, block cipher.Block) (*Conn, error) {
+func NewObfsConn(conn net.Conn, block cipher.Block) (connection Conn, err error) {
 	iv := make([]byte, aes.BlockSize)
 
-	if _, err := rand.Read(iv); err != nil {
-		return nil, err
+	_, err = rand.Read(iv)
+	if err != nil {
+		return
 	}
 
-	if _, err := conn.Write(iv); err != nil {
-		return nil, err
+	_, err = conn.Write(iv)
+	if err != nil {
+		return
 	}
 
-	return &Conn{
-		Conn:   conn,
+	connection = Conn{
+		Conn: conn,
 		Reader: cipher.StreamReader{
 			S: cipher.NewCTR(block, iv),
 			R: conn,
@@ -61,28 +63,50 @@ func NewConn(conn net.Conn, block cipher.Block) (*Conn, error) {
 			S: cipher.NewCTR(block, iv),
 			W: conn,
 		},
-	}, nil
+	}
+
+	return
 }
 
-func (conn *Conn) Read(b []byte) (int, error) {
+func (conn Conn) Read(b []byte) (int, error) {
 	return conn.Reader.Read(b)
 }
 
-func (conn *Conn) Write(b []byte) (int, error) {
+func (conn Conn) Write(b []byte) (int, error) {
 	return conn.Writer.Write(b)
 }
 
-type Handler struct {
-	*tls.Config
+func (conn Conn) ReadFrom(r io.Reader) (int64, error) {
+	return Copy(conn.Writer, r)
+}
+
+func (conn Conn) WriteTo(w io.Writer) (int64, error) {
+	return Copy(w, conn.Reader)
+}
+
+type Mux struct {
+	sync.Mutex
+	*smux.Config
+	Max int
+	Map map[uint32]*smux.Session
+}
+
+type WebSocket struct {
 	cipher.Block
-	timeout   time.Duration
-	server    string
-	hex       [HexLen + 2]byte
-	websocket *websocket.Config
+	*websocket.Config
+}
+
+type Handler struct {
+	*Mux
+	*WebSocket
+	*tls.Config
+	header  [HexLen + 2 + 8 + 2]byte
+	timeout time.Duration
+	server  string
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, password, path, err := ParseUrl(url)
+	server, password, mux, path, err := ParseUrl(url)
 	if err != nil {
 		return nil, err
 	}
@@ -97,89 +121,221 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	var block cipher.Block
-	var config *websocket.Config
-	if path != "" {
-		block, err = aes.NewCipher(pbkdf2.Key([]byte(password), salt[:], 32, aes.BlockSize, sha256.New))
-		if err != nil {
-			return nil, err
-		}
-
-		config, err = websocket.NewConfig("wss://"+host+path, "https://"+host)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	hd := &Handler{
 		Config: &tls.Config{
 			ServerName:         host,
 			ClientSessionCache: tls.NewLRUClientSessionCache(32),
 			InsecureSkipVerify: false,
 		},
-		Block:     block,
-		timeout:   timeout,
-		server:    addr.String(),
-		hex:       [HexLen + 2]byte{},
-		websocket: config,
+		timeout: timeout,
+		server:  addr.String(),
 	}
 
 	hash := sha256.Sum224([]byte(password))
-	hex.Encode(hd.hex[:hex.EncodedLen(len(hash))], hash[:])
-	hd.hex[HexLen], hd.hex[HexLen+1] = 0x0d, 0x0a
+	hex.Encode(hd.header[:HexLen], hash[:])
+	hd.header[HexLen], hd.header[HexLen+1] = 0x0d, 0x0a
+
+	if mux != "" {
+		hd.Mux = &Mux{
+			Mutex:  sync.Mutex{},
+			Config: smux.DefaultConfig(),
+			Max:    8,
+			Map:    make(map[uint32]*smux.Session),
+		}
+		hd.Mux.Config.KeepAliveDisabled = false
+
+		copy(hd.header[HexLen+2:], []byte{0x7f, utils.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
+
+		go hd.CloseIdleSession()
+	}
+
+	if path != "" {
+		block, err := aes.NewCipher(pbkdf2.Key([]byte(password), []byte{48, 149, 6, 18, 13, 193, 247, 116, 197, 135, 236, 175, 190, 209, 146, 48}, 32, aes.BlockSize, sha256.New))
+		if err != nil {
+			return nil, err
+		}
+
+		config, err := websocket.NewConfig("wss://"+host+path, "https://"+host)
+		if err != nil {
+			return nil, err
+		}
+
+		hd.WebSocket = &WebSocket{
+			Block:  block,
+			Config: config,
+		}
+	}
 
 	return hd, nil
 }
 
-func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, error) {
+func (h *Handler) Connect() (conn net.Conn, err error) {
+	conn, err = net.Dial("tcp", h.server)
+	if err != nil {
+		return
+	}
+	conn.(*net.TCPConn).SetKeepAlive(true)
+	conn = tls.UClient(conn, h.Config, tls.HelloRandomized)
+
+	if h.WebSocket == nil {
+		return
+	}
+
+	CloseError := func(conn net.Conn) {
+		if err != nil {
+			conn.Close()
+		}
+	}
+	defer CloseError(conn)
+
+	conn, err = websocket.NewClient(h.WebSocket.Config, conn)
+	if err != nil {
+		err = fmt.Errorf("new websocket client error: %w", err)
+		return
+	}
+
+	conn, err = NewObfsConn(conn, h.WebSocket.Block)
+	if err != nil {
+		err = fmt.Errorf("new obfs conn error: %w", err)
+		return
+	}
+
+	return
+}
+
+func (h *Handler) ConnectMux() (conn net.Conn, err error) {
+	h.Mux.Lock()
+	defer h.Mux.Unlock()
+
+	for k, item := range h.Mux.Map {
+		if item.NumStreams() < h.Mux.Max {
+			if item.IsClosed() {
+				delete(h.Mux.Map, k)
+				continue
+			}
+
+			return item.OpenStream()
+		}
+	}
+
+	conn, err = h.Connect()
+	if err != nil {
+		return
+	}
+
+	CloseError := func(conn net.Conn) {
+		if err != nil {
+			conn.Close()
+		}
+	}
+	defer CloseError(conn)
+
+	_, err = conn.Write(h.header[:])
+	if err != nil {
+		return
+	}
+
+	sess, err := smux.Client(conn, h.Mux.Config)
+	if err != nil {
+		return
+	}
+
+	key := mrand.Uint32()
+	h.Mux.Map[key] = sess
+
+	conn, err = sess.OpenStream()
+	if err != nil {
+		sess.Close()
+		delete(h.Mux.Map, key)
+		return
+	}
+
+	return
+}
+
+func (h *Handler) CloseIdleSession() {
+	t := time.NewTicker(time.Minute * 3)
+
+	for {
+		<-t.C
+
+		h.Mux.Lock()
+		for k, item := range h.Mux.Map {
+			if item.IsClosed() {
+				delete(h.Mux.Map, k)
+				continue
+			}
+
+			if item.NumStreams() == 0 {
+				item.Close()
+				delete(h.Mux.Map, k)
+			}
+		}
+		h.Mux.Unlock()
+	}
+}
+
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
 
-	n := copy(target, h.hex[:])
-	target[HexLen+2] = cmd
-
-	addr, ok := tgt.(utils.Addr)
-	if !ok {
-		addr, err := utils.ResolveAddrBuffer(tgt, target[HexLen+2+1:])
+	CloseError := func(conn net.Conn) {
 		if err != nil {
-			return nil, fmt.Errorf("resolve addr error: %w", err)
+			conn.Close()
 		}
-		n = HexLen + 2 + 1 + len(addr)
+	}
+
+	n := 0
+	if h.Mux == nil {
+		conn, err = h.Connect()
+		if err != nil {
+			return
+		}
+		defer CloseError(conn)
+
+		n = copy(target[0:], h.header[:HexLen+2])
+		target[HexLen+2] = cmd
+
+		addr, ok := tgt.(utils.Addr)
+		if !ok {
+			addr, er := utils.ResolveAddrBuffer(tgt, target[HexLen+2+1:])
+			if er != nil {
+				err = fmt.Errorf("resolve addr error: %w", er)
+				return
+			}
+			n = HexLen + 2 + 1 + len(addr) + 2
+		} else {
+			copy(target[HexLen+2+1:], addr)
+			n = HexLen + 2 + 1 + len(addr) + 2
+		}
+		target[n-2], target[n-1] = 0x0d, 0x0a
 	} else {
-		copy(target[HexLen+2+1:], addr)
-		n = HexLen + 2 + 1 + len(addr)
-	}
-	target[n], target[n+1] = 0x0d, 0x0a
-
-	rc, err := net.Dial("tcp", h.server)
-	if err != nil {
-		return nil, err
-	}
-	rc.(*net.TCPConn).SetKeepAlive(true)
-	rc = tls.Client(rc, h.Config)
-
-	if h.websocket == nil {
-		if _, err := rc.Write(target[:n+2]); err != nil {
-			return nil, fmt.Errorf("write to server %v error: %w", h.server, err)
+		conn, err = h.ConnectMux()
+		if err != nil {
+			return
 		}
-	
-		return rc, nil
+		defer CloseError(conn)
+
+		target[0] = cmd
+
+		addr, ok := tgt.(utils.Addr)
+		if !ok {
+			addr, er := utils.ResolveAddrBuffer(tgt, target[1:])
+			if er != nil {
+				err = fmt.Errorf("resolve addr error: %w", er)
+				return
+			}
+			n = 1 + len(addr)
+		} else {
+			n = 1 + copy(target[1:], addr)
+		}
 	}
 
-	rc, err = websocket.NewClient(h.websocket, rc)
-	if err != nil {
-		return nil, fmt.Errorf("new websocket client error: %w", err)
+	if _, er := conn.Write(target[:n]); er != nil {
+		err = fmt.Errorf("write to server %v error: %w", h.server, er)
+		return
 	}
 
-	rc, err = NewConn(rc, h.Block)
-	if err != nil {
-		return nil, fmt.Errorf("new obfs conn error: %w", err)
-	}
-
-	if _, err := rc.Write(target[:n+2]); err != nil {
-		return nil, fmt.Errorf("write to server %v error: %w", h.server, err)
-	}
-
-	return rc, nil
+	return
 }
 
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {

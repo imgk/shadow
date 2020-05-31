@@ -140,7 +140,7 @@ func (r *UDPResolver) Resolve(b []byte, n int) (int, error) {
 	}
 	defer conn.Close()
 
-	_, err = conn.Write(b[2:2+n])
+	_, err = conn.Write(b[2 : 2+n])
 	if err != nil {
 		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
 	}

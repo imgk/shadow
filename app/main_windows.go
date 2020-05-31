@@ -38,13 +38,11 @@ func Run() {
 	if err == nil {
 		windows.CloseHandle(mutex)
 		log.Logf("shadow is already running")
-
 		return
 	}
 	mutex, err = windows.CreateMutex(nil, false, Mutex)
 	if err != nil {
 		log.Logf("create mutex error: %v", err)
-
 		return
 	}
 	defer CloseMutex(mutex)
@@ -52,41 +50,35 @@ func Run() {
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
 	if err != nil {
 		log.Logf("wait for mutex error: %v", err)
-
 		return
 	}
 	switch event {
 	case windows.WAIT_OBJECT_0, windows.WAIT_ABANDONED:
 	default:
 		log.Logf("wait for mutex event id error: %v", event)
-
 		return
 	}
 
 	if err := LoadConfig(file); err != nil {
 		log.Logf("load config config.json error: %v", err)
-
 		return
 	}
 	LoadDomainRules(dns.MatchTree())
 
 	if err := dns.SetResolver(conf.NameServer); err != nil {
 		log.Logf("dns server error")
-		
 		return
 	}
 
 	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
 		log.Logf("plugin %v error: %v", conf.Plugin, err)
-
 		return
 	}
 
 	if plugin != nil {
 		if plugin.Start(); err != nil {
 			log.Logf("plugin start error: %v", err)
-
 			return
 		}
 		defer plugin.Stop()
@@ -96,7 +88,6 @@ func Run() {
 			if err := plugin.Wait(); err != nil {
 				log.Logf("plugin error: %v", err)
 				Exit(sigCh)
-
 				return
 			}
 			log.Logf("plugin %v stop", conf.Plugin)
@@ -106,14 +97,12 @@ func Run() {
 	handler, err := protocol.NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		log.Logf("shadowsocks error %v", err)
-
 		return
 	}
 
 	dev, err := windivert.NewDevice(conf.FilterString)
 	if err != nil {
 		log.Logf("windivert error: %v", err)
-
 		return
 	}
 	defer dev.Close()
@@ -127,7 +116,6 @@ func Run() {
 		if _, err := dev.WriteTo(stack); err != nil {
 			log.Logf("netstack exit error: %v", err)
 			Exit(sigCh)
-
 			return
 		}
 	}()
@@ -135,7 +123,6 @@ func Run() {
 	tray, err := systray.New()
 	if err != nil {
 		log.Logf("systray error: %v", err)
-
 		return
 	}
 	defer tray.Stop()
@@ -144,7 +131,6 @@ func Run() {
 		if err := LoadConfig(file); err != nil {
 			log.Logf("reload config file error: %v", err)
 			Exit(sigCh)
-
 			return
 		}
 		LoadDomainRules(dns.MatchTree())
@@ -154,7 +140,6 @@ func Run() {
 	tray.AppendMenu("Close", func() { Exit(sigCh) })
 	if err := tray.Show(10, "Shadowsocks"); err != nil {
 		log.Logf("set icon error: %v", err)
-
 		return
 	}
 
@@ -162,7 +147,6 @@ func Run() {
 		if err := tray.Run(); err != nil {
 			log.Logf("tray run error: %v", err)
 			Exit(sigCh)
-
 			return
 		}
 	}()

@@ -181,7 +181,7 @@ func IoControl(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, 
 }
 
 func FlagExclude(flags, flag1, flag2 uint64) bool {
-	return flags & (flag1 | flag2) != (flag1 | flag2)
+	return flags&(flag1|flag2) != (flag1 | flag2)
 }
 
 func ValidateFlag(flags uint64) bool {

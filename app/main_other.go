@@ -29,28 +29,24 @@ func Run() {
 
 	if err := LoadConfig(file); err != nil {
 		log.Logf("load config config.json error: %v", err)
-
 		return
 	}
 	LoadDomainRules(dns.MatchTree())
 
 	if err := dns.SetResolver(conf.NameServer); err != nil {
 		log.Logf("dns server error")
-
 		return
 	}
 
 	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
 		log.Logf("plugin %v error: %v", conf.Plugin, err)
-
 		return
 	}
 
 	if plugin != nil {
 		if plugin.Start(); err != nil {
 			log.Logf("plugin start error: %v", err)
-
 			return
 		}
 		defer plugin.Stop()
@@ -60,7 +56,6 @@ func Run() {
 			if err := plugin.Wait(); err != nil {
 				log.Logf("plugin error %v", err)
 				Exit(sigCh)
-
 				return
 			}
 			log.Logf("plugin %v stop", conf.Plugin)
@@ -70,7 +65,6 @@ func Run() {
 	handler, err := protocol.NewHandler(conf.Server, time.Minute)
 	if err != nil {
 		log.Logf("shadowsocks error %v", err)
-
 		return
 	}
 
@@ -81,7 +75,6 @@ func Run() {
 	dev, err := tun.NewDevice(name)
 	if err != nil {
 		log.Logf("tun device error: %v", err)
-
 		return
 	}
 	defer dev.Close()
@@ -89,13 +82,11 @@ func Run() {
 		addr, mask, gateway, err := GetInterfaceConfig(cidr)
 		if err != nil {
 			log.Logf("parse TunAddr error: %v", err)
-
 			return
 		}
 
 		if err := dev.Activate(addr, mask, gateway); err != nil {
 			log.Logf("activate tun error: %v", err)
-
 			return
 		}
 
@@ -106,7 +97,6 @@ func Run() {
 
 		if err := dev.AddRoute(addr); err != nil {
 			log.Logf("add tun route table error: %v", err)
-
 			return
 		}
 
@@ -122,7 +112,6 @@ func Run() {
 		if _, err := dev.WriteTo(stack); err != nil {
 			log.Logf("netstack exit error: %v", err)
 			Exit(sigCh)
-
 			return
 		}
 	}()
