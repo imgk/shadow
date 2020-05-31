@@ -41,10 +41,8 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	}, nil
 }
 
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	defer conn.Close()
-
-	var err error
 
 	addr, ok := tgt.(utils.Addr)
 	if !ok {

@@ -240,15 +240,13 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 		return
 	}
 
-	key := mrand.Uint32()
-	h.Mux.Map[key] = sess
-
 	conn, err = sess.OpenStream()
 	if err != nil {
 		sess.Close()
-		delete(h.Mux.Map, key)
 		return
 	}
+
+	h.Mux.Map[mrand.Uint32()] = sess
 
 	return
 }
