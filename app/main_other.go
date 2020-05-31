@@ -13,7 +13,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/imgk/shadow/device/tun"
-	"github.com/imgk/shadow/dns"
 	"github.com/imgk/shadow/log"
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/protocol"
@@ -29,12 +28,6 @@ func Run() {
 
 	if err := LoadConfig(file); err != nil {
 		log.Logf("load config config.json error: %v", err)
-		return
-	}
-	LoadDomainRules(dns.MatchTree())
-
-	if err := dns.SetResolver(conf.NameServer); err != nil {
-		log.Logf("dns server error")
 		return
 	}
 
@@ -106,6 +99,11 @@ func Run() {
 
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
+	if err := stack.SetResolver(conf.NameServer); err != nil {
+		log.Logf("dns server error")
+		return
+	}
+	LoadDomainRules(stack.Tree)
 	LoadIPRules(stack.IPFilter)
 
 	go func() {

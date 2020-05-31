@@ -11,7 +11,6 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/imgk/shadow/device/windivert"
-	"github.com/imgk/shadow/dns"
 	"github.com/imgk/shadow/log"
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/protocol"
@@ -63,12 +62,6 @@ func Run() {
 		log.Logf("load config config.json error: %v", err)
 		return
 	}
-	LoadDomainRules(dns.MatchTree())
-
-	if err := dns.SetResolver(conf.NameServer); err != nil {
-		log.Logf("dns server error")
-		return
-	}
 
 	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
@@ -111,6 +104,11 @@ func Run() {
 
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
+	if err := stack.SetResolver(conf.NameServer); err != nil {
+		log.Logf("dns server error")
+		return
+	}
+	LoadDomainRules(stack.Tree)
 
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
@@ -133,7 +131,7 @@ func Run() {
 			Exit(sigCh)
 			return
 		}
-		LoadDomainRules(dns.MatchTree())
+		LoadDomainRules(stack.Tree)
 		LoadAppRules(dev.AppFilter)
 		LoadIPRules(dev.IPFilter)
 	})

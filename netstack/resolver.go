@@ -1,40 +1,25 @@
-package dns
+package netstack
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
-	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/imgk/shadow/utils"
 )
 
-var (
-	counter   = uint16(time.Now().Unix())
-	matchTree = utils.NewTree(".")
-	resolver  = Resolver(nil)
-)
-
-func SetResolver(server string) (err error) {
-	resolver, err = NewResolver(server)
+func (s *stack) SetResolver(server string) (err error) {
+	s.Resolver, err = utils.NewResolver(server)
 	return
 }
 
-func Resolve(b []byte, n int) (int, error) {
-	return resolver.Resolve(b, n)
-}
-
-func MatchTree() *utils.Tree {
-	return matchTree
-}
-
-func AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {
+func (s *stack) AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {
 	switch addr.(type) {
 	case *net.TCPAddr:
-		a, err := IPToDomainAddr(addr.(*net.TCPAddr).IP)
+		a, err := s.IPToDomainAddr(addr.(*net.TCPAddr).IP)
 		if err != nil {
 			return nil, err
 		}
@@ -42,7 +27,7 @@ func AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {
 
 		return a, nil
 	case *net.UDPAddr:
-		a, err := IPToDomainAddr(addr.(*net.UDPAddr).IP)
+		a, err := s.IPToDomainAddr(addr.(*net.UDPAddr).IP)
 		if err != nil {
 			return nil, err
 		}
@@ -54,18 +39,18 @@ func AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {
 	}
 }
 
-func IPToDomainAddr(addr net.IP) (utils.Addr, error) {
-	return IPToDomainAddrBuffer(addr, make([]byte, utils.MaxAddrLen))
+func (s *stack) IPToDomainAddr(addr net.IP) (utils.Addr, error) {
+	return s.IPToDomainAddrBuffer(addr, make([]byte, utils.MaxAddrLen))
 }
 
-func IPToDomainAddrBuffer(addr net.IP, b []byte) (utils.Addr, error) {
+func (s *stack) IPToDomainAddrBuffer(addr net.IP, b []byte) (utils.Addr, error) {
 	if ip := addr.To4(); ip != nil {
 		if ip[0] != 44 || ip[1] != 44 {
 			return b, fmt.Errorf("%v not found", addr)
 		}
 
-		s := matchTree.Load(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", ip[3], ip[2]))
-		if v, ok := s.(*dnsmessage.PTRResource); ok {
+		option := s.Tree.Load(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", ip[3], ip[2]))
+		if v, ok := option.(*dnsmessage.PTRResource); ok {
 			b = append(b[:0], utils.AddrTypeDomain, byte(v.PTR.Length))
 			b = append(b, v.PTR.Data[:v.PTR.Length]...)
 			b = append(b, 0, 0)
@@ -81,25 +66,25 @@ func IPToDomainAddrBuffer(addr net.IP, b []byte) (utils.Addr, error) {
 
 var errZeroLength = errors.New("length of questions in dns message is 0")
 
-func ResolveDNS(m *dnsmessage.Message) (*dnsmessage.Message, error) {
+func (s *stack) ResolveDNS(m *dnsmessage.Message) (*dnsmessage.Message, error) {
 	if len(m.Questions) == 0 {
 		return m, errZeroLength
 	}
 
 	name := m.Questions[0].Name.String()
-	switch s := matchTree.Load(name); s.(type) {
+	switch option := s.Tree.Load(name); option.(type) {
 	case string:
-		switch v := s.(string); v {
+		switch v := option.(string); v {
 		case "PROXY":
 			switch m.Questions[0].Type {
 			case dnsmessage.TypeA:
-				typeA := &dnsmessage.AResource{A: [4]byte{44, 44, uint8(counter >> 8), uint8(counter)}}
-				matchTree.Store(name, typeA)
+				typeA := &dnsmessage.AResource{A: [4]byte{44, 44, uint8(s.counter >> 8), uint8(s.counter)}}
+				s.Tree.Store(name, typeA)
 
 				typePTR := &dnsmessage.PTRResource{PTR: m.Questions[0].Name}
-				matchTree.Store(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", uint8(counter), uint8(counter>>8)), typePTR)
+				s.Tree.Store(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8)), typePTR)
 
-				counter++
+				s.counter++
 
 				m.Header.RCode = dnsmessage.RCodeSuccess
 				m.Answers = append(m.Answers[:0], dnsmessage.Resource{
@@ -150,7 +135,7 @@ func ResolveDNS(m *dnsmessage.Message) (*dnsmessage.Message, error) {
 					Class: m.Questions[0].Class,
 					TTL:   1,
 				},
-				Body: s.(*dnsmessage.PTRResource),
+				Body: option.(*dnsmessage.PTRResource),
 			})
 		default:
 			m.Header.RCode = dnsmessage.RCodeRefused
@@ -166,7 +151,7 @@ func ResolveDNS(m *dnsmessage.Message) (*dnsmessage.Message, error) {
 					Class: m.Questions[0].Class,
 					TTL:   1,
 				},
-				Body: s.(*dnsmessage.AResource),
+				Body: option.(*dnsmessage.AResource),
 			})
 		case dnsmessage.TypeAAAA:
 			m.Header.RCode = dnsmessage.RCodeRefused

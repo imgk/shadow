@@ -9,7 +9,6 @@ import (
 
 	"github.com/eycorsican/go-tun2socks/core"
 
-	"github.com/imgk/shadow/dns"
 	"github.com/imgk/shadow/utils"
 )
 
@@ -85,18 +84,20 @@ type UDPConn struct {
 	core.UDPConn
 	*io.PipeReader
 	*io.PipeWriter
+	*stack
 	active chan struct{}
 	addr   chan net.Addr
 	target *net.UDPAddr
 }
 
-func NewUDPConn(conn core.UDPConn, tgt *net.UDPAddr) *UDPConn {
+func NewUDPConn(conn core.UDPConn, tgt *net.UDPAddr, s *stack) *UDPConn {
 	r, w := io.Pipe()
 
 	return &UDPConn{
 		UDPConn:    conn,
 		PipeReader: r,
 		PipeWriter: w,
+		stack:      s,
 		active:     make(chan struct{}),
 		addr:       make(chan net.Addr, 1),
 		target:     tgt,
@@ -135,7 +136,7 @@ func (conn *UDPConn) WriteTo(data []byte, target *net.UDPAddr) error {
 	case <-conn.active:
 		return io.EOF
 	default:
-		addr, err := dns.IPToDomainAddrBuffer(target.IP, make([]byte, utils.MaxAddrLen))
+		addr, err := conn.stack.IPToDomainAddrBuffer(target.IP, make([]byte, utils.MaxAddrLen))
 		if err != nil {
 			conn.addr <- target
 		} else {

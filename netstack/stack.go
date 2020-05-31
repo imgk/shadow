@@ -10,7 +10,6 @@ import (
 
 	"github.com/eycorsican/go-tun2socks/core"
 
-	"github.com/imgk/shadow/dns"
 	"github.com/imgk/shadow/log"
 )
 
@@ -165,7 +164,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 			continue
 		}
 
-		if m, err = dns.ResolveDNS(m); err != nil {
+		if m, err = s.ResolveDNS(m); err != nil {
 			log.Logf("resolve dns error: %v", err)
 			continue
 		}
@@ -178,7 +177,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 			}
 			n = len(bb) - 2
 		} else {
-			nr, err := dns.Resolve(b, n)
+			nr, err := s.Resolver.Resolve(b, n)
 			if err != nil {
 				log.Logf("resolve dns error: %v", err)
 				continue
