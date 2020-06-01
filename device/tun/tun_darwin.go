@@ -15,39 +15,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-import "os/exec"
-
-func modifyRouteTable(cidr []string, cmdType byte, name string) error {
-	cmd := (*exec.Cmd)(nil)
-	for _, item := range cidr {
-		switch cmdType {
-		case 1:
-			cmd = exec.Command("route", "-n", "add", "-net", item, "-interface", name)
-		case 2:
-			cmd = exec.Command("route", "-n", "delete", "-net", item, "-interface", name)
-		default:
-			return fmt.Errorf("not supported cmd")
-		}
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("cmd: %v error: %w", cmd, err)
-		}
-	}
-
-	return nil
-}
-
 const utunControlName = "com.apple.net.utun_control"
 const _IOC_OUT = 0x40000000
 const _IOC_IN = 0x80000000
 const _IOC_INOUT = _IOC_IN | _IOC_OUT
 
 const _SYSPROTO_CONTROL = 2 /* #define SYSPROTO_CONTROL 2 */
-const _UTUN_OPT_IFNAME  = 2 /* #define UTUN_OPT_IFNAME 2 */
+const _UTUN_OPT_IFNAME = 2  /* #define UTUN_OPT_IFNAME 2 */
 
 // _CTLIOCGINFO value derived from /usr/include/sys/{kern_control,ioccom}.h
 // https://github.com/apple/darwin-xnu/blob/master/bsd/sys/ioccom.h
-
-// _CTLIOCGINFO value derived from /usr/include/sys/{kern_control,ioccom}.h
 const _CTLIOCGINFO = (0x40000000 | 0x80000000) | ((100 & 0x1fff) << 16) | uint32(byte('N'))<<8 | 3
 
 // #define	SIOCAIFADDR_IN6		_IOW('i', 26, struct in6_aliasreq) = 0x8080691a
@@ -218,7 +195,7 @@ func (d *Device) Activate(addr, mask, gateway string) error {
 		ifra_dstaddr: unix.RawSockaddrInet4{
 			Len:    unix.SizeofSockaddrInet4,
 			Family: unix.AF_INET,
-			Addr:   d.Conf4.Addr,
+			Addr:   d.Conf4.Gateway,
 		},
 		ifra_mask: unix.RawSockaddrInet4{
 			Len:    unix.SizeofSockaddrInet4,
@@ -277,19 +254,20 @@ func (d *Device) Activate(addr, mask, gateway string) error {
 	return nil
 }
 
+// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h#L343-L356
 type rtMetrics struct {
-	rmx_locks     uint32
-	rmx_mtu       uint32
-	rmx_hopcount  uint32
-	rmx_expire    int32
-	rmx_recvpipe  uint32
-	rmx_sendpipe  uint32
-	rmx_ssthresh  uint32
-	rmx_rtt       uint32
-	rmx_rttvar    uint32
-	rmx_pksent    uint32
-	rmx_state     uint32
-	rmx_filler    [3]uint32
+	rmx_locks    uint32
+	rmx_mtu      uint32
+	rmx_hopcount uint32
+	rmx_expire   int32
+	rmx_recvpipe uint32
+	rmx_sendpipe uint32
+	rmx_ssthresh uint32
+	rmx_rtt      uint32
+	rmx_rttvar   uint32
+	rmx_pksent   uint32
+	rmx_state    uint32
+	rmx_filler   [3]uint32
 }
 
 type rtMessageHeader struct {
@@ -297,40 +275,33 @@ type rtMessageHeader struct {
 	rtm_version byte
 	rtm_type    byte
 	rtm_index   uint16
-	rtm_flags   int	   
-	rtm_addrs   int	   
-	rtm_pid     uint
-	rtm_seq     int	   
-	rtm_errno   int	   
-	rtm_use     int	   
+	rtm_flags   int32
+	rtm_addrs   int32
+	rtm_pid     uint32
+	rtm_seq     int32
+	rtm_errno   int32
+	rtm_use     int32
 	rtm_inits   uint32
 	rtm_rmx     rtMetrics
 }
 
 func (d *Device) AddRoute(cidr []string) error {
-	//return d.modifyRouteTable(cidr, 1) /* RTM_ADD 0x1 */
-	return modifyRouteTable(cidr, 1, d.Name)
+	return d.modifyRouteTable(cidr, 1) /* RTM_ADD 0x1 */
 }
 
 func (d *Device) DelRoute(cidr []string) error {
-	//return d.modifyRouteTable(cidr, 2) /* RTM_DELETE 0x02 */
-	return modifyRouteTable(cidr, 2, d.Name)
+	return d.modifyRouteTable(cidr, 2) /* RTM_DELETE 0x02 */
 }
 
 func (d *Device) modifyRouteTable(cidr []string, cmd byte) error {
-	// https://pdos.csail.mit.edu/pipermail/click/2009-December/008473.html
 	// https://opensource.apple.com/source/network_cmds/network_cmds-596/route.tproj/route.c.auto.html
-	// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h
-	// https://github.com/apple/darwin-xnu/blob/master/bsd/net/if_dl.h
-	// https://github.com/apple/darwin-xnu/blob/master/bsd/netinet/in.h
-	// https://github.com/apple/darwin-xnu/blob/master/bsd/sys/socket.h
-	fd, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, 0)
+	fd, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
 	if err != nil {
 		return fmt.Errorf("new socket error:%w", err)
 	}
 	defer unix.Close(fd)
 
-	Roundup := func (a uintptr) uintptr {
+	Roundup := func(a uintptr) uintptr {
 		if a > 0 {
 			return 1 + ((a - 1) | (unsafe.Sizeof(uint32(0)) - 1))
 		}
@@ -350,36 +321,36 @@ func (d *Device) modifyRouteTable(cidr []string, cmd byte) error {
 		return err
 	}
 
+	// https://gitlab.run.montefiore.ulg.ac.be/sdn-pp/fastclick/blob/master/elements/userlevel/kerneltun.cc#L292-334
 	msgSlice := make([]byte, unsafe.Sizeof(message{}))
 
 	msg := (*message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen  = uint16(unsafe.Sizeof(rtMessageHeader{})+l+l+l)
+	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rtMessageHeader{}) + l + l + l)
 	msg.hdr.rtm_version = 5 /* RTM_VERSION 5 */
-	msg.hdr.rtm_type    = cmd
-	msg.hdr.rtm_index   = uint16(interf.Index)
-	msg.hdr.rtm_flags   = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_IFSCOPE
-	msg.hdr.rtm_addrs   = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
-	msg.hdr.rtm_pid     = 0
-	msg.hdr.rtm_seq     = 0
-	msg.hdr.rtm_errno   = 0
-	msg.hdr.rtm_inits   = 0
+	msg.hdr.rtm_type = cmd
+	msg.hdr.rtm_index = uint16(interf.Index)
+	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
+	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
+	msg.hdr.rtm_pid = 0
+	msg.hdr.rtm_seq = 0
+	msg.hdr.rtm_errno = 0
+	msg.hdr.rtm_use = 0
+	msg.hdr.rtm_inits = 0
 
 	msg_dest := (*unix.RawSockaddrInet4)(unsafe.Pointer(&msg.bb))
 	msg_dest.Len = unix.SizeofSockaddrInet4
 	msg_dest.Family = unix.AF_INET
 
-	msg_gateway := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb))+l))
+	msg_gateway := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l))
 	msg_gateway.Len = unix.SizeofSockaddrInet4
 	msg_gateway.Family = unix.AF_INET
-	msg_gateway.Addr = d.Conf4.Addr
+	msg_gateway.Addr = d.Conf4.Gateway
 
-	msg_mask := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb))+l+l))
+	msg_mask := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l + l))
 	msg_mask.Len = unix.SizeofSockaddrInet4
 	msg_mask.Family = unix.AF_INET
 
-	for i, item := range cidr {
-		msg.hdr.rtm_seq = i
-
+	for _, item := range cidr {
 		_, ipNet, err := net.ParseCIDR(item)
 		if err != nil {
 			return fmt.Errorf("cidr %v error: %w", item, err)
@@ -397,6 +368,8 @@ func (d *Device) modifyRouteTable(cidr []string, cmd byte) error {
 		if _, err := unix.Write(fd, msgSlice[:msg.hdr.rtm_msglen]); err != nil {
 			return fmt.Errorf("write to socket error: %w", err)
 		}
+
+		msg.hdr.rtm_seq++
 	}
 
 	return nil
