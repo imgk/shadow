@@ -72,17 +72,8 @@ func LoadConfigFromString(s string) error {
 	return json.Unmarshal([]byte(s), &conf)
 }
 
-func GetConfig() ([]byte, error) {
-	b, err := json.Marshal(&conf)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
-}
-
-func GetConf() *Conf {
-	return &conf
+func GetConfigByteSlice() ([]byte, error) {
+	return json.Marshal(&conf)
 }
 
 func LoadDomainRules(matchTree *utils.Tree) {
