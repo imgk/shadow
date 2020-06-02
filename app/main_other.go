@@ -85,17 +85,6 @@ func Run() {
 
 		log.Logf("addr: %v, mask: %v, gateway: %v", addr, mask, gateway)
 	}
-	if cidr := os.Getenv("TunRoute"); cidr != "" {
-		addr := strings.Split(cidr, ";")
-
-		if err := dev.AddRoute(addr); err != nil {
-			log.Logf("add tun route table error: %v", err)
-			return
-		}
-
-		log.Logf("add target: %v to route table", cidr)
-	}
-	log.Logf("tun device name: %v", dev.Name)
 
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
@@ -113,6 +102,17 @@ func Run() {
 			return
 		}
 	}()
+
+	if cidr := os.Getenv("TunRoute"); cidr != "" {
+		addr := strings.Split(cidr, ";")
+
+		if err := dev.AddRoute(addr); err != nil {
+			log.Logf("add tun route table error: %v", err)
+			return
+		}
+
+		log.Logf("add target: %v to route table", cidr)
+	}
 
 	log.Logf("shadowsocks is running...")
 	<-sigCh
