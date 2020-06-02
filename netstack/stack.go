@@ -142,13 +142,13 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 	b := make([]byte, 1024)
 	m := new(dnsmessage.Message)
 
-	timer := time.NewTimer(time.Minute)
+	timer := time.NewTimer(time.Second * 3)
 	sigCh := make(chan struct{})
 
 	go CloseTimeout(conn, timer, sigCh)
 
 	for {
-		timer.Reset(time.Minute)
+		timer.Reset(time.Second * 3)
 		n, raddr, err := conn.ReadTo(b[2:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
