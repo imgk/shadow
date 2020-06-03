@@ -29,6 +29,22 @@ type DuplexConn interface {
 	CloseWrite() error
 }
 
+type duplexConn struct {
+	net.Conn
+}
+
+func NewDuplexConn(conn net.Conn) duplexConn {
+	return duplexConn{Conn: conn}
+}
+
+func (conn duplexConn) CloseRead() error {
+	return conn.SetReadDeadline(time.Now())
+}
+
+func (conn duplexConn) CloseWrite() error {
+	return conn.SetWriteDeadline(time.Now())
+}
+
 func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
 	defer conn.Close()
 
@@ -57,8 +73,18 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 	if wt, ok := r.(io.WriterTo); ok {
 		return wt.WriteTo(w)
 	}
+	if c, ok := r.(duplexConn); ok {
+		if wt, ok := c.Conn.(io.WriterTo); ok {
+			return wt.WriteTo(w)
+		}
+	}
 	if rt, ok := w.(io.ReaderFrom); ok {
 		return rt.ReadFrom(r)
+	}
+	if c, ok := w.(duplexConn); ok {
+		if rt, ok := c.Conn.(io.ReaderFrom); ok {
+			return rt.ReadFrom(r)
+		}
 	}
 
 	b := make([]byte, 4096)

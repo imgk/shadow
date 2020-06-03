@@ -115,7 +115,7 @@ func (conn *UDPConn) WriteFrom(data []byte, src net.Addr) (int, error) {
 
 	addr, err := utils.ResolveUDPAddr(src.(utils.Addr))
 	if err != nil {
-		return 0, fmt.Errorf("resolve udp addr error: %v", err)
+		return 0, fmt.Errorf("resolve udp addr error: %w", err)
 	}
 
 	return conn.UDPConn.WriteFrom(data, addr)
@@ -132,17 +132,20 @@ func (conn *UDPConn) WriteTo(data []byte, target *net.UDPAddr) error {
 		return err
 	}
 
+	var origin net.Addr
+	addr, err := conn.stack.IPToDomainAddrBuffer(target.IP, make([]byte, utils.MaxAddrLen))
+	if err != nil {
+		origin = target
+	} else {
+		binary.BigEndian.PutUint16(addr[len(addr)-2:], uint16(target.Port))
+		origin = addr
+	}
+
 	select {
 	case <-conn.active:
 		return io.EOF
-	default:
-		addr, err := conn.stack.IPToDomainAddrBuffer(target.IP, make([]byte, utils.MaxAddrLen))
-		if err != nil {
-			conn.addr <- target
-		} else {
-			binary.BigEndian.PutUint16(addr[len(addr)-2:], uint16(target.Port))
-			conn.addr <- addr
-		}
+	case conn.addr <- origin:
+		return nil
 	}
 
 	return nil
