@@ -139,7 +139,7 @@ func CloseTimeout(conn *UDPConn, timer *time.Timer, sigCh chan struct{}) {
 }
 
 func (s *stack) HandleMessage(conn *UDPConn) {
-	b := make([]byte, 1024)
+	b := make([]byte, 4096)
 	m := new(dnsmessage.Message)
 
 	timer := time.NewTimer(time.Second * 3)

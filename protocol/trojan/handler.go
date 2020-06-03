@@ -34,13 +34,13 @@ const (
 	Assocaite = 3
 )
 
-type Conn struct {
+type Stream struct {
 	net.Conn
 	io.Reader
 	io.Writer
 }
 
-func NewObfsConn(conn net.Conn, block cipher.Block) (connection Conn, err error) {
+func NewCTRStream(conn net.Conn, block cipher.Block) (connection Stream, err error) {
 	iv := make([]byte, aes.BlockSize)
 
 	_, err = rand.Read(iv)
@@ -53,7 +53,7 @@ func NewObfsConn(conn net.Conn, block cipher.Block) (connection Conn, err error)
 		return
 	}
 
-	connection = Conn{
+	connection = Stream{
 		Conn: conn,
 		Reader: cipher.StreamReader{
 			S: cipher.NewCTR(block, iv),
@@ -68,19 +68,19 @@ func NewObfsConn(conn net.Conn, block cipher.Block) (connection Conn, err error)
 	return
 }
 
-func (conn Conn) Read(b []byte) (int, error) {
+func (conn Stream) Read(b []byte) (int, error) {
 	return conn.Reader.Read(b)
 }
 
-func (conn Conn) Write(b []byte) (int, error) {
+func (conn Stream) Write(b []byte) (int, error) {
 	return conn.Writer.Write(b)
 }
 
-func (conn Conn) ReadFrom(r io.Reader) (int64, error) {
+func (conn Stream) ReadFrom(r io.Reader) (int64, error) {
 	return Copy(conn.Writer, r)
 }
 
-func (conn Conn) WriteTo(w io.Writer) (int64, error) {
+func (conn Stream) WriteTo(w io.Writer) (int64, error) {
 	return Copy(w, conn.Reader)
 }
 
@@ -194,7 +194,7 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 		return
 	}
 
-	conn, err = NewObfsConn(conn, h.WebSocket.Block)
+	conn, err = NewCTRStream(conn, h.WebSocket.Block)
 	if err != nil {
 		err = fmt.Errorf("new obfs conn error: %w", err)
 		return
@@ -214,7 +214,17 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 				continue
 			}
 
-			return item.OpenStream()
+			conn, err = item.OpenStream()
+			if err != nil {
+				if err == smux.ErrGoAway {
+					err = nil
+					item.Close()
+					delete(h.Mux.Map, k)
+					continue
+				}
+			}
+
+			return conn, err
 		}
 	}
 
@@ -365,7 +375,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 			return nil
 		}
 
-		return fmt.Errorf("relay error: %v", err)
+		return fmt.Errorf("relay error: %w", err)
 	}
 
 	return nil
@@ -485,7 +495,12 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 					break
 				}
 			}
-			err = fmt.Errorf("read packet error: %v", er)
+
+			if er == smux.ErrTimeout || er == io.ErrClosedPipe {
+				break
+			}
+
+			err = fmt.Errorf("read addr error: %w", er)
 			break
 		}
 
@@ -497,7 +512,12 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 					break
 				}
 			}
-			err = fmt.Errorf("read packet error: %v", er)
+
+			if er == smux.ErrTimeout || er == io.ErrClosedPipe {
+				break
+			}
+
+			err = fmt.Errorf("read size info error: %w", er)
 			break
 		}
 
@@ -509,13 +529,18 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 					break
 				}
 			}
-			err = fmt.Errorf("read packet error: %v", er)
+
+			if er == smux.ErrTimeout || er == io.ErrClosedPipe {
+				break
+			}
+
+			err = fmt.Errorf("read packet error: %w", er)
 			break
 		}
 
 		_, er = conn.WriteFrom(b[len(raddr):n], raddr)
 		if er != nil {
-			err = fmt.Errorf("write packet error: %v", er)
+			err = fmt.Errorf("write packet error: %w", er)
 			break
 		}
 	}

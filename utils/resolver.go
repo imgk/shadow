@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -115,7 +116,7 @@ func NewResolver(s string) (Resolver, error) {
 			ForceAttemptHTTP2: true,
 		}
 
-		return &DoHWireformat{
+		return &DoHWirePost{
 			BaseUrl: s,
 			Timeout: time.Second * 3,
 			Client: http.Client{
@@ -231,13 +232,13 @@ func (r *TLSResolver) Resolve(b []byte, n int) (int, error) {
 	return n, nil
 }
 
-type DoHWireformat struct {
+type DoHWirePost struct {
 	BaseUrl string
 	Timeout time.Duration
 	http.Client
 }
 
-func (r *DoHWireformat) Resolve(b []byte, n int) (int, error) {
+func (r *DoHWirePost) Resolve(b []byte, n int) (int, error) {
 	req, err := http.NewRequest(http.MethodPost, r.BaseUrl, bytes.NewBuffer(b[2:2+n]))
 	if err != nil {
 		return 0, err
@@ -255,20 +256,26 @@ func (r *DoHWireformat) Resolve(b []byte, n int) (int, error) {
 		return 0, fmt.Errorf("bad http response code: %v", res.StatusCode)
 	}
 
-	n = 2
-	for {
-		nr, err := res.Body.Read(b[n:])
-		n += nr
-		if err != nil {
-			if err == io.EOF {
-				return n - 2, nil
-			}
-			return n - 2, err
-		}
+	msg, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return 0, err
 	}
+
+	n = copy(b[2:], msg)
+	if n < len(msg) {
+		return n, io.ErrShortBuffer
+	}
+
+	return n, nil
 }
 
-func (r *DoHWireformat) Get(b []byte, n int) (int, error) {
+type DoHWireGet struct {
+	BaseUrl string
+	Timeout time.Duration
+	http.Client
+}
+
+func (r *DoHWireGet) Resolve(b []byte, n int) (int, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s?%s=%s", r.BaseUrl, "dns", base64.RawURLEncoding.EncodeToString(b)), nil)
 	if err != nil {
 		return 0, err
@@ -286,15 +293,15 @@ func (r *DoHWireformat) Get(b []byte, n int) (int, error) {
 		return 0, fmt.Errorf("bad http response code: %v", res.StatusCode)
 	}
 
-	n = 2
-	for {
-		nr, err := res.Body.Read(b[n:])
-		n += nr
-		if err != nil {
-			if err == io.EOF {
-				return n - 2, nil
-			}
-			return n - 2, err
-		}
+	msg, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return 0, err
 	}
+
+	n = copy(b[2:], msg)
+	if n < len(msg) {
+		return n, io.ErrShortBuffer
+	}
+
+	return n, nil
 }

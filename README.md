@@ -50,16 +50,18 @@ trojan://password[:mux]@server:port[/websocket-path]
 
 Currently shadowsocks only support CHACHA20-IETF-POLY1305, AES-256-GCM and DUMMY for no encryption/decryption.
 
-For websocket for trojan, set double tls to off and obfs to on. The obfs password is same to trojan password.
+For websocket for trojan, set double tls off and obfs on. The obfs password is identical with trojan password.
 
 2. Support DNS over HTTPS and DNS over TLS
 
 ```
 udp://8.8.8.8
 tcp://8.8.8.8
-tls://rubyfish.cn
-https://rubyfish.cn/dns-query
+tls://1.1.1.1
+https://1.1.1.1/dns-query
 ```
+
+DNS over HTTPS and DNS over TLS DO NOT support domain url.
 
 3. Filter String (Windows only)
 
