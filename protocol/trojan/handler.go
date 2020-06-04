@@ -40,7 +40,7 @@ type Stream struct {
 	io.Writer
 }
 
-func NewCTRStream(conn net.Conn, block cipher.Block) (connection Stream, err error) {
+func NewStream(conn net.Conn, block cipher.Block) (stream Stream, err error) {
 	iv := make([]byte, aes.BlockSize)
 
 	_, err = rand.Read(iv)
@@ -53,7 +53,7 @@ func NewCTRStream(conn net.Conn, block cipher.Block) (connection Stream, err err
 		return
 	}
 
-	connection = Stream{
+	stream = Stream{
 		Conn: conn,
 		Reader: cipher.StreamReader{
 			S: cipher.NewCTR(block, iv),
@@ -170,12 +170,19 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Connect() (conn net.Conn, err error) {
-	conn, err = net.Dial("tcp", h.server)
-	if err != nil {
-		return
+	for i := 0; i < 5; i++ {
+		conn, err = net.Dial("tcp", h.server)
+		if err != nil {
+			continue
+		}
+		conn.(*net.TCPConn).SetKeepAlive(true)
+		conn = tls.UClient(conn, h.Config, tls.HelloRandomized)
+		if err = conn.(*tls.UConn).Handshake(); err != nil {
+			conn.Close()
+			continue
+		}
+		break
 	}
-	conn.(*net.TCPConn).SetKeepAlive(true)
-	conn = tls.UClient(conn, h.Config, tls.HelloRandomized)
 
 	if h.WebSocket == nil {
 		return
@@ -194,7 +201,7 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 		return
 	}
 
-	conn, err = NewCTRStream(conn, h.WebSocket.Block)
+	conn, err = NewStream(conn, h.WebSocket.Block)
 	if err != nil {
 		err = fmt.Errorf("new obfs conn error: %w", err)
 		return
@@ -217,7 +224,6 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 			conn, err = item.OpenStream()
 			if err != nil {
 				if err == smux.ErrGoAway {
-					err = nil
 					item.Close()
 					delete(h.Mux.Map, k)
 					continue
