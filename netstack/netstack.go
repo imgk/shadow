@@ -163,12 +163,17 @@ func (conn *UDPConn) ReadTo(b []byte) (int, net.Addr, error) {
 		return n, nil, err
 	}
 
-	addr, ok := <-conn.addr
-	if ok {
-		return n, addr, nil
+	select {
+	case <-conn.active:
+		return 0, nil, io.EOF
+	case addr, ok := <-conn.addr:
+		if ok {
+			return n, addr, nil
+		}
+		return n, addr, io.EOF
 	}
 
-	return n, addr, io.EOF
+	return 0, nil, io.EOF
 }
 
 func (conn *UDPConn) Close() error {
@@ -177,7 +182,6 @@ func (conn *UDPConn) Close() error {
 		return nil
 	default:
 		close(conn.active)
-		close(conn.addr)
 	}
 
 	conn.PipeReader.Close()
