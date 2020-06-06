@@ -38,14 +38,14 @@ type DirectUDPConn struct {
 	net.PacketConn
 }
 
-func NewDirectUDPConn(conn core.UDPConn, pc net.PacketConn) *DirectUDPConn {
-	return &DirectUDPConn{
+func NewDirectUDPConn(conn core.UDPConn, pc net.PacketConn) DirectUDPConn {
+	return DirectUDPConn{
 		UDPConn:    conn,
 		PacketConn: pc,
 	}
 }
 
-func (conn *DirectUDPConn) Close() error {
+func (conn DirectUDPConn) Close() error {
 	e1 := conn.UDPConn.Close()
 	e2 := conn.PacketConn.Close()
 
@@ -63,20 +63,20 @@ func (conn *DirectUDPConn) Close() error {
 	return nil
 }
 
-func (conn *DirectUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+func (conn DirectUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.UDPConn.WriteFrom(b, addr.(*net.UDPAddr))
 }
 
-func (conn *DirectUDPConn) WriteTo(b []byte, addr *net.UDPAddr) error {
+func (conn DirectUDPConn) WriteTo(b []byte, addr *net.UDPAddr) error {
 	_, err := conn.PacketConn.WriteTo(b, addr)
 	return err
 }
 
-func (conn *DirectUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
+func (conn DirectUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
 	return 0, nil, errors.New("not support")
 }
 
-func (conn *DirectUDPConn) LocalAddr() net.Addr {
+func (conn DirectUDPConn) LocalAddr() net.Addr {
 	return conn.UDPConn.LocalAddr()
 }
 
@@ -166,11 +166,8 @@ func (conn *UDPConn) ReadTo(b []byte) (int, net.Addr, error) {
 	select {
 	case <-conn.active:
 		return 0, nil, io.EOF
-	case addr, ok := <-conn.addr:
-		if ok {
-			return n, addr, nil
-		}
-		return n, addr, io.EOF
+	case addr := <-conn.addr:
+		return n, addr, nil
 	}
 
 	return 0, nil, io.EOF

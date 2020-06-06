@@ -222,7 +222,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 	conn.Close()
 }
 
-func (s *stack) RedirectUDP(conn *DirectUDPConn) {
+func (s *stack) RedirectUDP(conn DirectUDPConn) {
 	b := make([]byte, MaxUDPPacketSize)
 	for {
 		conn.PacketConn.SetDeadline(time.Now().Add(time.Minute))
