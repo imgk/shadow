@@ -91,7 +91,6 @@ func (d *Device) Close() error {
 		return nil
 	default:
 		close(d.active)
-		close(d.event)
 	}
 	defer d.Handle.Close()
 
@@ -507,6 +506,7 @@ func (d *Device) writeLoop() {
 
 				n, m = 0, 0
 			}
+		case <-d.active:
 		}
 	}
 }
@@ -515,8 +515,7 @@ func (d *Device) Write(b []byte) (int, error) {
 	select {
 	case <-d.active:
 		return 0, io.EOF
-	default:
-		d.event <- struct{}{}
+	case d.event <- struct{}{}:
 	}
 
 	n, err := d.PipeWriter.Write(b)
