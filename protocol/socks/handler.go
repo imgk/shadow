@@ -39,29 +39,13 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, utils.Addr, error) {
-	target := make([]byte, 3+utils.MaxAddrLen)
-
-	target[0], target[1], target[2] = 5, cmd, 0
-	n := 3
-
-	if addr, ok := tgt.(utils.Addr); !ok {
-		addr, err := utils.ResolveAddrBuffer(tgt, target[3:])
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolve addr error: %w", err)
-		}
-		n = 3 + len(addr)
-	} else {
-		copy(target[3:], addr)
-		n = 3 + len(addr)
-	}
-
 	conn, err := net.Dial("tcp", h.server)
 	if err != nil {
 		return nil, nil, err
 	}
 	conn.(*net.TCPConn).SetKeepAlive(true)
 
-	addr, err := Handshake(conn, target[:n], h.Auth)
+	addr, err := Handshake(conn, tgt, cmd, h.Auth)
 	if err != nil {
 		return nil, nil, err
 	}

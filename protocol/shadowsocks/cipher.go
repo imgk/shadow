@@ -30,15 +30,15 @@ type aes256gcm struct {
 	psk []byte
 }
 
-func (a *aes256gcm) KeySize() int {
+func (a aes256gcm) KeySize() int {
 	return 32
 }
 
-func (a *aes256gcm) SaltSize() int {
+func (a aes256gcm) SaltSize() int {
 	return 32
 }
 
-func (a *aes256gcm) NewAead(salt []byte) (cipher.AEAD, error) {
+func (a aes256gcm) NewAead(salt []byte) (cipher.AEAD, error) {
 	subkey := make([]byte, a.KeySize())
 	hkdfSHA1(a.psk, salt, subkey)
 	block, err := aes.NewCipher(subkey)
@@ -53,15 +53,15 @@ type chacha20ietfpoly1305 struct {
 	psk []byte
 }
 
-func (c *chacha20ietfpoly1305) KeySize() int {
+func (c chacha20ietfpoly1305) KeySize() int {
 	return 32
 }
 
-func (c *chacha20ietfpoly1305) SaltSize() int {
+func (c chacha20ietfpoly1305) SaltSize() int {
 	return 32
 }
 
-func (c *chacha20ietfpoly1305) NewAead(salt []byte) (cipher.AEAD, error) {
+func (c chacha20ietfpoly1305) NewAead(salt []byte) (cipher.AEAD, error) {
 	subkey := make([]byte, c.KeySize())
 	hkdfSHA1(c.psk, salt, subkey)
 
@@ -71,11 +71,11 @@ func (c *chacha20ietfpoly1305) NewAead(salt []byte) (cipher.AEAD, error) {
 func NewCipher(method, password string) (Cipher, error) {
 	switch strings.ToUpper(method) {
 	case "AES-256-GCM":
-		c := &aes256gcm{}
+		c := aes256gcm{}
 		c.psk = kdf(password, c.KeySize())
 		return c, nil
 	case "CHACHA20-IETF-POLY1305":
-		c := &chacha20ietfpoly1305{}
+		c := chacha20ietfpoly1305{}
 		c.psk = kdf(password, c.KeySize())
 		return c, nil
 	case "DUMMY":

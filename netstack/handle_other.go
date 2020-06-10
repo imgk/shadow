@@ -22,7 +22,7 @@ type stack struct {
 	*utils.IPFilter
 	*utils.Tree
 	Handler
-	conns   map[net.Addr]PacketConn
+	conns   map[core.UDPConn]PacketConn
 	counter uint16
 }
 
@@ -33,7 +33,7 @@ func NewStack(handler Handler, w io.Writer) *stack {
 		IPFilter:  utils.NewIPFilter(),
 		Tree:      utils.NewTree("."),
 		Handler:   handler,
-		conns:     make(map[net.Addr]PacketConn),
+		conns:     make(map[core.UDPConn]PacketConn),
 		counter:   uint16(time.Now().Unix()),
 	}
 

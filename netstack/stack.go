@@ -261,19 +261,29 @@ func (s *stack) HandleUDP(conn *UDPConn) {
 
 func (s *stack) Add(conn PacketConn) {
 	s.Lock()
-	s.conns[conn.LocalAddr()] = conn
+	switch conn.(type) {
+	case *UDPConn:
+		s.conns[conn.(*UDPConn).UDPConn] = conn
+	case DirectUDPConn:
+		s.conns[conn.(DirectUDPConn).UDPConn] = conn
+	}
 	s.Unlock()
 }
 
 func (s *stack) Del(conn PacketConn) {
 	s.Lock()
-	delete(s.conns, conn.LocalAddr())
+	switch conn.(type) {
+	case *UDPConn:
+		delete(s.conns, conn.(*UDPConn).UDPConn)
+	case DirectUDPConn:
+		delete(s.conns, conn.(DirectUDPConn).UDPConn)
+	}
 	s.Unlock()
 }
 
 func (s *stack) ReceiveTo(conn core.UDPConn, data []byte, target *net.UDPAddr) error {
 	s.RLock()
-	pc, ok := s.conns[net.Addr(conn.LocalAddr())]
+	pc, ok := s.conns[conn]
 	s.RUnlock()
 
 	if !ok {
