@@ -190,6 +190,24 @@ func copyWaitError(c, rc DuplexConn, errCh chan error) {
 	errCh <- err
 }
 
+func CloseFromRemote(conn net.Conn, rc net.PacketConn) {
+	b := [8]byte{}
+
+	for {
+		if _, err := conn.Read(b[:]); err != nil {
+			if ne, ok := err.(net.Error); ok {
+				if ne.Timeout() {
+					continue
+				}
+			}
+
+			break
+		}
+	}
+
+	rc.Close()	
+}
+
 func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
@@ -209,6 +227,8 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 		return err
 	}
 	defer rc.Close()
+
+	go CloseFromRemote(c, rc)
 
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
