@@ -1,26 +1,24 @@
 package trojan
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
+	_ "crypto/tls"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	mrand "math/rand"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/net/websocket"
 
 	tls "github.com/refraction-networking/utls"
 	"github.com/xtaci/smux"
 
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/protocol/shadowsocks"
 	"github.com/imgk/shadow/utils"
 )
 
@@ -34,56 +32,6 @@ const (
 	Assocaite = 3
 )
 
-type Stream struct {
-	net.Conn
-	io.Reader
-	io.Writer
-}
-
-func NewStream(conn net.Conn, block cipher.Block) (stream Stream, err error) {
-	iv := make([]byte, aes.BlockSize)
-
-	_, err = rand.Read(iv)
-	if err != nil {
-		return
-	}
-
-	_, err = conn.Write(iv)
-	if err != nil {
-		return
-	}
-
-	stream = Stream{
-		Conn: conn,
-		Reader: cipher.StreamReader{
-			S: cipher.NewCTR(block, iv),
-			R: conn,
-		},
-		Writer: cipher.StreamWriter{
-			S: cipher.NewCTR(block, iv),
-			W: conn,
-		},
-	}
-
-	return
-}
-
-func (conn Stream) Read(b []byte) (int, error) {
-	return conn.Reader.Read(b)
-}
-
-func (conn Stream) Write(b []byte) (int, error) {
-	return conn.Writer.Write(b)
-}
-
-func (conn Stream) ReadFrom(r io.Reader) (int64, error) {
-	return Copy(conn.Writer, r)
-}
-
-func (conn Stream) WriteTo(w io.Writer) (int64, error) {
-	return Copy(w, conn.Reader)
-}
-
 type Mux struct {
 	sync.Mutex
 	*smux.Config
@@ -92,7 +40,7 @@ type Mux struct {
 }
 
 type WebSocket struct {
-	cipher.Block
+	shadowsocks.Cipher
 	*websocket.Config
 }
 
@@ -106,7 +54,7 @@ type Handler struct {
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, password, mux, path, err := ParseUrl(url)
+	server, cipher, password, mux, path, err := ParseUrl(url)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +98,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	}
 
 	if path != "" {
-		block, err := aes.NewCipher(pbkdf2.Key([]byte(password), []byte{48, 149, 6, 18, 13, 193, 247, 116, 197, 135, 236, 175, 190, 209, 146, 48}, 32, aes.BlockSize, sha256.New))
+		ciph, err := shadowsocks.NewCipher(cipher, password)
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +109,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		}
 
 		hd.WebSocket = &WebSocket{
-			Block:  block,
+			Cipher:  ciph,
 			Config: config,
 		}
 	}
@@ -201,12 +149,7 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 		return
 	}
 
-	conn, err = NewStream(conn, h.WebSocket.Block)
-	if err != nil {
-		err = fmt.Errorf("new obfs conn error: %w", err)
-		return
-	}
-
+	conn = shadowsocks.NewConn(conn, h.WebSocket.Cipher)
 	return
 }
 
@@ -262,7 +205,7 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 		return
 	}
 
-	h.Mux.Map[mrand.Uint32()] = sess
+	h.Mux.Map[rand.Uint32()] = sess
 
 	return
 }

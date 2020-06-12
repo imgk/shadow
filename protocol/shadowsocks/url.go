@@ -14,7 +14,7 @@ func ParseUrl(s string) (server, cipher, password string, err error) {
 
 	server = u.Host
 	if u.User == nil {
-		err = errors.New("incomplete shadowsocks url")
+		err = errors.New("incomplete shadowsocks url: no user info")
 		return
 	}
 
@@ -23,7 +23,7 @@ func ParseUrl(s string) (server, cipher, password string, err error) {
 	if s, ok := u.User.Password(); ok {
 		password = s
 	} else {
-		err = errors.New("incomplete shadowsocks url")
+		err = errors.New("incomplete shadowsocks url: no password")
 	}
 
 	return

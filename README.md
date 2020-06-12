@@ -45,12 +45,12 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
 ```
 ss://ciphername:password@server:port
 socks://username:password@server:port
-trojan://password[:mux]@server:port[/websocket-path]
+trojan://password[:mux]@server:port[/websocket-path?shadowsocks=chipername]
 ```
 
 Currently shadowsocks only support CHACHA20-IETF-POLY1305, AES-256-GCM and DUMMY for no encryption/decryption.
 
-For websocket for trojan, set double tls off and obfs on. The obfs password is identical with trojan password.
+The shadowsocks password is identical with trojan password.
 
 2. Support DNS over HTTPS and DNS over TLS
 
