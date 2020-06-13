@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -36,7 +35,7 @@ type Mux struct {
 	sync.Mutex
 	*smux.Config
 	Max int
-	Map map[uint32]*smux.Session
+	Map map[*smux.Session]struct{}
 }
 
 type WebSocket struct {
@@ -88,7 +87,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			Mutex:  sync.Mutex{},
 			Config: smux.DefaultConfig(),
 			Max:    8,
-			Map:    make(map[uint32]*smux.Session),
+			Map:    make(map[*smux.Session]struct{}),
 		}
 		hd.Mux.Config.KeepAliveDisabled = false
 
@@ -118,23 +117,11 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Connect() (conn net.Conn, err error) {
-	for i := 0; i < 5; i++ {
-		conn, err = net.Dial("tcp", h.server)
-		if err != nil {
-			continue
-		}
-		conn.(*net.TCPConn).SetKeepAlive(true)
-		conn = tls.UClient(conn, h.Config, tls.HelloRandomized)
-		if err = conn.(*tls.UConn).Handshake(); err != nil {
-			conn.Close()
-			continue
-		}
-		break
-	}
-
-	if h.WebSocket == nil {
+	conn, err = net.Dial("tcp", h.server)
+	if err != nil {
 		return
 	}
+	conn.(*net.TCPConn).SetKeepAlive(true)
 
 	CloseError := func(conn net.Conn) {
 		if err != nil {
@@ -142,6 +129,15 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 		}
 	}
 	defer CloseError(conn)
+
+	conn = tls.UClient(conn, h.Config, tls.HelloRandomized)
+	if err = conn.(*tls.UConn).Handshake(); err != nil {
+		return
+	}
+
+	if h.WebSocket == nil {
+		return
+	}
 
 	conn, err = websocket.NewClient(h.WebSocket.Config, conn)
 	if err != nil {
@@ -157,18 +153,18 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 	h.Mux.Lock()
 	defer h.Mux.Unlock()
 
-	for k, item := range h.Mux.Map {
-		if item.NumStreams() < h.Mux.Max {
-			if item.IsClosed() {
-				delete(h.Mux.Map, k)
+	for sess, _ := range h.Mux.Map {
+		if sess.NumStreams() < h.Mux.Max {
+			if sess.IsClosed() {
+				delete(h.Mux.Map, sess)
 				continue
 			}
 
-			conn, err = item.OpenStream()
+			conn, err = sess.OpenStream()
 			if err != nil {
 				if err == smux.ErrGoAway {
-					item.Close()
-					delete(h.Mux.Map, k)
+					sess.Close()
+					delete(h.Mux.Map, sess)
 					continue
 				}
 			}
@@ -177,6 +173,11 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 		}
 	}
 
+	conn, err = h.ConnectMuxNew()
+	return
+}
+
+func (h *Handler) ConnectMuxNew() (conn net.Conn, err error) {
 	conn, err = h.Connect()
 	if err != nil {
 		return
@@ -205,7 +206,7 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 		return
 	}
 
-	h.Mux.Map[rand.Uint32()] = sess
+	h.Mux.Map[sess] = struct{}{}
 
 	return
 }
@@ -217,15 +218,15 @@ func (h *Handler) CloseIdleSession() {
 		<-t.C
 
 		h.Mux.Lock()
-		for k, item := range h.Mux.Map {
-			if item.IsClosed() {
-				delete(h.Mux.Map, k)
+		for sess, _ := range h.Mux.Map {
+			if sess.IsClosed() {
+				delete(h.Mux.Map, sess)
 				continue
 			}
 
-			if item.NumStreams() == 0 {
-				item.Close()
-				delete(h.Mux.Map, k)
+			if sess.NumStreams() == 0 {
+				sess.Close()
+				delete(h.Mux.Map, sess)
 			}
 		}
 		h.Mux.Unlock()
@@ -288,6 +289,23 @@ func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 	}
 
 	if _, er := conn.Write(target[:n]); er != nil {
+		if h.Mux != nil {
+			conn.Close()
+
+			conn, err = h.ConnectMuxNew()
+			if err != nil {
+				return
+			}
+			defer CloseError(conn)
+
+			if _, er := conn.Write(target[:n]); er != nil {
+				err = fmt.Errorf("write to server %v error: %w", h.server, er)
+				return
+			}
+
+			return
+		}
+
 		err = fmt.Errorf("write to server %v error: %w", h.server, er)
 		return
 	}
