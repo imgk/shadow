@@ -62,17 +62,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	defer rc.Close()
 
-	l, ok := conn.(DuplexConn)
-	if !ok {
-		l = NewDuplexConn(conn)
-	}
-
-	r, ok := rc.(DuplexConn)
-	if !ok {
-		r = NewDuplexConn(rc)
-	}
-
-	if err := relay(l, r); err != nil {
+	if err := netstack.Relay(conn, rc); err != nil {
 		if ne, ok := err.(net.Error); ok {
 			if ne.Timeout() {
 				return nil
@@ -86,108 +76,6 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 
 	return nil
-}
-
-type DuplexConn interface {
-	net.Conn
-	CloseRead() error
-	CloseWrite() error
-}
-
-type duplexConn struct {
-	net.Conn
-}
-
-func NewDuplexConn(conn net.Conn) duplexConn {
-	return duplexConn{Conn: conn}
-}
-
-func (conn duplexConn) CloseRead() error {
-	return conn.SetReadDeadline(time.Now())
-}
-
-func (conn duplexConn) CloseWrite() error {
-	return conn.SetWriteDeadline(time.Now())
-}
-
-func Copy(w io.Writer, r io.Reader) (n int64, err error) {
-	if wt, ok := r.(io.WriterTo); ok {
-		return wt.WriteTo(w)
-	}
-	if c, ok := r.(duplexConn); ok {
-		if wt, ok := c.Conn.(io.WriterTo); ok {
-			return wt.WriteTo(w)
-		}
-	}
-	if rt, ok := w.(io.ReaderFrom); ok {
-		return rt.ReadFrom(r)
-	}
-	if c, ok := w.(duplexConn); ok {
-		if rt, ok := c.Conn.(io.ReaderFrom); ok {
-			return rt.ReadFrom(r)
-		}
-	}
-
-	b := make([]byte, 4096)
-	for {
-		nr, er := r.Read(b)
-		if nr > 0 {
-			nw, ew := w.Write(b[:nr])
-			if nw > 0 {
-				n += int64(nw)
-			}
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er != nil {
-			if er != io.EOF {
-				err = er
-			}
-			break
-		}
-	}
-
-	return n, err
-}
-
-func relay(c, rc DuplexConn) error {
-	errCh := make(chan error, 1)
-	go copyWaitError(c, rc, errCh)
-
-	_, err := Copy(rc, c)
-	if err != nil {
-		rc.Close()
-		c.Close()
-	} else {
-		rc.CloseWrite()
-		c.CloseRead()
-	}
-
-	if err != nil {
-		<-errCh
-		return err
-	}
-
-	return <-errCh
-}
-
-func copyWaitError(c, rc DuplexConn, errCh chan error) {
-	_, err := Copy(c, rc)
-	if err != nil {
-		c.Close()
-		rc.Close()
-	} else {
-		c.CloseWrite()
-		rc.CloseRead()
-	}
-
-	errCh <- err
 }
 
 func CloseFromRemote(conn net.Conn, rc net.PacketConn) {

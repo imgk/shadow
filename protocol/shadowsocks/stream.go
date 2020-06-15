@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"time"
 )
 
 const MaxPacketSize = 16384
@@ -258,18 +257,26 @@ func (c *Conn) ReadFrom(r io.Reader) (int64, error) {
 	return c.w.ReadFrom(r)
 }
 
-func (c *Conn) CloseWrite() error {
-	if conn, ok := c.Conn.(*net.TCPConn); ok {
-		return conn.CloseWrite()
-	}
+type CloseReader interface {
+	CloseRead() error
+}
 
-	return c.Conn.SetWriteDeadline(time.Now())
+type CloseWriter interface {
+	CloseWrite() error
 }
 
 func (c *Conn) CloseRead() error {
-	if conn, ok := c.Conn.(*net.TCPConn); ok {
-		return conn.CloseRead()
+	if close, ok := c.Conn.(CloseReader); ok {
+		return close.CloseRead()
 	}
 
-	return c.Conn.SetReadDeadline(time.Now())
+	return c.Conn.Close()
+}
+
+func (c *Conn) CloseWrite() error {
+	if close, ok := c.Conn.(CloseWriter); ok {
+		return close.CloseWrite()
+	}
+
+	return c.Conn.Close()
 }

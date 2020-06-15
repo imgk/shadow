@@ -23,26 +23,54 @@ type Stack interface {
 	io.Closer
 }
 
-type DuplexConn interface {
-	net.Conn
+type CloseReader interface {
 	CloseRead() error
+}
+
+type CloseWriter interface {
 	CloseWrite() error
 }
 
-type duplexConn struct {
+type DuplexConn interface {
+	net.Conn
+	CloseReader
+	CloseWriter
+}
+
+type Conn struct {
 	net.Conn
 }
 
-func NewDuplexConn(conn net.Conn) duplexConn {
-	return duplexConn{Conn: conn}
+func (c Conn) ReadFrom(r io.Reader) (int64, error) {
+	if rt, ok := c.Conn.(io.ReaderFrom); ok {
+		return rt.ReadFrom(r)
+	}
+
+	return Copy(c.Conn, r)
 }
 
-func (conn duplexConn) CloseRead() error {
-	return conn.SetReadDeadline(time.Now())
+func (c Conn) WriteTo(w io.Writer) (int64, error) {
+	if wt, ok := c.Conn.(io.WriterTo); ok {
+		return wt.WriteTo(w)
+	}
+
+	return Copy(w, c.Conn)
 }
 
-func (conn duplexConn) CloseWrite() error {
-	return conn.SetWriteDeadline(time.Now())
+func (c Conn) CloseRead() error {
+	if close, ok := c.Conn.(CloseReader); ok {
+		return close.CloseRead()
+	}
+
+	return c.Conn.Close()
+}
+
+func (c Conn) CloseWrite() error {
+	if close, ok := c.Conn.(CloseWriter); ok {
+		return close.CloseWrite()
+	}
+
+	return c.Conn.Close()
 }
 
 func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
@@ -73,18 +101,8 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 	if wt, ok := r.(io.WriterTo); ok {
 		return wt.WriteTo(w)
 	}
-	if c, ok := r.(duplexConn); ok {
-		if wt, ok := c.Conn.(io.WriterTo); ok {
-			return wt.WriteTo(w)
-		}
-	}
 	if rt, ok := w.(io.ReaderFrom); ok {
 		return rt.ReadFrom(r)
-	}
-	if c, ok := w.(duplexConn); ok {
-		if rt, ok := c.Conn.(io.ReaderFrom); ok {
-			return rt.ReadFrom(r)
-		}
 	}
 
 	b := make([]byte, 4096)
@@ -113,6 +131,20 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 	}
 
 	return n, err
+}
+
+func Relay(c, rc net.Conn) error {
+	l, ok := c.(DuplexConn)
+	if !ok {
+		l = Conn{ Conn: c }
+	}
+
+	r, ok := rc.(DuplexConn)
+	if !ok {
+		r = Conn{ Conn: rc }
+	}
+
+	return relay(l, r)
 }
 
 func relay(c, rc DuplexConn) error {

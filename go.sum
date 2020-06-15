@@ -1,8 +1,7 @@
+github.com/eycorsican/go-tun2socks v1.16.9 h1:SUfH29fPuQH5+zEv+1jpnwPxj+VvB0ygCdSwK348EcA=
+github.com/eycorsican/go-tun2socks v1.16.9/go.mod h1:wgB2BFT8ZaPKyKOQ/5dljMG/YIow+AIXyq4KBwJ5sGQ=
 github.com/eycorsican/go-tun2socks v1.16.10-0.20200529125400-d3f8697f6d99 h1:Wp6kXOSByP34wZX+83a7+KfeE9Q3NNAyYdV4y7zgPZ4=
 github.com/eycorsican/go-tun2socks v1.16.10-0.20200529125400-d3f8697f6d99/go.mod h1:wgB2BFT8ZaPKyKOQ/5dljMG/YIow+AIXyq4KBwJ5sGQ=
-github.com/refraction-networking/utls v0.0.0-20200601200209-ada0bb9b38a0 h1:vIkvetWOJZSADSKCF9MLTsQNW2httdBmYz47dQQteP8=
-github.com/refraction-networking/utls v0.0.0-20200601200209-ada0bb9b38a0/go.mod h1:tz9gX959MEFfFN5whTIocCLUG57WiILqtdVxI8c6Wj0=
-github.com/songgao/water v0.0.0-20190725173103-fd331bda3f4b h1:+y4hCMc/WKsDbAPsOQZgBSaSZ26uh2afyaWeVg/3s/c=
 github.com/songgao/water v0.0.0-20190725173103-fd331bda3f4b/go.mod h1:P5HUIBuIWKbyjl083/loAegFkfbFNx5i2qEP4CNbm7E=
 github.com/xtaci/smux v1.5.14 h1:1j+zJYDZRv9FHaWqCJfH5RPizIm0fSzJIFbfVn8zsfg=
 github.com/xtaci/smux v1.5.15-0.20200523091831-637399ad4398 h1:1nJafFt4SJPzJ5RbWBP2OUJ7Xcx7pdjyjldEdFrLfKs=
