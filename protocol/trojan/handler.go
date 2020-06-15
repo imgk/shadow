@@ -88,7 +88,6 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			Max:    8,
 			Map:    make(map[*smux.Session]struct{}),
 		}
-		hd.Mux.Config.KeepAliveDisabled = false
 
 		copy(hd.header[HexLen+2:], []byte{0x7f, utils.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
