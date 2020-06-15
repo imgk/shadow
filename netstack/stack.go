@@ -2,6 +2,7 @@ package netstack
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -41,22 +42,6 @@ type Conn struct {
 	net.Conn
 }
 
-func (c Conn) ReadFrom(r io.Reader) (int64, error) {
-	if rt, ok := c.Conn.(io.ReaderFrom); ok {
-		return rt.ReadFrom(r)
-	}
-
-	return Copy(c.Conn, r)
-}
-
-func (c Conn) WriteTo(w io.Writer) (int64, error) {
-	if wt, ok := c.Conn.(io.WriterTo); ok {
-		return wt.WriteTo(w)
-	}
-
-	return Copy(w, c.Conn)
-}
-
 func (c Conn) CloseRead() error {
 	if close, ok := c.Conn.(CloseReader); ok {
 		return close.CloseRead()
@@ -83,7 +68,7 @@ func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
 	}
 	defer rc.Close()
 
-	if err := relay(conn.(DuplexConn), rc); err != nil {
+	if err := relay(conn.(core.TCPConn), rc); err != nil {
 		if ne, ok := err.(net.Error); ok {
 			if ne.Timeout() {
 				return
@@ -101,8 +86,18 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 	if wt, ok := r.(io.WriterTo); ok {
 		return wt.WriteTo(w)
 	}
+	if c, ok := r.(Conn); ok {
+		if wt, ok := c.Conn.(io.WriterTo); ok {
+			return wt.WriteTo(w)
+		}
+	}
 	if rt, ok := w.(io.ReaderFrom); ok {
 		return rt.ReadFrom(r)
+	}
+	if c, ok := w.(Conn); ok {
+		if rt, ok := c.Conn.(io.ReaderFrom); ok {
+			return rt.ReadFrom(r)
+		}
 	}
 
 	b := make([]byte, 4096)
@@ -134,9 +129,9 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 }
 
 func Relay(c, rc net.Conn) error {
-	l, ok := c.(DuplexConn)
+	l, ok := c.(core.TCPConn)
 	if !ok {
-		l = Conn{ Conn: c }
+		return fmt.Errorf("the front conn should be the income one")
 	}
 
 	r, ok := rc.(DuplexConn)
@@ -147,17 +142,17 @@ func Relay(c, rc net.Conn) error {
 	return relay(l, r)
 }
 
-func relay(c, rc DuplexConn) error {
-	errCh := make(chan error)
-	go copyWaitError(c, rc, errCh)
+func relay(c core.TCPConn, rc DuplexConn) error {
+	errCh := make(chan error, 1)
+	go relay2(c, rc, errCh)
 
-	_, err := Copy(rc, c)
+	_, err := Copy(c, rc)
 	if err != nil {
-		rc.Close()
 		c.Close()
+		rc.Close()
 	} else {
-		rc.CloseWrite()
-		c.CloseRead()
+		c.CloseWrite()
+		rc.CloseRead()
 	}
 
 	if err != nil {
@@ -168,14 +163,14 @@ func relay(c, rc DuplexConn) error {
 	return <-errCh
 }
 
-func copyWaitError(c, rc DuplexConn, errCh chan error) {
-	_, err := Copy(c, rc)
+func relay2(c core.TCPConn, rc DuplexConn, errCh chan error) {
+	_, err := Copy(rc, c)
 	if err != nil {
-		c.Close()
 		rc.Close()
+		c.Close()
 	} else {
-		c.CloseWrite()
-		rc.CloseRead()
+		rc.CloseWrite()
+		c.CloseRead()
 	}
 
 	errCh <- err
