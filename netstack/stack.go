@@ -82,7 +82,7 @@ func (s *stack) RedirectTCP(conn net.Conn, target *net.TCPAddr) {
 	}
 }
 
-func Copy(w io.Writer, r io.Reader) (n int64, err error) {
+func copy(w io.Writer, r io.Reader) (n int64, err error) {
 	if wt, ok := r.(io.WriterTo); ok {
 		return wt.WriteTo(w)
 	}
@@ -146,7 +146,7 @@ func relay(c core.TCPConn, rc DuplexConn) error {
 	errCh := make(chan error, 1)
 	go relay2(c, rc, errCh)
 
-	_, err := Copy(c, rc)
+	_, err := copy(c, rc)
 	if err != nil {
 		c.Close()
 		rc.Close()
@@ -164,7 +164,7 @@ func relay(c core.TCPConn, rc DuplexConn) error {
 }
 
 func relay2(c core.TCPConn, rc DuplexConn, errCh chan error) {
-	_, err := Copy(rc, c)
+	_, err := copy(rc, c)
 	if err != nil {
 		rc.Close()
 		c.Close()
