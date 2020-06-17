@@ -17,13 +17,9 @@ var (
 	queryFullProcessImageNameW = kernel32.MustFindProc("QueryFullProcessImageNameW").Addr()
 )
 
-var buffer = sync.Pool{New: func() interface{} { return make([]uint16, windows.MAX_LONG_PATH) }}
-
 func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, err error) {
-	b := buffer.Get().([]uint16)
-	defer buffer.Put(b)
-
-	l := uint32(len(b))
+	b := [windows.MAX_PATH]uint16{}
+	l := uint32(windows.MAX_PATH)
 
 	r1, _, e1 := syscall.Syscall6(
 		queryFullProcessImageNameW,
