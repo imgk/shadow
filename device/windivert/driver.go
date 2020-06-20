@@ -11,6 +11,7 @@ import (
 )
 
 var windivertsys = "C:\\Windows\\System32\\WinDivert" + strconv.Itoa(32<<(^uint(0)>>63)) + ".sys"
+var windivertdll = "C:\\Windows\\System32\\WinDivert.dll"
 
 const types = 7
 

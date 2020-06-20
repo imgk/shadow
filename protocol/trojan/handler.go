@@ -149,8 +149,6 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 
 func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 	h.Mux.Lock()
-	defer h.Mux.Unlock()
-
 	for sess, _ := range h.Mux.Map {
 		if sess.NumStreams() < h.Mux.Max {
 			if sess.IsClosed() {
@@ -160,19 +158,35 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 
 			conn, err = sess.OpenStream()
 			if err != nil {
-				if err == smux.ErrGoAway {
-					sess.Close()
+				if errors.Is(err, smux.ErrGoAway) {
+					go CloseLater(sess)
 					delete(h.Mux.Map, sess)
 					continue
 				}
+				continue
 			}
 
-			return conn, err
+			h.Mux.Unlock()
+			return
 		}
 	}
+	h.Mux.Unlock()
 
 	conn, err = h.ConnectMuxNew()
 	return
+}
+
+func CloseLater(sess *smux.Session) {
+	t := time.NewTicker(time.Minute)
+
+	for {
+		<- t.C
+
+		if sess.NumStreams() == 0 {
+			sess.Close()
+			return
+		}
+	}
 }
 
 func (h *Handler) ConnectMuxNew() (conn net.Conn, err error) {
@@ -204,7 +218,9 @@ func (h *Handler) ConnectMuxNew() (conn net.Conn, err error) {
 		return
 	}
 
+	h.Mux.Lock()
 	h.Mux.Map[sess] = struct{}{}
+	h.Mux.Unlock()
 
 	return
 }
@@ -234,11 +250,12 @@ func (h *Handler) CloseIdleSession() {
 func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
 
-	CloseError := func(conn net.Conn) {
-		if err != nil {
+	CloseError := func() {
+		if err != nil && conn != nil {
 			conn.Close()
 		}
 	}
+	defer CloseError()
 
 	n := 0
 	if h.Mux == nil {
@@ -246,7 +263,6 @@ func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 		if err != nil {
 			return
 		}
-		defer CloseError(conn)
 
 		n = copy(target[0:], h.header[:HexLen+2])
 		target[HexLen+2] = cmd
@@ -269,7 +285,6 @@ func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 		if err != nil {
 			return
 		}
-		defer CloseError(conn)
 
 		target[0] = cmd
 
@@ -294,7 +309,6 @@ func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 			if err != nil {
 				return
 			}
-			defer CloseError(conn)
 
 			if _, er := conn.Write(target[:n]); er != nil {
 				err = fmt.Errorf("write to server %v error: %w", h.server, er)

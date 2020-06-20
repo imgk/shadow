@@ -3,9 +3,8 @@
 package app
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"os/signal"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -14,65 +13,46 @@ import (
 	"github.com/imgk/shadow/log"
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/systray"
 	"github.com/imgk/shadow/utils"
 )
-
-var Mutex = windows.StringToUTF16Ptr("SHADOW-MUTEX")
-
-func Exit(sigCh chan os.Signal) {
-	sigCh <- windows.SIGTERM
-}
 
 func CloseMutex(mutex windows.Handle) {
 	windows.ReleaseMutex(mutex)
 	windows.CloseHandle(mutex)
 }
 
-func Run() {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, os.Kill, windows.SIGINT, windows.SIGTERM)
+func Run(mode bool, ctx context.Context, re chan struct{}) error {
+	log.SetMode(mode)
 
-	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, Mutex)
+	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, windows.StringToUTF16Ptr("SHADOW-MUTEX"))
 	if err == nil {
 		windows.CloseHandle(mutex)
-		log.Logf("shadow is already running")
-		return
+		return fmt.Errorf("shadow is already running")
 	}
-	mutex, err = windows.CreateMutex(nil, false, Mutex)
+	mutex, err = windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("SHADOW-MUTEX"))
 	if err != nil {
-		log.Logf("create mutex error: %v", err)
-		return
+		return fmt.Errorf("create mutex error: %w", err)
 	}
 	defer CloseMutex(mutex)
 
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
 	if err != nil {
-		log.Logf("wait for mutex error: %v", err)
-		return
+		return fmt.Errorf("wait for mutex error: %w", err)
 	}
 	switch event {
 	case windows.WAIT_OBJECT_0, windows.WAIT_ABANDONED:
 	default:
-		log.Logf("wait for mutex event id error: %v", event)
-		return
-	}
-
-	if err := LoadConfig(file); err != nil {
-		log.Logf("load config config.json error: %v", err)
-		return
+		return fmt.Errorf("wait for mutex event id error: %w", event)
 	}
 
 	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
-		log.Logf("plugin %v error: %v", conf.Plugin, err)
-		return
+		return fmt.Errorf("plugin %v error: %w", conf.Plugin, err)
 	}
 
 	if plugin != nil {
 		if plugin.Start(); err != nil {
-			log.Logf("plugin start error: %v", err)
-			return
+			return fmt.Errorf("plugin start error: %w", err)
 		}
 		defer plugin.Stop()
 		log.Logf("plugin %v start", conf.Plugin)
@@ -80,7 +60,6 @@ func Run() {
 		go func() {
 			if err := plugin.Wait(); err != nil {
 				log.Logf("plugin error: %v", err)
-				Exit(sigCh)
 				return
 			}
 			log.Logf("plugin %v stop", conf.Plugin)
@@ -89,14 +68,12 @@ func Run() {
 
 	handler, err := protocol.NewHandler(conf.Server, time.Minute)
 	if err != nil {
-		log.Logf("shadowsocks error %v", err)
-		return
+		return fmt.Errorf("shadowsocks error %w", err)
 	}
 
 	dev, err := windivert.NewDevice(conf.FilterString)
 	if err != nil {
-		log.Logf("windivert error: %v", err)
-		return
+		return fmt.Errorf("windivert error: %w", err)
 	}
 	defer dev.Close()
 	LoadAppRules(dev.AppFilter)
@@ -105,53 +82,28 @@ func Run() {
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
 	if err := stack.SetResolver(conf.NameServer); err != nil {
-		log.Logf("dns server error")
-		return
+		return fmt.Errorf("dns server error")
 	}
 	LoadDomainRules(stack.Tree)
 
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
 			log.Logf("netstack exit error: %v", err)
-			Exit(sigCh)
-			return
 		}
 	}()
 
-	tray, err := systray.New()
-	if err != nil {
-		log.Logf("systray error: %v", err)
-		return
-	}
-	defer tray.Stop()
-
-	tray.AppendMenu("Reload Rules", func() {
-		if err := LoadConfig(file); err != nil {
-			log.Logf("reload config file error: %v", err)
-			Exit(sigCh)
-			return
+	for {
+		select {
+		case <-ctx.Done():
+			break
+		case <-re:
+			LoadAppRules(dev.AppFilter)
+			LoadIPRules(dev.IPFilter)
+			LoadDomainRules(stack.Tree)
 		}
-		LoadDomainRules(stack.Tree)
-		LoadAppRules(dev.AppFilter)
-		LoadIPRules(dev.IPFilter)
-	})
-	tray.AppendMenu("Close", func() { Exit(sigCh) })
-	if err := tray.Show(10, "Shadowsocks"); err != nil {
-		log.Logf("set icon error: %v", err)
-		return
 	}
 
-	go func() {
-		if err := tray.Run(); err != nil {
-			log.Logf("tray run error: %v", err)
-			Exit(sigCh)
-			return
-		}
-	}()
-
-	log.Logf("shadowsocks is running...")
-	<-sigCh
-	log.Logf("shadowsocks is closing...")
+	return nil
 }
 
 func (p *Plugin) Stop() error {

@@ -1,6 +1,6 @@
 # Shadow
 
-A shadowsocks, trojan and socks5 client for Windows, Linux and MacOS.
+A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 
 ## How to use it
 
@@ -14,11 +14,15 @@ Usage of go/bin/shadow:
 
 ### Windows
 
-1. Put config.json and shadow.exe in same directory, then run shadow.exe with administrator privilege.
+1. Run shadow.exe with administrator privilege.
+
+```
+go/bin/shadow.exe -c C:/Users/example/shadow/config.json -v
+```
 
 ### Linux and Openwrt Router
 
-1. set system dns server to 8.8.8.8
+1. Set system dns server to 8.8.8.8
 
 ```
 sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
@@ -32,7 +36,7 @@ iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
 
 ### MacOS
 
-1. set system dns server to 8.8.8.8
+1. Set system dns server to 8.8.8.8
 
 ```
 sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
@@ -75,6 +79,7 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
     "PluginOpts": "-s server_ip -p 443 -l 8388 --obfs tls --obfs-host www.example.com",
 
 
+    // windows only
     // filter string passed to WinDivert
     // https://www.reqrypt.org/windivert-doc.html#filter_language
 
@@ -99,6 +104,7 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
     },
 
 
+    // windows only
     // if true, programs in this list will be proxied
     // if false, programs in this list will be bypassed
     "AppRules": {

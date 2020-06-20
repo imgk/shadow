@@ -3,10 +3,8 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,28 +16,10 @@ import (
 	"github.com/imgk/shadow/utils"
 )
 
-var file string
-
-func init() {
-	mode := flag.Bool("v", false, "enable verbose mode")
-	flag.StringVar(&file, "c", "config.json", "config file")
-	flag.Parse()
-
-	log.SetMode(*mode)
-
-	debug.SetGCPercent(10)
-	ticker := time.NewTicker(time.Minute)
-	go func() {
-		for range ticker.C {
-			debug.FreeOSMemory()
-		}
-	}()
-}
-
 var conf Conf
 
 type Conf struct {
-	Server       string
+	Server       []string
 	NameServer   string
 	Plugin       string
 	PluginOpts   string
@@ -59,20 +39,22 @@ type Conf struct {
 	}
 }
 
-func LoadConfig(f string) error {
-	b, err := ioutil.ReadFile(f)
-	if err != nil {
-		return err
-	}
+func init() {
+	debug.SetGCPercent(10)
+	go FreeMemory(time.NewTicker(time.Minute))
+}
 
+func FreeMemory(ticker *time.Ticker) {
+	for range ticker.C {
+		debug.FreeOSMemory()
+	}
+}
+
+func SetConfig(b []byte) error {
 	return json.Unmarshal(b, &conf)
 }
 
-func LoadConfigFromString(s string) error {
-	return json.Unmarshal([]byte(s), &conf)
-}
-
-func GetConfigByteSlice() ([]byte, error) {
+func GetConfig() ([]byte, error) {
 	return json.Marshal(&conf)
 }
 

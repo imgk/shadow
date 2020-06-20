@@ -42,6 +42,14 @@ type Conn struct {
 	net.Conn
 }
 
+func (c Conn) ReadFrom(r io.Reader) (int64, error) {
+	return copy(c.Conn, r)
+}
+
+func (c Conn) WriteTo(w io.Writer) (int64, error) {
+	return copy(w, c.Conn)
+}
+
 func (c Conn) CloseRead() error {
 	if close, ok := c.Conn.(CloseReader); ok {
 		return close.CloseRead()
@@ -86,18 +94,8 @@ func copy(w io.Writer, r io.Reader) (n int64, err error) {
 	if wt, ok := r.(io.WriterTo); ok {
 		return wt.WriteTo(w)
 	}
-	if c, ok := r.(Conn); ok {
-		if wt, ok := c.Conn.(io.WriterTo); ok {
-			return wt.WriteTo(w)
-		}
-	}
 	if rt, ok := w.(io.ReaderFrom); ok {
 		return rt.ReadFrom(r)
-	}
-	if c, ok := w.(Conn); ok {
-		if rt, ok := c.Conn.(io.ReaderFrom); ok {
-			return rt.ReadFrom(r)
-		}
 	}
 
 	b := make([]byte, 4096)

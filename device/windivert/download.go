@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -15,8 +14,17 @@ func Download() error {
 	var (
 		ver = "2.2.0"
 		url = "https://github.com/basil00/Divert/releases/download/v" + ver + "/WinDivert-" + ver + "-A.zip"
-		sys = "WinDivert" + strconv.Itoa(32<<(^uint(0)>>63)) + ".sys"
+		sys = ""
+		dll = ""
 	)
+
+	if ^uint(0)>>63 == 1 {
+		sys = "x64/WinDivert64.sys"
+		dll = "x64/WinDivert.dll"
+	} else {
+		sys = "x86/WinDivert32.sys"
+		dll = "x86/WinDivert.dll"
+	}
 
 	if _, err := os.Stat(windivertsys); err == nil {
 		return nil
@@ -60,8 +68,23 @@ func Download() error {
 			if err = ioutil.WriteFile(windivertsys, data, 0444); err != nil {
 				return err
 			}
+		}
 
-			break
+		if strings.HasSuffix(file.Name, dll) {
+			f, err := file.Open()
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			data, err := ioutil.ReadAll(f)
+			if err != nil {
+				return err
+			}
+
+			if err = ioutil.WriteFile(windivertdll, data, 0444); err != nil {
+				return err
+			}
 		}
 	}
 

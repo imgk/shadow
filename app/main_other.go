@@ -3,10 +3,10 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
-	"os/signal"
 	"strings"
 	"time"
 
@@ -18,29 +18,17 @@ import (
 	"github.com/imgk/shadow/protocol"
 )
 
-func Exit(sigCh chan os.Signal) {
-	sigCh <- unix.SIGTERM
-}
-
-func Run() {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, os.Kill, unix.SIGINT, unix.SIGTERM)
-
-	if err := LoadConfig(file); err != nil {
-		log.Logf("load config config.json error: %v", err)
-		return
-	}
+func Run(mode bool, ctx context.Context, re chan struct{}) error {
+	log.SetMode(mode)
 
 	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
 	if conf.Plugin != "" && err != nil {
-		log.Logf("plugin %v error: %v", conf.Plugin, err)
-		return
+		return fmt.Errorf("plugin %v error: %w", conf.Plugin, err)
 	}
 
 	if plugin != nil {
 		if plugin.Start(); err != nil {
-			log.Logf("plugin start error: %v", err)
-			return
+			return fmt.Errorf("plugin start error: %v", err)
 		}
 		defer plugin.Stop()
 		log.Logf("plugin %v start", conf.Plugin)
@@ -48,7 +36,6 @@ func Run() {
 		go func() {
 			if err := plugin.Wait(); err != nil {
 				log.Logf("plugin error %v", err)
-				Exit(sigCh)
 				return
 			}
 			log.Logf("plugin %v stop", conf.Plugin)
@@ -57,8 +44,7 @@ func Run() {
 
 	handler, err := protocol.NewHandler(conf.Server, time.Minute)
 	if err != nil {
-		log.Logf("shadowsocks error %v", err)
-		return
+		return fmt.Errorf("shadowsocks error %w", err)
 	}
 
 	name := "utun"
@@ -67,20 +53,17 @@ func Run() {
 	}
 	dev, err := tun.NewDevice(name)
 	if err != nil {
-		log.Logf("tun device error: %v", err)
-		return
+		return fmt.Errorf("tun device error: %v", err)
 	}
 	defer dev.Close()
 	if cidr := os.Getenv("TunAddr"); cidr != "" {
 		addr, mask, gateway, err := GetInterfaceConfig(cidr)
 		if err != nil {
-			log.Logf("parse TunAddr error: %v", err)
-			return
+			return fmt.Errorf("parse TunAddr error: %v", err)
 		}
 
 		if err := dev.Activate(addr, mask, gateway); err != nil {
-			log.Logf("activate tun error: %v", err)
-			return
+			return fmt.Errorf("activate tun error: %v", err)
 		}
 
 		log.Logf("addr: %v, mask: %v, gateway: %v", addr, mask, gateway)
@@ -89,8 +72,7 @@ func Run() {
 	stack := netstack.NewStack(handler, dev)
 	defer stack.Close()
 	if err := stack.SetResolver(conf.NameServer); err != nil {
-		log.Logf("dns server error")
-		return
+		return fmt.Errorf("dns server error")
 	}
 	LoadDomainRules(stack.Tree)
 	LoadIPRules(stack.IPFilter)
@@ -98,25 +80,31 @@ func Run() {
 	go func() {
 		if _, err := dev.WriteTo(stack); err != nil {
 			log.Logf("netstack exit error: %v", err)
-			Exit(sigCh)
-			return
 		}
 	}()
 
 	if cidr := os.Getenv("TunRoute"); cidr != "" {
 		addr := strings.Split(cidr, ";")
-
 		if err := dev.AddRoute(addr); err != nil {
-			log.Logf("add tun route table error: %v", err)
-			return
+			return fmt.Errorf("add tun route table error: %v", err)
 		}
 
 		log.Logf("add target: %v to route table", cidr)
 	}
 
-	log.Logf("shadowsocks is running...")
-	<-sigCh
-	log.Logf("shadowsocks is closing...")
+	<-ctx.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			break
+		case <-re:
+			LoadDomainRules(stack.Tree)
+			LoadIPRules(stack.IPFilter)
+		}
+	}
+
+	return nil
 }
 
 func (p *Plugin) Stop() error {

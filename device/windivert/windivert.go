@@ -11,14 +11,15 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-
-	"github.com/imgk/shadow/device/windivert/c"
 )
 
 func init() {
 	if err := InstallDriver(); err != nil {
 		panic(err)
 	}
+
+	winDivert = windows.MustLoadDLL("WinDivert.dll")
+	winDivertOpen = winDivert.MustFindProc("WinDivertOpen")
 
 	var vers = map[string]struct{}{
 		"2.0": struct{}{},
@@ -95,6 +96,11 @@ func HeapDestroy(hHeap windows.Handle) error {
 
 	return nil
 }
+
+var (
+	winDivert     = (*windows.DLL)(nil)
+	winDivertOpen = (*windows.Proc)(nil)
+)
 
 type filter struct {
 	b1 uint32
@@ -202,11 +208,16 @@ func Open(filter string, layer Layer, priority int16, flags uint64) (*Handle, er
 		return nil, fmt.Errorf("Priority %v is not Correct, Max: %v, Min: %v", priority, PriorityHighest, PriorityLowest)
 	}
 
+	filterPtr, err := windows.BytePtrFromString(filter)
+	if err != nil {
+		return nil, err
+	}
+
 	runtime.LockOSThread()
-	hd, err := c.Open(filter, int(layer), priority, flags)
+	hd, _, err := winDivertOpen.Call(uintptr(unsafe.Pointer(filterPtr)), uintptr(layer), uintptr(priority), uintptr(flags))
 	runtime.UnlockOSThread()
 
-	if err != nil {
+	if windows.Handle(hd) == windows.InvalidHandle {
 		return nil, Error(err.(windows.Errno))
 	}
 
