@@ -62,7 +62,10 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
     // trojan://password:mux@server:port/websocket-path?shadowsocks=chipername
 
     // supported cipher name: CHACHA20-IETF-POLY1305, AES-256-GCM, DUMMY
-    "Server": "ss://chacha20-ietf-poly1305:password@127.0.0.1:8388",
+    "Server": [
+        "ss://chacha20-ietf-poly1305:password@127.0.0.1:8388",
+        "trojan://password:mux@example.com:443/path?shadowsocks=ciphername"
+    ],
 
 
     // DNS Server
