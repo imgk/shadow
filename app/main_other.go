@@ -92,8 +92,6 @@ func Run(mode bool, ctx context.Context, re chan struct{}) error {
 		log.Logf("add target: %v to route table", cidr)
 	}
 
-	<-ctx.Done()
-
 	for {
 		select {
 		case <-ctx.Done():
