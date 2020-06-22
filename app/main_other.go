@@ -92,10 +92,11 @@ func Run(mode bool, ctx context.Context, re chan struct{}) error {
 		log.Logf("add target: %v to route table", cidr)
 	}
 
+	RELOAD:
 	for {
 		select {
 		case <-ctx.Done():
-			break
+			break RELOAD
 		case <-re:
 			LoadDomainRules(stack.Tree)
 			LoadIPRules(stack.IPFilter)

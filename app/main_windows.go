@@ -92,10 +92,11 @@ func Run(mode bool, ctx context.Context, re chan struct{}) error {
 		}
 	}()
 
+	RELOAD:
 	for {
 		select {
 		case <-ctx.Done():
-			break
+			break RELOAD
 		case <-re:
 			LoadAppRules(dev.AppFilter)
 			LoadIPRules(dev.IPFilter)
