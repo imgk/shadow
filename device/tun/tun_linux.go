@@ -64,7 +64,7 @@ func NewDevice(name string) (*Device, error) {
 	return dev, nil
 }
 
-func (d *Device) NewDeviceFromFd(fd uint) (*Device, error) {
+func NewDeviceFromFd(fd uint) (*Device, error) {
 	var ifrf = struct {
 		Name  [16]byte
 		Flags uint16

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
@@ -189,9 +190,18 @@ func CloseTimeout(conn *UDPConn, timer *time.Timer, sigCh chan struct{}) {
 	}
 }
 
+type Message struct {
+	b []byte
+	m *dnsmessage.Message
+}
+
+var Pool sync.Pool = sync.Pool{ New: func() interface{} { return Message{ b: make([]byte, 1024), m: new(dnsmessage.Message) } } }
+
 func (s *stack) HandleMessage(conn *UDPConn) {
-	b := make([]byte, 4096)
-	m := new(dnsmessage.Message)
+	c := Pool.Get().(Message)
+
+	b := c.b
+	m := c.m
 
 	timer := time.NewTimer(time.Second * 3)
 	sigCh := make(chan struct{})
@@ -210,7 +220,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 			continue
 		}
 
-		if err := m.Unpack(b[2 : 2+n]); err != nil {
+		if err := m.Unpack(b[2:2+n]); err != nil {
 			log.Logf("parse dns error: %v", err)
 			continue
 		}
@@ -245,6 +255,7 @@ func (s *stack) HandleMessage(conn *UDPConn) {
 
 	s.Del(conn)
 	conn.Close()
+	Pool.Put(c)
 }
 
 func (s *stack) RedirectUDP(conn DirectUDPConn) {
