@@ -19,6 +19,10 @@ import (
 )
 
 func Run(mode bool, ctx context.Context, re chan struct{}) error {
+	return RunWithFd(mode, ctx, re, 0)
+}
+
+func RunWithFd(mode bool, ctx context.Context, re chan struct{}, fd uint) error {
 	log.SetMode(mode)
 
 	plugin, err := LoadPlugin(conf.Plugin, conf.PluginOpts)
@@ -51,9 +55,19 @@ func Run(mode bool, ctx context.Context, re chan struct{}) error {
 	if tunName := os.Getenv("TunName"); tunName != "" {
 		name = tunName
 	}
-	dev, err := tun.NewDevice(name)
-	if err != nil {
-		return fmt.Errorf("tun device error: %v", err)
+	dev := (*tun.Device)(nil)
+	if fd == 0 {
+		device, err := tun.NewDevice(name)
+		if err != nil {
+			return fmt.Errorf("tun device from name error: %v", err)
+		}
+		dev = device
+	} else {
+		device, err := tun.NewDeviceFromFd(fd)
+		if err != nil {
+			return fmt.Errorf("tun device from fd error: %v", err)
+		}
+		dev = device
 	}
 	defer dev.Close()
 	if cidr := os.Getenv("TunAddr"); cidr != "" {

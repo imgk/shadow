@@ -106,6 +106,7 @@ func (r *reader) WriteTo(w io.Writer) (n int64, err error) {
 type writer struct {
 	io.Writer
 	cipher.AEAD
+	*bytes.Reader
 	nonce []byte
 	buff  []byte
 }
@@ -114,13 +115,15 @@ func newWriter(c net.Conn, aead cipher.AEAD) *writer {
 	return &writer{
 		Writer: c,
 		AEAD:   aead,
+		Reader: bytes.NewReader(nil),
 		nonce:  make([]byte, aead.NonceSize()),
 		buff:   make([]byte, 2+aead.Overhead()+MaxPacketSize+aead.Overhead()),
 	}
 }
 
 func (w *writer) Write(b []byte) (int, error) {
-	n, err := w.ReadFrom(bytes.NewBuffer(b))
+	w.Reader.Reset(b)
+	n, err := w.ReadFrom(w.Reader)
 	return int(n), err
 }
 
