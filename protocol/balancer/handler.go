@@ -8,7 +8,7 @@ import (
 	"github.com/imgk/shadow/netstack"
 )
 
-const url = "http://clients1.google.com/generate_204"
+const url = "http://www.gstatic.com/generate_204"
 
 type Handler struct {
 	sync.Mutex
@@ -33,7 +33,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 }
 
 func (h *Handler) PickHandler() netstack.Handler {
-	return h.handler[int(rand.Uint32())%len(h.handler)]
+	return h.handler[rand.Uint32()%uint32(len(h.handler))]
 }
 
 func (h *Handler) checkHandler() {
