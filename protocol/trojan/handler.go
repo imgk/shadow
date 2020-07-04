@@ -31,6 +31,30 @@ const (
 	Assocaite = 3
 )
 
+var DefaultDialer = Dialer{
+	Dialer: net.Dialer{},
+}
+
+type Dialer struct {
+	net.Dialer
+}
+
+func (d Dialer) Dial(network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial(network, addr)
+	if nc, ok := conn.(*net.TCPConn); ok {
+		nc.SetKeepAlive(true)
+	}
+	return conn, err
+}
+
+func (d Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, network, addr)
+	if nc, ok := conn.(*net.TCPConn); ok {
+		nc.SetKeepAlive(true)
+	}
+	return conn, err
+}
+
 type Mux struct {
 	sync.Mutex
 	*smux.Config
@@ -102,19 +126,10 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			return nil, err
 		}
 
-		dialer := &net.Dialer{}
 		hd.WebSocket = &WebSocket{
 			Dialer: websocket.Dialer{
-				NetDial: func(network, addr string) (net.Conn, error) {
-					conn, err := dialer.Dial(network, addr)
-					conn.(*net.TCPConn).SetKeepAlive(true)
-					return conn, err
-				},
-				NetDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					conn, err := dialer.DialContext(ctx, network, addr)
-					conn.(*net.TCPConn).SetKeepAlive(true)
-					return conn, err
-				},
+				NetDial:         DefaultDialer.Dial,
+				NetDialContext:  DefaultDialer.DialContext,
 				TLSClientConfig: hd.Config,
 			},
 			Addr:   "wss://"+host+path,
@@ -137,11 +152,10 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 		return
 	}
 
-	conn, err = net.Dial("tcp", h.server)
+	conn, err = DefaultDialer.Dial("tcp", h.server)
 	if err != nil {
 		return
 	}
-	conn.(*net.TCPConn).SetKeepAlive(true)
 
 	conn = tls.Client(conn, h.Config.Clone())
 	if err = conn.(*tls.Conn).Handshake(); err != nil {
