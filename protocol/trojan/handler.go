@@ -1,6 +1,8 @@
 package trojan
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,8 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/websocket"
-
+	"github.com/gorilla/websocket"
 	"github.com/xtaci/smux"
 
 	"github.com/imgk/shadow/netstack"
@@ -21,8 +22,8 @@ import (
 )
 
 const (
-	HexLen           = 56
-	MaxUDPPacketSize = 4096 // Max 65536
+	HexLen        = 56
+	MaxBufferSize = 4096 // Max 65536
 )
 
 const (
@@ -38,17 +39,18 @@ type Mux struct {
 }
 
 type WebSocket struct {
-	shadowsocks.Cipher
-	*websocket.Config
+	websocket.Dialer
+	Addr   string
+	Cipher shadowsocks.Cipher
 }
 
 type Handler struct {
-	*Mux
-	*WebSocket
-	*tls.Config
-	header  [HexLen + 2 + 8 + 2]byte
-	timeout time.Duration
-	server  string
+	Mux       *Mux
+	WebSocket *WebSocket
+	Config    *tls.Config
+	header    [HexLen + 2 + 8 + 2]byte
+	timeout   time.Duration
+	server    string
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
@@ -100,14 +102,23 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			return nil, err
 		}
 
-		config, err := websocket.NewConfig("wss://"+host+path, "https://"+host)
-		if err != nil {
-			return nil, err
-		}
-
+		dialer := &net.Dialer{}
 		hd.WebSocket = &WebSocket{
-			Cipher:  ciph,
-			Config: config,
+			Dialer: websocket.Dialer{
+				NetDial: func(network, addr string) (net.Conn, error) {
+					conn, err := dialer.Dial(network, addr)
+					conn.(*net.TCPConn).SetKeepAlive(true)
+					return conn, err
+				},
+				NetDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					conn, err := dialer.DialContext(ctx, network, addr)
+					conn.(*net.TCPConn).SetKeepAlive(true)
+					return conn, err
+				},
+				TLSClientConfig: hd.Config,
+			},
+			Addr:   "wss://"+host+path,
+			Cipher: ciph,
 		}
 	}
 
@@ -115,35 +126,29 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Connect() (conn net.Conn, err error) {
+	if h.WebSocket != nil {
+		ws, _, er := h.WebSocket.Dialer.Dial(h.WebSocket.Addr, nil)
+		if er != nil {
+			err = er
+			return
+		}
+
+		conn = shadowsocks.NewConn(&WebConn{Conn: ws, Reader: bytes.NewReader(nil)}, h.WebSocket.Cipher)
+		return
+	}
+
 	conn, err = net.Dial("tcp", h.server)
 	if err != nil {
 		return
 	}
 	conn.(*net.TCPConn).SetKeepAlive(true)
 
-	CloseError := func(conn net.Conn) {
-		if err != nil {
-			conn.Close()
-		}
-	}
-	defer CloseError(conn)
-
 	conn = tls.Client(conn, h.Config.Clone())
 	if err = conn.(*tls.Conn).Handshake(); err != nil {
+		conn.Close()
 		return
 	}
 
-	if h.WebSocket == nil {
-		return
-	}
-
-	conn, err = websocket.NewClient(h.WebSocket.Config, conn)
-	if err != nil {
-		err = fmt.Errorf("new websocket client error: %w", err)
-		return
-	}
-
-	conn = shadowsocks.NewConn(conn, h.WebSocket.Cipher)
 	return
 }
 
@@ -195,12 +200,11 @@ func (h *Handler) ConnectMuxNew() (conn net.Conn, err error) {
 		return
 	}
 
-	CloseError := func(conn net.Conn) {
+	defer func(conn net.Conn) {
 		if err != nil {
 			conn.Close()
 		}
-	}
-	defer CloseError(conn)
+	}(conn)
 
 	_, err = conn.Write(h.header[:])
 	if err != nil {
@@ -248,77 +252,86 @@ func (h *Handler) CloseIdleSession() {
 }
 
 func (h *Handler) Dial(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
-	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
+	if h.Mux != nil {
+		return h.DialMux(tgt, cmd)
+	}
 
-	CloseError := func() {
-		if err != nil && conn != nil {
+	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
+	conn, err = h.Connect()
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
 			conn.Close()
 		}
+	}()
+
+	n := copy(target[0:], h.header[:HexLen+2])
+	target[HexLen+2] = cmd
+
+	addr, ok := tgt.(utils.Addr)
+	if ok {
+		copy(target[HexLen+2+1:], addr)
+		n = HexLen + 2 + 1 + len(addr) + 2
+	} else {
+		addr, er := utils.ResolveAddrBuffer(tgt, target[HexLen+2+1:])
+		if er != nil {
+			err = fmt.Errorf("resolve addr error: %w", er)
+			return
+		}
+		n = HexLen + 2 + 1 + len(addr) + 2
 	}
-	defer CloseError()
+	target[n-2], target[n-1] = 0x0d, 0x0a
+
+	if _, er := conn.Write(target[:n]); er != nil {
+		err = fmt.Errorf("write to server %v error: %w", h.server, er)
+		return
+	}
+
+	return
+}
+
+func (h *Handler) DialMux(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
+	target := make([]byte, HexLen+2+1+utils.MaxAddrLen+2)
+	conn, err = h.ConnectMux()
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			conn.Close()
+		}
+	}()
 
 	n := 0
-	if h.Mux == nil {
-		conn, err = h.Connect()
-		if err != nil {
-			return
-		}
+	target[0] = cmd
 
-		n = copy(target[0:], h.header[:HexLen+2])
-		target[HexLen+2] = cmd
-
-		addr, ok := tgt.(utils.Addr)
-		if !ok {
-			addr, er := utils.ResolveAddrBuffer(tgt, target[HexLen+2+1:])
-			if er != nil {
-				err = fmt.Errorf("resolve addr error: %w", er)
-				return
-			}
-			n = HexLen + 2 + 1 + len(addr) + 2
-		} else {
-			copy(target[HexLen+2+1:], addr)
-			n = HexLen + 2 + 1 + len(addr) + 2
-		}
-		target[n-2], target[n-1] = 0x0d, 0x0a
+	addr, ok := tgt.(utils.Addr)
+	if ok {
+		n = 1 + copy(target[1:], addr)
 	} else {
-		conn, err = h.ConnectMux()
-		if err != nil {
+		addr, er := utils.ResolveAddrBuffer(tgt, target[1:])
+		if er != nil {
+			err = fmt.Errorf("resolve addr error: %w", er)
 			return
 		}
-
-		target[0] = cmd
-
-		addr, ok := tgt.(utils.Addr)
-		if !ok {
-			addr, er := utils.ResolveAddrBuffer(tgt, target[1:])
-			if er != nil {
-				err = fmt.Errorf("resolve addr error: %w", er)
-				return
-			}
-			n = 1 + len(addr)
-		} else {
-			n = 1 + copy(target[1:], addr)
-		}
+		n = 1 + len(addr)
 	}
 
 	if _, er := conn.Write(target[:n]); er != nil {
-		if h.Mux != nil {
-			conn.Close()
+		conn.Close()
 
-			conn, err = h.ConnectMuxNew()
-			if err != nil {
-				return
-			}
-
-			if _, er := conn.Write(target[:n]); er != nil {
-				err = fmt.Errorf("write to server %v error: %w", h.server, er)
-				return
-			}
-
+		conn, err = h.ConnectMuxNew()
+		if err != nil {
 			return
 		}
 
-		err = fmt.Errorf("write to server %v error: %w", h.server, er)
+		if _, er := conn.Write(target[:n]); er != nil {
+			err = fmt.Errorf("write to server %v error: %w", h.server, er)
+			return
+		}
+
 		return
 	}
 
@@ -362,9 +375,9 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, errCh)
 
-	b := make([]byte, MaxUDPPacketSize)
+	b := make([]byte, MaxBufferSize)
 	for {
-		rc.SetDeadline(time.Now().Add(h.timeout))
+		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		raddr, er := utils.ReadAddrBuffer(rc, b)
 		if er != nil {
 			if ne, ok := er.(net.Error); ok {
@@ -373,7 +386,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 				}
 			}
 
-			if er == smux.ErrTimeout || er == io.ErrClosedPipe {
+			if errors.Is(er, smux.ErrTimeout) || errors.Is(er, io.ErrClosedPipe) {
 				break
 			}
 
@@ -407,7 +420,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 				}
 			}
 
-			if er == smux.ErrTimeout || er == io.ErrClosedPipe {
+			if errors.Is(er, smux.ErrTimeout) || errors.Is(er, io.ErrClosedPipe) {
 				break
 			}
 
@@ -434,7 +447,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 }
 
 func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
-	b := make([]byte, MaxUDPPacketSize)
+	b := make([]byte, MaxBufferSize)
 	b[utils.MaxAddrLen+2], b[utils.MaxAddrLen+3] = 0x0d, 0x0a
 
 	for {
@@ -460,13 +473,53 @@ func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duratio
 
 		copy(b[utils.MaxAddrLen-len(addr):], addr)
 
-		rc.SetDeadline(time.Now().Add(timeout))
-		_, err = rc.Write(b[utils.MaxAddrLen-len(addr) : utils.MaxAddrLen+4+n])
+		rc.SetWriteDeadline(time.Now().Add(timeout))
+		_, err = rc.Write(b[utils.MaxAddrLen-len(addr):utils.MaxAddrLen+4+n])
 		if err != nil {
 			errCh <- err
 			break
 		}
 	}
 
+	return
+}
+
+type WebConn struct {
+	*websocket.Conn
+	Reader io.Reader
+}
+
+func (conn *WebConn) Read(b []byte) (int, error) {
+	n, err := conn.Reader.Read(b)
+	if n != 0 {
+		return n, nil
+	}
+
+	_, conn.Reader, err = conn.Conn.NextReader()
+	if err != nil {
+		return 0, err
+	}
+
+	n, err = conn.Reader.Read(b)
+	return n, nil
+}
+
+func (conn *WebConn) Write(b []byte) (int, error) {
+	err := conn.Conn.WriteMessage(websocket.BinaryMessage, b)
+	if err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
+func (conn *WebConn) SetDeadline(t time.Time) error {
+	conn.SetReadDeadline(t)
+	conn.SetWriteDeadline(t)
+	return nil
+}
+
+func (conn *WebConn) Close() (err error) {
+	err = conn.Conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second*5))
+	conn.Conn.Close()
 	return
 }
