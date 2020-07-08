@@ -12,11 +12,59 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
+type Dialer struct {
+	net.Dialer
+	server string
+	Config *tls.Config
+}
+
+func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial("tcp", d.server)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.(*net.TCPConn).SetKeepAlive(true)
+	return conn, nil
+}
+
+func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, "tcp", d.server)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.(*net.TCPConn).SetKeepAlive(true)
+	return conn, nil
+}
+
+func (d *Dialer) DialTLS(network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial("tcp", d.server)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.(*net.TCPConn).SetKeepAlive(true)
+	return tls.Client(conn, d.Config), nil
+}
+
+func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, "tcp", d.server)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.(*net.TCPConn).SetKeepAlive(true)
+	return tls.Client(conn, d.Config), nil
+}
+
 type Resolver interface {
 	Resolve([]byte, int) (int, error)
+	Stop()
 }
 
 func NewResolver(s string) (Resolver, error) {
@@ -32,27 +80,35 @@ func NewResolver(s string) (Resolver, error) {
 			return nil, err
 		}
 
-		return &UDPResolver{
+		resolver := &UDPResolver{
 			Addr:    addr.String(),
 			Timeout: time.Second * 3,
-		}, nil
+		}
+		return resolver, nil
 	case "tcp":
 		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "53"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &TCPResolver{
+		resolver := &TCPResolver{
+			Mutex:   sync.Mutex{},
+			Ticker:  time.NewTicker(time.Minute),
 			Addr:    addr.String(),
 			Timeout: time.Second * 3,
-		}, nil
+			conns:   make(map[net.Conn]time.Time),
+		}
+		go resolver.CleanLoop()
+		return resolver, nil
 	case "tls":
 		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "853"))
 		if err != nil {
 			return nil, err
 		}
 
-		return &TLSResolver{
+		resolver := &TLSResolver{
+			Mutex:  sync.Mutex{},
+			Ticker: time.NewTicker(time.Minute),
 			Conf: &tls.Config{
 				ServerName:         u.Host,
 				ClientSessionCache: tls.NewLRUClientSessionCache(32),
@@ -60,70 +116,41 @@ func NewResolver(s string) (Resolver, error) {
 			},
 			Addr:    addr.String(),
 			Timeout: time.Second * 3,
-		}, nil
+			conns:   make(map[net.Conn]time.Time),
+		}
+		go resolver.CleanLoop()
+		return resolver, nil
 	case "https":
 		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(u.Host, "443"))
 		if err != nil {
 			return nil, err
 		}
 
-		server := addr.String()
-		dialer := &net.Dialer{}
-		config := &tls.Config{
-			ServerName:         u.Host,
-			ClientSessionCache: tls.NewLRUClientSessionCache(32),
-			InsecureSkipVerify: false,
-		}
-
-		transport := &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				conn, err := dialer.Dial("tcp", server)
-				if err != nil {
-					return nil, err
-				}
-
-				conn.(*net.TCPConn).SetKeepAlive(true)
-				return conn, nil
+		resolver := &HTTPSResolverPost{
+			Dialer:  Dialer{
+				Dialer: net.Dialer{},
+				server: addr.String(),
+				Config: &tls.Config{
+					ServerName:         u.Host,
+					ClientSessionCache: tls.NewLRUClientSessionCache(32),
+					InsecureSkipVerify: false,
+				},
 			},
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				conn, err := dialer.DialContext(ctx, "tcp", server)
-				if err != nil {
-					return nil, err
-				}
-
-				conn.(*net.TCPConn).SetKeepAlive(true)
-				return conn, nil
-			},
-			TLSClientConfig: config,
-			DialTLS: func(network, addr string) (net.Conn, error) {
-				conn, err := dialer.Dial("tcp", server)
-				if err != nil {
-					return nil, err
-				}
-
-				conn.(*net.TCPConn).SetKeepAlive(true)
-				return tls.Client(conn, config), nil
-			},
-			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				conn, err := dialer.DialContext(ctx, "tcp", server)
-				if err != nil {
-					return nil, err
-				}
-
-				conn.(*net.TCPConn).SetKeepAlive(true)
-				return tls.Client(conn, config), nil
-			},
-			ForceAttemptHTTP2: true,
-		}
-
-		return &DoHWirePost{
 			BaseUrl: s,
 			Timeout: time.Second * 3,
 			Client: http.Client{
-				Transport: transport,
-				Timeout:   time.Second * 3,
+				Timeout: time.Second * 3,
 			},
-		}, nil
+		}
+		resolver.Client.Transport = &http.Transport{
+			Dial:              resolver.Dialer.Dial,
+			DialContext:       resolver.Dialer.DialContext,
+			TLSClientConfig:   resolver.Dialer.Config,
+			DialTLS:           resolver.Dialer.DialTLS,
+			DialTLSContext:    resolver.Dialer.DialTLSContext,
+			ForceAttemptHTTP2: true,
+		}
+		return resolver, nil
 	default:
 		return nil, fmt.Errorf("not a valid dns protocol")
 	}
@@ -137,108 +164,207 @@ type UDPResolver struct {
 func (r *UDPResolver) Resolve(b []byte, n int) (int, error) {
 	conn, err := net.Dial("udp", r.Addr)
 	if err != nil {
-		return 0, fmt.Errorf("dial %v, error: %v", r.Addr, err)
+		return 0, err
 	}
 	defer conn.Close()
 
-	_, err = conn.Write(b[2 : 2+n])
+	_, err = conn.Write(b[2:2+n])
 	if err != nil {
-		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
+		return 0, err
 	}
 
 	err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
 	if err != nil {
-		return 0, fmt.Errorf("set read deadline, error: %v", err)
+		return 0, err
 	}
 
 	n, err = conn.Read(b[2:])
 	if err != nil {
-		return 0, fmt.Errorf("read from %v, error: %v", r.Addr, err)
+		return 0, err
 	}
 
 	return n, nil
 }
 
+func (r *UDPResolver) Stop() {}
+
 type TCPResolver struct {
+	sync.Mutex
+	Ticker  *time.Ticker
 	Addr    string
 	Timeout time.Duration
+	conns   map[net.Conn]time.Time
+}
+
+func (r *TCPResolver) Get() net.Conn {
+	r.Lock()
+	for conn, _ := range r.conns {
+		delete(r.conns, conn)
+		r.Unlock()
+		return conn
+	}
+	r.Unlock()
+	return nil
+}
+
+func (r *TCPResolver) Put(conn net.Conn) {
+	r.Lock()
+	r.conns[conn] = time.Now()
+	r.Unlock()
+}
+
+func (r *TCPResolver) CleanLoop() {
+	for now := range r.Ticker.C {
+		r.Lock()
+		for conn, t := range r.conns {
+			if now.Sub(t) > time.Minute*3 {
+				delete(r.conns, conn)
+			}
+		}
+		r.Unlock()
+	}
 }
 
 func (r *TCPResolver) Resolve(b []byte, n int) (int, error) {
-	conn, err := net.Dial("tcp", r.Addr)
-	if err != nil {
-		return 0, fmt.Errorf("dial %v, error: %v", r.Addr, err)
+	conn := r.Get()
+	if conn == nil {
+		c, err := net.Dial("tcp", r.Addr)
+		if err != nil {
+			return 0, err
+		}
+		c.(*net.TCPConn).SetKeepAlive(true)
+		conn = c
 	}
-	defer conn.Close()
+	defer r.Put(conn)
 
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
-	_, err = conn.Write(b[:2+n])
+	_, err := conn.Write(b[:2+n])
 	if err != nil {
-		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
+		return 0, err
 	}
 
-	err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
-	if err != nil {
-		return 0, fmt.Errorf("set read deadline, error: %v", err)
-	}
+	req := binary.BigEndian.Uint16(b[2:4])
+	for {
+		err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
+		if err != nil {
+			return 0, err
+		}
 
-	_, err = io.ReadFull(conn, b[:2])
-	if err != nil {
-		return 0, fmt.Errorf("read lenfth from %v, error: %v", r.Addr, err)
-	}
+		_, err = io.ReadFull(conn, b[:2])
+		if err != nil {
+			return 0, fmt.Errorf("length error: %w", err)
+		}
 
-	n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
-	if err != nil {
-		return 0, fmt.Errorf("read payload from %v, error: %v", r.Addr, err)
-	}
+		n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
+		if err != nil {
+			return 0, fmt.Errorf("payload error: %w", err)
+		}
+		if req != binary.BigEndian.Uint16(b[2:4]) {
+			continue
+		}
 
+		break
+	}
 	return n, nil
+}
+
+func (r *TCPResolver) Stop() {
+	r.Ticker.Stop()
 }
 
 type TLSResolver struct {
+	sync.Mutex
+	Ticker  *time.Ticker
 	Conf    *tls.Config
 	Addr    string
 	Timeout time.Duration
+	conns   map[net.Conn]time.Time
+}
+
+func (r *TLSResolver) Get() net.Conn {
+	r.Lock()
+	for conn, _ := range r.conns {
+		delete(r.conns, conn)
+		r.Unlock()
+		return conn
+	}
+	r.Unlock()
+	return nil
+}
+
+func (r *TLSResolver) Put(conn net.Conn) {
+	r.Lock()
+	r.conns[conn] = time.Now()
+	r.Unlock()
+}
+
+func (r *TLSResolver) CleanLoop() {
+	for now := range r.Ticker.C {
+		r.Lock()
+		for conn, t := range r.conns {
+			if now.Sub(t) > time.Minute*3 {
+				delete(r.conns, conn)
+			}
+		}
+		r.Unlock()
+	}
 }
 
 func (r *TLSResolver) Resolve(b []byte, n int) (int, error) {
-	conn, err := tls.Dial("tcp", r.Addr, r.Conf)
-	if err != nil {
-		return 0, fmt.Errorf("dial %v, error: %v", r.Addr, err)
+	conn := r.Get()
+	if conn == nil {
+		c, err := net.Dial("tcp", r.Addr)
+		if err != nil {
+			return 0, err
+		}
+		c.(*net.TCPConn).SetKeepAlive(true)
+		conn = tls.Client(c, r.Conf)
 	}
-	defer conn.Close()
+	defer r.Put(conn)
 
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
-	_, err = conn.Write(b[:2+n])
+	_, err := conn.Write(b[:2+n])
 	if err != nil {
-		return 0, fmt.Errorf("write to %v, error: %v", r.Addr, err)
+		return 0, err
 	}
 
-	err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
-	if err != nil {
-		return 0, fmt.Errorf("set read deadline, error: %v", err)
-	}
+	req := binary.BigEndian.Uint16(b[2:4])
+	for {
+		err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
+		if err != nil {
+			return 0, err
+		}
 
-	_, err = io.ReadFull(conn, b[:2])
-	if err != nil {
-		return 0, fmt.Errorf("read length from %v, error: %v", r.Addr, err)
-	}
+		_, err = io.ReadFull(conn, b[:2])
+		if err != nil {
+			return 0, fmt.Errorf("length error: %w", err)
+		}
 
-	n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
-	if err != nil {
-		return 0, fmt.Errorf("read payload from %v, error: %v", r.Addr, err)
-	}
+		n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
+		if err != nil {
+			return 0, fmt.Errorf("payload error: %w", err)
+		}
+		if req != binary.BigEndian.Uint16(b[2:4]) {
+			continue
+		}
 
+		break
+	}
 	return n, nil
 }
 
-type DoHWirePost struct {
+func (r *TLSResolver) Stop() {
+	r.Ticker.Stop()
+}
+
+type HTTPSResolverPost struct {
+	Dialer  Dialer
 	BaseUrl string
 	Timeout time.Duration
 	http.Client
 }
 
-func (r *DoHWirePost) Resolve(b []byte, n int) (int, error) {
+func (r *HTTPSResolverPost) Resolve(b []byte, n int) (int, error) {
 	req, err := http.NewRequest(http.MethodPost, r.BaseUrl, bytes.NewBuffer(b[2:2+n]))
 	if err != nil {
 		return 0, err
@@ -269,13 +395,16 @@ func (r *DoHWirePost) Resolve(b []byte, n int) (int, error) {
 	return n, nil
 }
 
-type DoHWireGet struct {
+func (r *HTTPSResolverPost) Stop() {}
+
+type HTTPSResolverGet struct {
+	Dialer  Dialer
 	BaseUrl string
 	Timeout time.Duration
 	http.Client
 }
 
-func (r *DoHWireGet) Resolve(b []byte, n int) (int, error) {
+func (r *HTTPSResolverGet) Resolve(b []byte, n int) (int, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s?%s=%s", r.BaseUrl, "dns", base64.RawURLEncoding.EncodeToString(b)), nil)
 	if err != nil {
 		return 0, err
@@ -305,3 +434,5 @@ func (r *DoHWireGet) Resolve(b []byte, n int) (int, error) {
 
 	return n, nil
 }
+
+func (r *HTTPSResolverGet) Stop() {}
