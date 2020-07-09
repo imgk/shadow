@@ -21,7 +21,7 @@ const (
 var ErrInvalidAddrType = errors.New("invalid address type")
 
 func (addr Addr) Network() string {
-	return ""
+	return "socks"
 }
 
 func (addr Addr) String() string {
@@ -146,39 +146,43 @@ func ResolveAddr(addr net.Addr) (Addr, error) {
 func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 	if a, ok := addr.(*net.TCPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
-			b = append(b[:0], AddrTypeIPv4)
-			b = append(b, ip...)
-			b = append(b, byte(a.Port>>8), byte(a.Port))
+			b[0] = AddrTypeIPv4
+			copy(b[1:], ip)
+			b[1+net.IPv4len], b[1+net.IPv4len+1] = byte(a.Port>>8), byte(a.Port)
 
-			return b, nil
+			return b[:1+net.IPv4len+2], nil
 		} else {
 			ip = a.IP.To16()
 
-			b = append(b[:0], AddrTypeIPv6)
-			b = append(b, ip...)
-			b = append(b, byte(a.Port>>8), byte(a.Port))
+			b[0] = AddrTypeIPv6
+			copy(b[1:], ip)
+			b[1+net.IPv6len], b[1+net.IPv6len+1] = byte(a.Port>>8), byte(a.Port)
 
-			return b, nil
+			return b[:1+net.IPv6len+2], nil
 		}
 	}
 
 	if a, ok := addr.(*net.UDPAddr); ok {
 		if ip := a.IP.To4(); ip != nil {
-			b = append(b[:0], AddrTypeIPv4)
-			b = append(b, ip...)
-			b = append(b, byte(a.Port>>8), byte(a.Port))
+			b[0] = AddrTypeIPv4
+			copy(b[1:], ip)
+			b[1+net.IPv4len], b[1+net.IPv4len+1] = byte(a.Port>>8), byte(a.Port)
 
-			return b, nil
+			return b[:1+net.IPv4len+2], nil
 		} else {
 			ip = a.IP.To16()
 
-			b = append(b[:0], AddrTypeIPv6)
-			b = append(b, ip...)
-			b = append(b, byte(a.Port>>8), byte(a.Port))
+			b[0] = AddrTypeIPv6
+			copy(b[1:], ip)
+			b[1+net.IPv6len], b[1+net.IPv6len+1] = byte(a.Port>>8), byte(a.Port)
 
-			return b, nil
+			return b[:1+net.IPv6len+2], nil
 		}
 	}
 
-	return b, ErrInvalidAddrType
+	if _, ok := addr.(Addr); ok {
+		return addr, nil
+	}
+
+	return nil, ErrInvalidAddrType
 }

@@ -464,6 +464,7 @@ func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duratio
 	b := make([]byte, MaxBufferSize)
 	b[utils.MaxAddrLen+2], b[utils.MaxAddrLen+3] = 0x0d, 0x0a
 
+	buf := make([]byte, utils.MaxAddrLen)
 	for {
 		n, tgt, err := conn.ReadTo(b[utils.MaxAddrLen+4:])
 		if err != nil {
@@ -478,9 +479,9 @@ func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duratio
 
 		addr, ok := tgt.(utils.Addr)
 		if !ok {
-			addr, err = utils.ResolveAddrBuffer(tgt, make([]byte, utils.MaxAddrLen))
+			addr, err = utils.ResolveAddrBuffer(tgt, buf)
 			if err != nil {
-				errCh <- fmt.Errorf("resolve addr error: %v", err)
+				errCh <- fmt.Errorf("resolve addr error: %w", err)
 				break
 			}
 		}

@@ -25,8 +25,8 @@ func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
 	return &PacketConn{
 		PacketConn: pc,
 		Cipher:     ciph,
-		rBuff:      make([]byte, MaxUDPPacketSize),
-		wBuff:      make([]byte, MaxUDPPacketSize),
+		rBuff:      make([]byte, MaxBufferSize),
+		wBuff:      make([]byte, MaxBufferSize),
 	}
 }
 

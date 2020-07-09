@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	MaxUDPPacketSize = 4096 // Max 65536
+	MaxBufferSize = 4096 // Max 65536
 )
 
 type Handler struct {
@@ -121,9 +121,9 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := make([]byte, 3+utils.MaxAddrLen+MaxUDPPacketSize)
+	b := make([]byte, 3+utils.MaxAddrLen+MaxBufferSize)
 	for {
-		rc.SetDeadline(time.Now().Add(h.timeout))
+		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		n, _, er := rc.ReadFrom(b)
 		if er != nil {
 			if ne, ok := er.(net.Error); ok {
@@ -161,7 +161,8 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 }
 
 func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := make([]byte, 3+utils.MaxAddrLen+MaxUDPPacketSize)
+	b := make([]byte, 3+utils.MaxAddrLen+MaxBufferSize)
+	buf := make([]byte, utils.MaxAddrLen)
 	for {
 		n, tgt, err := conn.ReadTo(b[3+utils.MaxAddrLen:])
 		if err != nil {
@@ -175,7 +176,7 @@ func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.D
 
 		addr, ok := tgt.(utils.Addr)
 		if !ok {
-			addr, err = utils.ResolveAddrBuffer(tgt, make([]byte, utils.MaxAddrLen))
+			addr, err = utils.ResolveAddrBuffer(tgt, buf)
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %v", err)
 				break
@@ -187,7 +188,7 @@ func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.D
 
 		b[offset], b[offset+1], b[offset+2] = 0, 0, 0
 
-		rc.SetDeadline(time.Now().Add(timeout))
+		rc.SetWriteDeadline(time.Now().Add(timeout))
 		_, err = rc.WriteTo(b[offset:3+utils.MaxAddrLen+n], raddr)
 		if err != nil {
 			errCh <- err
