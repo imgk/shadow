@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -219,51 +220,59 @@ func (r *TCPResolver) CleanLoop() {
 		for conn, t := range r.conns {
 			if now.Sub(t) > time.Minute*3 {
 				delete(r.conns, conn)
+				conn.Close()
 			}
 		}
 		r.Unlock()
 	}
 }
 
-func (r *TCPResolver) Resolve(b []byte, n int) (int, error) {
-	conn := r.Get()
-	if conn == nil {
-		c, err := net.Dial("tcp", r.Addr)
-		if err != nil {
-			return 0, err
-		}
-		c.(*net.TCPConn).SetKeepAlive(true)
-		conn = c
-	}
-	defer r.Put(conn)
-
+func (r *TCPResolver) Resolve(b []byte, n int) (m int, err error) {
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
-	_, err := conn.Write(b[:2+n])
-	if err != nil {
-		return 0, err
-	}
-
-	req := binary.BigEndian.Uint16(b[2:4])
-	for {
-		err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
-		if err != nil {
-			return 0, err
+	id := binary.BigEndian.Uint16(b[2:4])
+	conn := r.Get()
+	defer func() {
+		if err == nil {
+			r.Put(conn)
+		}
+	}()
+	for newc := true; newc; {
+		if conn == nil {
+			newc = false
+			c, err := net.Dial("tcp", r.Addr)
+			if err != nil {
+				return 0, err
+			}
+			c.(*net.TCPConn).SetKeepAlive(true)
+			conn = c
 		}
 
+		_, err := conn.Write(b[:2+n])
+		if err != nil {
+			conn.Close()
+			conn = r.Get()
+			continue
+		}
+
+		conn.SetReadDeadline(time.Now().Add(r.Timeout))
 		_, err = io.ReadFull(conn, b[:2])
 		if err != nil {
-			return 0, fmt.Errorf("length error: %w", err)
+			if errors.Is(err, io.EOF) {
+				conn.Close()
+				conn = r.Get()
+				continue
+			}
+			return 0, err
 		}
 
 		n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
 		if err != nil {
-			return 0, fmt.Errorf("payload error: %w", err)
-		}
-		if req != binary.BigEndian.Uint16(b[2:4]) {
-			continue
+			return 0, err
 		}
 
-		break
+		if id == binary.BigEndian.Uint16(b[2:4]) {
+			return n, nil
+		}
 	}
 	return n, nil
 }
@@ -304,51 +313,59 @@ func (r *TLSResolver) CleanLoop() {
 		for conn, t := range r.conns {
 			if now.Sub(t) > time.Minute*3 {
 				delete(r.conns, conn)
+				conn.Close()
 			}
 		}
 		r.Unlock()
 	}
 }
 
-func (r *TLSResolver) Resolve(b []byte, n int) (int, error) {
-	conn := r.Get()
-	if conn == nil {
-		c, err := net.Dial("tcp", r.Addr)
-		if err != nil {
-			return 0, err
-		}
-		c.(*net.TCPConn).SetKeepAlive(true)
-		conn = tls.Client(c, r.Conf)
-	}
-	defer r.Put(conn)
-
+func (r *TLSResolver) Resolve(b []byte, n int) (m int, err error) {
 	binary.BigEndian.PutUint16(b[:2], uint16(n))
-	_, err := conn.Write(b[:2+n])
-	if err != nil {
-		return 0, err
-	}
-
-	req := binary.BigEndian.Uint16(b[2:4])
-	for {
-		err = conn.SetReadDeadline(time.Now().Add(r.Timeout))
-		if err != nil {
-			return 0, err
+	id := binary.BigEndian.Uint16(b[2:4])
+	conn := r.Get()
+	defer func() {
+		if err == nil {
+			r.Put(conn)
+		}
+	}()
+	for newc := true; newc; {
+		if conn == nil {
+			newc = false
+			c, err := net.Dial("tcp", r.Addr)
+			if err != nil {
+				return 0, err
+			}
+			c.(*net.TCPConn).SetKeepAlive(true)
+			conn = tls.Client(c, r.Conf)
 		}
 
+		_, err := conn.Write(b[:2+n])
+		if err != nil {
+			conn.Close()
+			conn = r.Get()
+			continue
+		}
+
+		conn.SetReadDeadline(time.Now().Add(r.Timeout))
 		_, err = io.ReadFull(conn, b[:2])
 		if err != nil {
-			return 0, fmt.Errorf("length error: %w", err)
+			if errors.Is(err, io.EOF) {
+				conn.Close()
+				conn = r.Get()
+				continue
+			}
+			return 0, err
 		}
 
 		n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
 		if err != nil {
-			return 0, fmt.Errorf("payload error: %w", err)
-		}
-		if req != binary.BigEndian.Uint16(b[2:4]) {
-			continue
+			return 0, err
 		}
 
-		break
+		if id == binary.BigEndian.Uint16(b[2:4]) {
+			return n, nil
+		}
 	}
 	return n, nil
 }
