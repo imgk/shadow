@@ -180,8 +180,8 @@ func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 		}
 	}
 
-	if _, ok := addr.(Addr); ok {
-		return addr, nil
+	if a, ok := addr.(Addr); ok {
+		return a, nil
 	}
 
 	return nil, ErrInvalidAddrType
