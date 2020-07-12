@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -257,12 +256,14 @@ func (r *TCPResolver) Resolve(b []byte, n int) (m int, err error) {
 		conn.SetReadDeadline(time.Now().Add(r.Timeout))
 		_, err = io.ReadFull(conn, b[:2])
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				conn.Close()
-				conn = r.Get()
-				continue
+			if ne, ok := err.(net.Error); ok {
+				if ne.Timeout() {
+					return 0, err
+				}
 			}
-			return 0, err
+			conn.Close()
+			conn = r.Get()
+			continue
 		}
 
 		n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
@@ -350,12 +351,14 @@ func (r *TLSResolver) Resolve(b []byte, n int) (m int, err error) {
 		conn.SetReadDeadline(time.Now().Add(r.Timeout))
 		_, err = io.ReadFull(conn, b[:2])
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				conn.Close()
-				conn = r.Get()
-				continue
+			if ne, ok := err.(net.Error); ok {
+				if ne.Timeout() {
+					return 0, err
+				}
 			}
-			return 0, err
+			conn.Close()
+			conn = r.Get()
+			continue
 		}
 
 		n, err = io.ReadFull(conn, b[2:2+binary.BigEndian.Uint16(b[:2])])
