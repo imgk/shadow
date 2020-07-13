@@ -512,6 +512,9 @@ func (conn *WebConn) Read(b []byte) (int, error) {
 
 	_, conn.Reader, err = conn.Conn.NextReader()
 	if err != nil {
+		if _, ok := err.(*websocket.CloseError); ok {
+			return 0, io.EOF
+		}
 		return 0, err
 	}
 
@@ -522,6 +525,9 @@ func (conn *WebConn) Read(b []byte) (int, error) {
 func (conn *WebConn) Write(b []byte) (int, error) {
 	err := conn.Conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
+		if _, ok := err.(*websocket.CloseError); ok {
+			return 0, io.EOF
+		}
 		return 0, err
 	}
 	return len(b), nil
