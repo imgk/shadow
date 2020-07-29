@@ -303,8 +303,6 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 		conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 		n, addr, err := conn.ReadTo(b[2:])
 		if err != nil {
-			s.Pool.Put(b)
-
 			if ne, ok := err.(net.Error); ok {
 				if ne.Timeout() {
 					break
@@ -316,12 +314,12 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 
 		if err := m.Unpack(b[2:2+n]); err != nil {
 			s.Error(fmt.Sprintf("unpack message error: %v", err))
-			return
+			continue
 		}
 
 		if len(m.Question) == 0 {
 			s.Error("no question in message")
-			return
+			continue
 		}
 		s.Info(fmt.Sprintf("queryd %v ask for %v", conn.RemoteAddr(), m.Question[0].Name))
 
@@ -330,7 +328,7 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 			bb, err := m.PackBuffer(b[2:])
 			if err != nil {
 				s.Error("append message error: " + err.Error())
-				return
+				continue
 			}
 			n = len(bb)
 		} else {
@@ -338,18 +336,18 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 			if err != nil {
 				if ne, ok := err.(net.Error); ok {
 					if ne.Timeout() {
-						return
+						continue
 					}
 				}
 				s.Error("resolve dns error: " + err.Error())
-				return
+				continue
 			}
 			n = nr
 		}
 
 		if _, err := conn.WriteFrom(b[2:2+n], addr); err != nil {
 			s.Error("write dns error: " + err.Error())
-			return
+			break
 		}
 	}
 }
