@@ -108,10 +108,6 @@ func (d *Device) Close() error {
 	return nil
 }
 
-func (d *Device) Read(b []byte) (int, error) {
-	return 0, errors.New("not support")
-}
-
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	a := make([]Address, BatchMax)
 	b := make([]byte, 1500*BatchMax)
@@ -528,9 +524,4 @@ func (d *Device) Write(b []byte) (int, error) {
 	}
 
 	return n, err
-}
-
-func (d *Device) ReadFrom(r io.Reader) (n int64, err error) {
-	err = errors.New("not support")
-	return
 }

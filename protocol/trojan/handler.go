@@ -3,8 +3,8 @@ package trojan
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -31,16 +31,13 @@ const (
 	Assocaite = 3
 )
 
-var DefaultDialer = Dialer{
-	Dialer: net.Dialer{},
-}
-
 type Dialer struct {
 	net.Dialer
+	Addr string
 }
 
 func (d Dialer) Dial(network, addr string) (net.Conn, error) {
-	conn, err := d.Dialer.Dial(network, addr)
+	conn, err := d.Dialer.Dial(network, d.Addr)
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
 	}
@@ -48,7 +45,7 @@ func (d Dialer) Dial(network, addr string) (net.Conn, error) {
 }
 
 func (d Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	conn, err := d.Dialer.DialContext(ctx, network, addr)
+	conn, err := d.Dialer.DialContext(ctx, network, d.Addr)
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
 	}
@@ -72,6 +69,7 @@ type Handler struct {
 	Mux       *Mux
 	WebSocket *WebSocket
 	Config    *tls.Config
+	Dialer    Dialer
 	header    [HexLen + 2 + 8 + 2]byte
 	timeout   time.Duration
 	server    string
@@ -98,6 +96,9 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			ServerName:         host,
 			ClientSessionCache: tls.NewLRUClientSessionCache(32),
 			InsecureSkipVerify: false,
+		},
+		Dialer:  Dialer{
+			Addr: addr.String(),
 		},
 		timeout: timeout,
 		server:  addr.String(),
@@ -128,11 +129,11 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 
 		hd.WebSocket = &WebSocket{
 			Dialer: websocket.Dialer{
-				NetDial:         DefaultDialer.Dial,
-				NetDialContext:  DefaultDialer.DialContext,
+				NetDial:         hd.Dialer.Dial,
+				NetDialContext:  hd.Dialer.DialContext,
 				TLSClientConfig: hd.Config,
 			},
-			Addr:   "wss://"+host+path,
+			Addr:   "wss://" + host + path,
 			Cipher: ciph,
 		}
 	}
@@ -152,7 +153,7 @@ func (h *Handler) Connect() (conn net.Conn, err error) {
 		return
 	}
 
-	conn, err = DefaultDialer.Dial("tcp", h.server)
+	conn, err = h.Dialer.Dial("tcp", h.server)
 	if err != nil {
 		return
 	}
@@ -199,7 +200,7 @@ func CloseLater(sess *smux.Session) {
 	t := time.NewTicker(time.Minute)
 
 	for {
-		<- t.C
+		<-t.C
 
 		if sess.NumStreams() == 0 {
 			sess.Close()
@@ -400,7 +401,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 				}
 			}
 
-			if errors.Is(er, smux.ErrTimeout) || errors.Is(er, io.ErrClosedPipe) {
+			if errors.Is(er, smux.ErrTimeout) || errors.Is(er, io.ErrClosedPipe) || errors.Is(er, io.EOF) {
 				break
 			}
 
@@ -417,7 +418,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 				}
 			}
 
-			if er == smux.ErrTimeout || er == io.ErrClosedPipe {
+			if errors.Is(er, smux.ErrTimeout) || errors.Is(er, io.ErrClosedPipe) {
 				break
 			}
 
@@ -489,7 +490,7 @@ func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duratio
 		copy(b[utils.MaxAddrLen-len(addr):], addr)
 
 		rc.SetWriteDeadline(time.Now().Add(timeout))
-		_, err = rc.Write(b[utils.MaxAddrLen-len(addr):utils.MaxAddrLen+4+n])
+		_, err = rc.Write(b[utils.MaxAddrLen-len(addr) : utils.MaxAddrLen+4+n])
 		if err != nil {
 			errCh <- err
 			break

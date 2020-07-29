@@ -2,6 +2,14 @@
 
 A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 
+## How to build
+
+```
+GOOS=windows go build -v -ldflags="-s -w" -trimpath
+GOOS=darwin  go build -v -ldflags="-s -w" -trimpath
+GOOS=linux   go build -v -ldflags="-s -w" -trimpath
+```
+
 ## How to use it
 
 ```
@@ -25,7 +33,7 @@ go/bin/shadow.exe -c C:/Users/example/shadow/config.json -v
 1. Set system dns server to 8.8.8.8
 
 ```
-sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
+sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="198.18.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
 ```
 
 ```
@@ -39,7 +47,7 @@ iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
 1. Set system dns server to 8.8.8.8
 
 ```
-sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
+sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="198.18.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
 ```
 
 ## Config File
@@ -58,13 +66,13 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
 
     // Trojan-GO (VERSION > 0.7.0)
     // trojan://password:mux@server:port
-    // trojan://password@server:port/websocket-path?shadowsocks=chipername
-    // trojan://password:mux@server:port/websocket-path?shadowsocks=chipername
+    // trojan://password@server:port/websocket-path?aead=chipername
+    // trojan://password:mux@server:port/websocket-path?aead=chipername
 
     // supported cipher name: CHACHA20-IETF-POLY1305, AES-256-GCM, DUMMY
     "Server": [
         "ss://chacha20-ietf-poly1305:password@127.0.0.1:8388",
-        "trojan://password:mux@example.com:443/path?shadowsocks=ciphername"
+        "trojan://password:mux@example.com:443/path?aead=ciphername"
     ],
 
 
@@ -73,16 +81,10 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
     // tcp://8.8.8.8
     // tls://1.1.1.1
     // https://1.1.1.1/dns-query
-    // DON'T USE DNS URL with domain name, like https://rubyfish.cn/dns-query
     "NameServer": "https://1.1.1.1/dns-query",
 
 
-    // Support plugin running in standlone mode
-    "Plugin": "obfs-local.exe",
-    "PluginOpts": "-s server_ip -p 443 -l 8388 --obfs tls --obfs-host www.example.com",
-
-
-    // windows only
+    // windivert only
     // filter string passed to WinDivert
     // https://www.reqrypt.org/windivert-doc.html#filter_language
 
@@ -95,31 +97,29 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="44.44.0.0/16;8.8.8.8/32" go
     // example: outbound and (ip ? true : ipv6.DstAddr != 2001:AEDE:5678::1234 and ipv6.DstAddr != 2001:4860:4860::8888)
     "FilterString": "outbound and (ip ? ip.DstAddr != 1.2.3.4 and ip.DstAddr != 1.1.1.1 : true)",
 
-
-    // if true, IPs in this list will be proxied
-    // if false, IPs in this list will be bypassed
+    // windivert only
+    // IPs in this list will be proxied
     "IPRules": {
-        "Mode": true,
-        "IPCIDR": [
-            "44.44.0.0/16",
-            "91.108.8.0"
+        "Proxy": [
+            "198.18.0.0/16",
+            "8.8.8.8"
         ]
     },
 
 
-    // windows only
-    // if true, programs in this list will be proxied
-    // if false, programs in this list will be bypassed
+    // windivert only
+    // programs in this list will be proxied
     "AppRules": {
-        "Mode": true,
-        "Programs":[
+        "Proxy":[
             "git.exe"
         ]
     },
 
 
     // Fake IP mode
-    // domains in proxy list will be given a fake ip: 44.44.X.Y
+    // shadow will hijack all UDP dns queries
+    // except IPs with prefix of 198.18
+    // domains in proxy list will be given a fake ip: 198.18.X.Y
     // and packets to these domains will be proxied
     "DomainRules": {
         "Proxy": [

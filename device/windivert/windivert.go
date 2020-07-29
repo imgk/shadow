@@ -13,6 +13,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+var (
+	winDivert     = (*windows.DLL)(nil)
+	winDivertOpen = (*windows.Proc)(nil)
+)
+
 func init() {
 	if err := InstallDriver(); err != nil {
 		panic(err)
@@ -57,111 +62,6 @@ func init() {
 	}
 }
 
-var (
-	kernel32    = windows.MustLoadDLL("kernel32.dll")
-	heapAlloc   = kernel32.MustFindProc("HeapAlloc")
-	heapCreate  = kernel32.MustFindProc("HeapCreate")
-	heapDestroy = kernel32.MustFindProc("HeapDestroy")
-)
-
-const (
-	HEAP_CREATE_ENABLE_EXECUTE = 0x00040000
-	HEAP_GENERATE_EXCEPTIONS   = 0x00000004
-	HEAP_NO_SERIALIZE          = 0x00000001
-)
-
-func HeapAlloc(hHeap windows.Handle, dwFlags, dwBytes uint32) (unsafe.Pointer, error) {
-	ret, _, errno := heapAlloc.Call(uintptr(hHeap), uintptr(dwFlags), uintptr(dwBytes))
-	if ret == 0 {
-		return nil, errno
-	}
-
-	return unsafe.Pointer(ret), nil
-}
-
-func HeapCreate(flOptions, dwInitialSize, dwMaximumSize uint32) (windows.Handle, error) {
-	ret, _, errno := heapCreate.Call(uintptr(flOptions), uintptr(dwInitialSize), uintptr(dwMaximumSize))
-	if ret == 0 {
-		return windows.InvalidHandle, errno
-	}
-
-	return windows.Handle(ret), nil
-}
-
-func HeapDestroy(hHeap windows.Handle) error {
-	ret, _, errno := heapDestroy.Call(uintptr(hHeap))
-	if ret == 0 {
-		return errno
-	}
-
-	return nil
-}
-
-var (
-	winDivert     = (*windows.DLL)(nil)
-	winDivertOpen = (*windows.Proc)(nil)
-)
-
-type filter struct {
-	b1 uint32
-	b2 uint32
-	b3 [4]uint32
-}
-
-type version struct {
-	magic uint64
-	major uint32
-	minor uint32
-	bits  uint32
-	_     [3]uint32
-	_     [4]uint64
-}
-
-type FilterError int
-
-func (e FilterError) Error() string {
-	switch int(e) {
-	case 0:
-		return "WINDIVERT_ERROR_NONE"
-	case 1:
-		return "WINDIVERT_ERROR_NO_MEMORY"
-	case 2:
-		return "WINDIVERT_ERROR_TOO_DEEP"
-	case 3:
-		return "WINDIVERT_ERROR_TOO_LONG"
-	case 4:
-		return "WINDIVERT_ERROR_BAD_TOKEN"
-	case 5:
-		return "WINDIVERT_ERROR_BAD_TOKEN_FOR_LAYER"
-	case 6:
-		return "WINDIVERT_ERROR_UNEXPECTED_TOKEN"
-	case 7:
-		return "WINDIVERT_ERROR_INDEX_OOB"
-	case 8:
-		return "WINDIVERT_ERROR_OUTPUT_TOO_SHORT"
-	case 9:
-		return "WINDIVERT_ERROR_BAD_OBJECT"
-	case 10:
-		return "WINDIVERT_ERROR_ASSERTION_FAILED"
-	default:
-		return ""
-	}
-}
-
-const (
-	WINDIVERT_MIN_POOL_SIZE = 12288
-	WINDIVERT_MAX_POOL_SIZE = 131072
-	WINDIVERT_FILTER_MAXLEN = 256
-)
-
-func CompileFilter(filter string, pool windows.Handle, layer Layer, object *filter) (uint, error) {
-	return 0, nil
-}
-
-func AnalyzeFilter(layer Layer, object *filter, objLen uint) uint64 {
-	return 0
-}
-
 func IoControlEx(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, bufLen uint32, overlapped *windows.Overlapped) (iolen uint32, err error) {
 	err = windows.DeviceIoControl(h, uint32(code), (*byte)(ioctl), uint32(unsafe.Sizeof(IoCtl{})), buf, bufLen, &iolen, overlapped)
 	if err != windows.ERROR_IO_PENDING {
@@ -184,16 +84,6 @@ func IoControl(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, 
 
 	windows.CloseHandle(event)
 	return
-}
-
-func FlagExclude(flags, flag1, flag2 uint64) bool {
-	return flags&(flag1|flag2) != (flag1 | flag2)
-}
-
-func ValidateFlag(flags uint64) bool {
-	FlagAll := FlagSniff | FlagDrop | FlagRecvOnly | FlagSendOnly | FlagNoInstall | FlagFragments
-
-	return (flags & ^uint64(FlagAll) == 0) && FlagExclude(flags, FlagSniff, FlagDrop) && FlagExclude(flags, FlagRecvOnly, FlagSendOnly)
 }
 
 type Handle struct {

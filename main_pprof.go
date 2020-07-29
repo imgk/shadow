@@ -1,6 +1,6 @@
 // +build pprof
 
-package app
+package main
 
 import (
 	"log"

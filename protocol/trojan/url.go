@@ -34,7 +34,7 @@ func ParseUrl(s string) (server, cipher, password, mux, path string, err error) 
 	path = u.Path
 
 	query := u.Query()
-	if name, ok := query["shadowsocks"]; ok {
+	if name, ok := query["aead"]; ok {
 		cipher = name[0]
 	} else {
 		if path != "" {

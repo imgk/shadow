@@ -6,168 +6,193 @@ import (
 	"fmt"
 	"net"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 
 	"github.com/imgk/shadow/utils"
 )
 
-func (s *stack) SetResolver(server string) (err error) {
-	s.Resolver, err = utils.NewResolver(server)
-	return
-}
-
-func (s *stack) AddrToDomainAddr(addr net.Addr) (utils.Addr, error) {
+func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 	switch addr.(type) {
 	case *net.TCPAddr:
-		a, err := s.IPToDomainAddr(addr.(*net.TCPAddr).IP)
+		buf, err := s.LookupIP(addr.(*net.TCPAddr).IP)
 		if err != nil {
-			return nil, err
+			return addr, err
 		}
-		binary.BigEndian.PutUint16(a[len(a)-2:], uint16(addr.(*net.TCPAddr).Port))
-
-		return a, nil
+		binary.BigEndian.PutUint16(buf[len(buf)-2:], uint16(addr.(*net.TCPAddr).Port))
+		return buf, nil
 	case *net.UDPAddr:
-		a, err := s.IPToDomainAddr(addr.(*net.UDPAddr).IP)
+		buf, err := s.LookupIP(addr.(*net.UDPAddr).IP)
 		if err != nil {
-			return nil, err
+			return addr, err
 		}
-		binary.BigEndian.PutUint16(a[len(a)-2:], uint16(addr.(*net.UDPAddr).Port))
-
-		return a, nil
+		binary.BigEndian.PutUint16(buf[len(buf)-2:], uint16(addr.(*net.UDPAddr).Port))
+		return buf, nil
+	case utils.Addr:
+		return addr, nil
 	default:
-		return nil, errors.New("not support")
+		return addr, errors.New("not support")
 	}
 }
 
-func (s *stack) IPToDomainAddr(addr net.IP) (utils.Addr, error) {
-	return s.IPToDomainAddrBuffer(addr, make([]byte, utils.MaxAddrLen))
-}
+var (
+	ErrNotFake  = errors.New("not fake")
+	ErrNotFound = errors.New("not found")
+)
 
-func (s *stack) IPToDomainAddrBuffer(addr net.IP, b []byte) (utils.Addr, error) {
+func (s *Stack) LookupIP(addr net.IP) (utils.Addr, error) {
 	if ip := addr.To4(); ip != nil {
-		if ip[0] != 44 || ip[1] != 44 {
-			return b, fmt.Errorf("%v not found", addr)
+		if ip[0] != 198 || ip[1] != 18 {
+			return nil, ErrNotFake
 		}
 
-		option := s.Tree.Load(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", ip[3], ip[2]))
-		if v, ok := option.(*dnsmessage.PTRResource); ok {
-			b = append(b[:0], utils.AddrTypeDomain, byte(v.PTR.Length))
-			b = append(b, v.PTR.Data[:v.PTR.Length]...)
-			b = append(b, 0, 0)
-
-			return b, nil
+		option := s.DomainTree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2]))
+		if rr, ok := option.(*dns.PTR); ok {
+			b := make([]byte, utils.MaxAddrLen)
+			b[0] = utils.AddrTypeDomain
+			b[1] = byte(len(rr.Ptr))
+			n := copy(b[2:], rr.Ptr[:])
+			return b[:2+n+2], nil
 		}
-
-		return b, fmt.Errorf("%v not found", addr)
+		return nil, ErrNotFound
 	}
-
-	return b, fmt.Errorf("%v not found", addr)
+	return nil, ErrNotFake
 }
 
-var errZeroLength = errors.New("length of questions in dns message is 0")
-
-func (s *stack) ResolveDNS(m *dnsmessage.Message) (*dnsmessage.Message, error) {
-	if len(m.Questions) == 0 {
-		return m, errZeroLength
-	}
-
-	name := m.Questions[0].Name.String()
-	switch option := s.Tree.Load(name); option.(type) {
+func (s *Stack) HandleMessage(m *dns.Msg) {
+	option := s.DomainTree.Load(m.Question[0].Name)
+	switch option.(type) {
 	case string:
-		switch v := option.(string); v {
-		case "PROXY":
-			switch m.Questions[0].Type {
-			case dnsmessage.TypeA:
-				typeA := &dnsmessage.AResource{A: [4]byte{44, 44, uint8(s.counter >> 8), uint8(s.counter)}}
-				s.Tree.Store(name, typeA)
-
-				typePTR := &dnsmessage.PTRResource{PTR: m.Questions[0].Name}
-				s.Tree.Store(fmt.Sprintf("%d.%d.44.44.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8)), typePTR)
-
-				s.counter++
-
-				m.Header.RCode = dnsmessage.RCodeSuccess
-				m.Answers = append(m.Answers[:0], dnsmessage.Resource{
-					Header: dnsmessage.ResourceHeader{
-						Name:  m.Questions[0].Name,
-						Type:  m.Questions[0].Type,
-						Class: m.Questions[0].Class,
-						TTL:   1,
-					},
-					Body: typeA,
-				})
-			case dnsmessage.TypeAAAA:
-				m.Header.RCode = dnsmessage.RCodeRefused
-			default:
-				m.Header.RCode = dnsmessage.RCodeRefused
-			}
-		case "DIRECT":
-			return m, nil
-		case "BLOCKED":
-			switch m.Questions[0].Type {
-			case dnsmessage.TypeA:
-				m.Header.RCode = dnsmessage.RCodeSuccess
-				m.Answers = append(m.Answers[:0], dnsmessage.Resource{
-					Header: dnsmessage.ResourceHeader{
-						Name:  m.Questions[0].Name,
-						Type:  m.Questions[0].Type,
-						Class: m.Questions[0].Class,
-						TTL:   1,
-					},
-					Body: &dnsmessage.AResource{A: [4]byte{127, 0, 0, 1}},
-				})
-			case dnsmessage.TypeAAAA:
-				m.Header.RCode = dnsmessage.RCodeRefused
-			default:
-				m.Header.RCode = dnsmessage.RCodeRefused
-			}
-		default:
-			return m, nil
+		if ok := s.HandleMessageByRule(m, option.(string)); ok {
+			return
 		}
-	case *dnsmessage.PTRResource:
-		switch m.Questions[0].Type {
-		case dnsmessage.TypePTR:
-			m.Header.RCode = dnsmessage.RCodeSuccess
-			m.Answers = append(m.Answers[:0], dnsmessage.Resource{
-				Header: dnsmessage.ResourceHeader{
-					Name:  m.Questions[0].Name,
-					Type:  m.Questions[0].Type,
-					Class: m.Questions[0].Class,
-					TTL:   1,
-				},
-				Body: option.(*dnsmessage.PTRResource),
-			})
+	case *dns.A:
+		switch m.Question[0].Qtype {
+		case dns.TypeA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], option.(*dns.A))
+		case dns.TypeAAAA:
+			m.MsgHdr.Rcode = dns.RcodeRefused
 		default:
-			m.Header.RCode = dnsmessage.RCodeRefused
+			m.MsgHdr.Rcode = dns.RcodeRefused
 		}
-	case *dnsmessage.AResource:
-		switch m.Questions[0].Type {
-		case dnsmessage.TypeA:
-			m.Header.RCode = dnsmessage.RCodeSuccess
-			m.Answers = append(m.Answers[:0], dnsmessage.Resource{
-				Header: dnsmessage.ResourceHeader{
-					Name:  m.Questions[0].Name,
-					Type:  m.Questions[0].Type,
-					Class: m.Questions[0].Class,
-					TTL:   1,
-				},
-				Body: option.(*dnsmessage.AResource),
-			})
-		case dnsmessage.TypeAAAA:
-			m.Header.RCode = dnsmessage.RCodeRefused
+	case *dns.AAAA:
+		switch m.Question[0].Qtype {
+		case dns.TypeA:
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		case dns.TypeAAAA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], option.(*dns.AAAA))
 		default:
-			m.Header.RCode = dnsmessage.RCodeRefused
+			m.MsgHdr.Rcode = dns.RcodeRefused
 		}
-	case *dnsmessage.AAAAResource:
-		m.Header.RCode = dnsmessage.RCodeRefused
+	case *dns.PTR:
+		switch m.Question[0].Qtype {
+		case dns.TypePTR:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], option.(*dns.PTR))
+		default:
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		}
+	case Both:
+		switch m.Question[0].Qtype {
+		case dns.TypeA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], option.(Both).A)
+		case dns.TypeAAAA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], option.(Both).AAAA)
+		default:
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		}
 	default:
-		return m, nil
+		return
 	}
 
-	m.Header.Response = true
-	m.Header.Authoritative = false
-	m.Header.Truncated = false
-	m.Header.RecursionAvailable = false
+	m.MsgHdr.Response = true
+	m.MsgHdr.Authoritative = false
+	m.MsgHdr.Truncated = false
+	m.MsgHdr.RecursionAvailable = false
+}
 
-	return m, nil
+type Both struct {
+	A    *dns.A
+	AAAA *dns.AAAA
+}
+
+func (s *Stack) HandleMessageByRule(m *dns.Msg, option string) bool {
+	switch option {
+	case "PROXY":
+		s.counter++
+
+		rrA := &dns.A{
+			Hdr: dns.RR_Header{
+				Name:   m.Question[0].Name,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    1,
+			},
+			A: net.IP([]byte{198, 18, byte(s.counter >> 8), byte(s.counter)}),
+		}
+		s.DomainTree.Store(rrA.Hdr.Name, rrA)
+
+		rrPTR := &dns.PTR{
+			Hdr: dns.RR_Header{
+				Name:   fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8)),
+				Rrtype: dns.TypePTR,
+				Class:  dns.ClassINET,
+				Ttl:    1,
+			},
+			Ptr: m.Question[0].Name,
+		}
+		s.DomainTree.Store(rrPTR.Hdr.Name, rrPTR)
+
+		switch m.Question[0].Qtype {
+		case dns.TypeA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], rrA)
+		case dns.TypeAAAA:
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		default:
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		}
+	case "DIRECT":
+		return true
+	case "BLOCKED":
+		rrA := &dns.A{
+			Hdr: dns.RR_Header{
+				Name:   m.Question[0].Name,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    1,
+			},
+			A: net.IPv4zero,
+		}
+
+		rrAAAA := &dns.AAAA{
+			Hdr: dns.RR_Header{
+				Name:   m.Question[0].Name,
+				Rrtype: dns.TypeAAAA,
+				Class:  dns.ClassINET,
+				Ttl:    1,
+			},
+			AAAA: net.IPv6zero,
+		}
+
+		s.DomainTree.Store(rrA.Hdr.Name, Both{A: rrA, AAAA: rrAAAA})
+
+		switch m.Question[0].Qtype {
+		case dns.TypeA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], rrA)
+		case dns.TypeAAAA:
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], rrAAAA)
+		default:
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		}
+	default:
+		return true
+	}
+
+	return false
 }

@@ -26,11 +26,8 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go func(mode bool, ctx context.Context) {
-		if err := app.Run(mode, ctx, make(chan struct{})); err != nil {
-			panic(err)
-		}
-	}(*mode, ctx)
+	done := make(chan struct{})
+	go Run(*mode, ctx, done)
 
 	fmt.Println("shadow - a transparent proxy for Windows, macOS and Linux")
 	fmt.Println("shadow is running...")
@@ -40,4 +37,11 @@ func main() {
 	fmt.Println("shadow is closing...")
 
 	cancel()
+	<-done
+}
+
+func Run(mode bool, ctx context.Context, done chan struct{}) {
+	if err := app.Run(mode, ctx, make(chan struct{}), done); err != nil {
+		panic(err)
+	}
 }

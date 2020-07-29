@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-type Tree struct {
+type DomainTree struct {
 	*node
 	sep string
 	sync.RWMutex
@@ -15,8 +15,8 @@ type node struct {
 	branch map[string]*node
 }
 
-func NewTree(sep string) *Tree {
-	return &Tree{
+func NewDomainTree(sep string) *DomainTree {
+	return &DomainTree{
 		node: &node{
 			value:  struct{}{},
 			branch: map[string]*node{},
@@ -26,12 +26,12 @@ func NewTree(sep string) *Tree {
 	}
 }
 
-func (t *Tree) Store(k string, v interface{}) {
+func (t *DomainTree) Store(k string, v interface{}) {
 	t.Lock()
 	defer t.Unlock()
 	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
 }
-func (t *Tree) UnsafeStore(k string, v interface{}) {
+func (t *DomainTree) UnsafeStore(k string, v interface{}) {
 	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
 }
 func (n *node) store(ks []string, v interface{}) {
@@ -72,12 +72,12 @@ func (n *node) store(ks []string, v interface{}) {
 	}
 }
 
-func (t *Tree) Load(k string) interface{} {
+func (t *DomainTree) Load(k string) interface{} {
 	t.RLock()
 	defer t.RUnlock()
 	return t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
 }
-func (t *Tree) UnsafeLoad(k string) interface{} {
+func (t *DomainTree) UnsafeLoad(k string) interface{} {
 	return t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
 }
 func (n *node) load(ks []string) interface{} {
@@ -128,12 +128,12 @@ func (n *node) load(ks []string) interface{} {
 	}
 }
 
-func (t *Tree) Reset() {
+func (t *DomainTree) Reset() {
 	t.Lock()
 	defer t.Unlock()
 	t.reset()
 }
-func (t *Tree) UnsafeReset() {
+func (t *DomainTree) UnsafeReset() {
 	t.reset()
 }
 func (n *node) reset() {
