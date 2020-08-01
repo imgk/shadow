@@ -4,66 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
-var windivertsys = "C:\\Windows\\System32\\WinDivert" + strconv.Itoa(32<<(^uint(0)>>63)) + ".sys"
-var windivertdll = "C:\\Windows\\System32\\WinDivert.dll"
-
 const types = 7
-
-func TryRemoveDriver() error {
-	b, err := Check()
-	if err != nil {
-		return fmt.Errorf("check process using windivert error: %v", err)
-	}
-
-	if b {
-		if err := RemoveDriver(); err != nil {
-			return fmt.Errorf("remove windivert error: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func Check() (bool, error) {
-	hd, err := Open("true", LayerReflect, 777, FlagSniff|FlagRecvOnly|FlagNoInstall)
-	if err != nil {
-		return false, err
-	}
-	defer hd.Close()
-
-	if err := hd.Shutdown(ShutdownBoth); err != nil {
-		return false, err
-	}
-
-	id := windows.GetCurrentProcessId()
-
-	a := new(Address)
-	b := make([]byte, 1500)
-
-	for {
-		_, err := hd.Recv(b, a)
-		if err != nil {
-			if err == ErrNoData {
-				return true, nil
-			}
-
-			return false, err
-		}
-
-		rt := a.Reflect()
-		if rt.ProcessID != id {
-			return false, nil
-		}
-	}
-}
-
-var DeviceName = windows.StringToUTF16Ptr("WinDivert")
 
 func CloseMutex(mutex windows.Handle) {
 	windows.ReleaseMutex(mutex)

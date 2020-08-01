@@ -3,6 +3,7 @@ package windivert
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,9 +17,23 @@ import (
 var (
 	winDivert     = (*windows.DLL)(nil)
 	winDivertOpen = (*windows.Proc)(nil)
+	windivertsys  = ""
+	windivertdll  = ""
+	DeviceName    = windows.StringToUTF16Ptr("WinDivert")
 )
 
 func init() {
+	if err := checkForWow64(); err != nil {
+		panic(err)
+	}
+
+	system32, err := windows.GetSystemDirectory()
+	if err != nil {
+		panic(err)
+	}
+	windivertsys = filepath.Join(system32, "WinDivert"+strconv.Itoa(32<<(^uint(0)>>63))+".sys")
+	windivertdll = filepath.Join(system32, "WinDivert.dll")
+
 	if err := InstallDriver(); err != nil {
 		panic(err)
 	}
@@ -60,6 +75,18 @@ func init() {
 		}
 		panic(fmt.Errorf("unsupported version %v of windivert, only support %v", ver, s))
 	}
+}
+
+func checkForWow64() error {
+	var b bool
+	err := windows.IsWow64Process(windows.CurrentProcess(), &b)
+	if err != nil {
+		return fmt.Errorf("Unable to determine whether the process is running under WOW64: %v", err)
+	}
+	if b {
+		return fmt.Errorf("You must use the 64-bit version of WireGuard on this computer.")
+	}
+	return nil
 }
 
 func IoControlEx(h windows.Handle, code CtlCode, ioctl unsafe.Pointer, buf *byte, bufLen uint32, overlapped *windows.Overlapped) (iolen uint32, err error) {

@@ -11,10 +11,10 @@ import (
 )
 
 type Device struct {
-	tun.Device
-	Name  string
-	MTU   int
-	Conf4 struct {
+	Device *tun.NativeTun
+	Name   string
+	MTU    int
+	Conf4  struct {
 		Addr    [4]byte
 		Mask    [4]byte
 		Gateway [4]byte
@@ -29,9 +29,11 @@ type Device struct {
 
 func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	dev = &Device{}
-	if dev.Device, err = tun.CreateTUN(name, mtu); err != nil {
+	device, err := tun.CreateTUN(name, mtu)
+	if err != nil {
 		return
 	}
+	dev.Device = device.(*tun.NativeTun)
 	if dev.Name, err = dev.Device.Name(); err != nil {
 		return
 	}
@@ -44,9 +46,11 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 
 func CreateTUNFromFile(file *os.File, mtu int) (dev *Device, err error) {
 	dev = &Device{}
-	if dev.Device, err = tun.CreateTUNFromFile(file, mtu); err != nil {
+	device, err := tun.CreateTUNFromFile(file, mtu)
+	if err != nil {
 		return
 	}
+	dev.Device = device.(*tun.NativeTun)
 	if dev.Name, err = dev.Device.Name(); err != nil {
 		return
 	}

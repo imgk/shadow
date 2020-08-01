@@ -1,26 +1,101 @@
 package tun
 
 import (
-	"fmt"
+	"errors"
 	"net"
+	"unsafe"
 )
 
-func Parse4(addr string) ([4]byte, error) {
-	if ip := net.ParseIP(addr).To4(); ip != nil {
-		return [4]byte{ip[0], ip[1], ip[2], ip[3]}, nil
-	}
-
-	return [4]byte{}, fmt.Errorf("parse addr: %v error", addr)
+func Parse4(addr string) [4]byte {
+	ip := net.ParseIP(addr).To4()
+	return *(*[4]byte)(unsafe.Pointer(&ip[0]))
 }
 
-func Parse6(addr string) ([16]byte, error) {
-	if ip := net.ParseIP(addr).To16(); ip != nil {
-		return [16]byte{ip[0], ip[1], ip[2], ip[3], ip[4], ip[5], ip[6], ip[7], ip[8], ip[9], ip[10], ip[11], ip[12], ip[13], ip[14], ip[15]}, nil
-	}
-
-	return [16]byte{}, fmt.Errorf("parse addr: %v error", addr)
+func Parse6(addr string) [16]byte {
+	ip := net.ParseIP(addr).To16()
+	return *(*[16]byte)(unsafe.Pointer(&ip[0]))
 }
 
 func NewDevice(name string) (*Device, error) {
 	return CreateTUN(name, 1500)
+}
+
+func (d *Device) Close() error {
+	return d.Device.Close()
+}
+
+func (d *Device) SetInterfaceAddress(address string) error {
+	if addr, mask, gateway, err := getInterfaceConfig4(address); err == nil {
+		return d.setInterfaceAddress4(addr, mask, gateway)
+	}
+	if addr, mask, gateway, err := getInterfaceConfig6(address); err == nil {
+		return d.setInterfaceAddress6(addr, mask, gateway)
+	}
+	return errors.New("tun device address error")
+}
+
+func (d *Device) AddRouteEntry(cidr []string) error {
+	cidr4 := make([]string, 0, len(cidr))
+	cidr6 := make([]string, 0, len(cidr))
+	for _, item := range cidr {
+		ip, _, err := net.ParseCIDR(item)
+		if err != nil {
+			return err
+		}
+		if ip.To4() != nil {
+			cidr4 = append(cidr4, item)
+			continue
+		}
+		if ip.To16() != nil {
+			cidr6 = append(cidr6, item)
+			continue
+		}
+	}
+	if err := d.addRouteEntry4(cidr4); err != nil {
+		return err
+	}
+	err := d.addRouteEntry6(cidr6)
+	return err
+}
+
+func getInterfaceConfig4(cidr string) (addr, mask, gateway string, err error) {
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return
+	}
+
+	ip = ip.To4()
+	if ip == nil {
+		err = errors.New("not ipv4 address")
+		return
+	}
+
+	addr = ip.String()
+	mask = net.IP(ipNet.Mask).String()
+	ip = ipNet.IP.To4()
+	ip[3] += 1
+	gateway = ip.String()
+
+	return
+}
+
+func getInterfaceConfig6(cidr string) (addr, mask, gateway string, err error) {
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return
+	}
+
+	ip = ip.To16()
+	if ip == nil {
+		err = errors.New("not ipv6 address")
+		return
+	}
+
+	addr = ip.String()
+	mask = net.IP(ipNet.Mask).String()
+	ip = ipNet.IP.To16()
+	ip[15] += 1
+	gateway = ip.String()
+
+	return
 }

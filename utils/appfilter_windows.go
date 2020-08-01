@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -14,32 +13,31 @@ import (
 
 var (
 	kernel32                   = windows.MustLoadDLL("kernel32.dll")
-	queryFullProcessImageNameW = kernel32.MustFindProc("QueryFullProcessImageNameW").Addr()
+	queryFullProcessImageNameW = kernel32.MustFindProc("QueryFullProcessImageNameW")
 )
 
 func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, err error) {
 	b := [windows.MAX_PATH]uint16{}
-	l := uint32(windows.MAX_PATH)
+	n := uint32(windows.MAX_PATH)
 
-	r1, _, e1 := syscall.Syscall6(
-		queryFullProcessImageNameW,
-		4,
+	// BOOL QueryFullProcessImageNameA(
+	//   HANDLE hProcess,
+	//   DWORD  dwFlags,
+	//   LPSTR  lpExeName,
+	//   PDWORD lpdwSize
+	// );
+	// https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable
+	ret, _, errno := queryFullProcessImageNameW.Call(
 		uintptr(process),
 		uintptr(flags),
 		uintptr(unsafe.Pointer(&b[0])),
-		uintptr(unsafe.Pointer(&l)),
-		0,
-		0,
+		uintptr(unsafe.Pointer(&n)),
 	)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = e1
-		} else {
-			err = syscall.EINVAL
-		}
+	if ret == 0 {
+		err = errno
 	}
 	if err == nil {
-		s = windows.UTF16ToString(b[:l])
+		s = windows.UTF16ToString(b[:n])
 	}
 	return
 }

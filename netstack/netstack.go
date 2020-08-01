@@ -13,7 +13,6 @@ import (
 	"github.com/imgk/shadow/utils"
 )
 
-// Max 65536
 const MaxBufferSize = 4096
 
 type CloseReader interface {
@@ -224,7 +223,7 @@ type Stack struct {
 	counter    uint16
 }
 
-func NewStack(handler Handler, dev core.Device, resolver utils.Resolver, verbose bool) *Stack {
+func NewStack(handler Handler, dev core.Device, resolver utils.Resolver, w io.Writer) *Stack {
 	s := &Stack{
 		DomainTree: utils.NewDomainTree("."),
 		Resolver:   resolver,
@@ -232,13 +231,27 @@ func NewStack(handler Handler, dev core.Device, resolver utils.Resolver, verbose
 		Pool:       sync.Pool{New: func() interface{} { return make([]byte, 1024*2) }},
 		counter:    uint16(time.Now().Unix()),
 	}
-	s.Stack.Init(dev, s, verbose)
+	s.Stack.Init(dev, s, w)
 	return s
 }
 
 func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 	addr, err := s.LookupAddr(target)
 	if err == ErrNotFake {
+		if ip := target.IP.To4(); ip != nil {
+			if (ip[0] == 224) ||
+				(ip[0] == 255 && ip[1] == 255 && ip[2] == 255 && ip[3] == 255) ||
+				(ip[0] == 239 && ip[1] == 255 && ip[2] == 255 && ip[3] == 250) ||
+				(ip[0] == 10) ||
+				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
+				(ip[0] == 192 && ip[1] == 168) ||
+				(ip[0] == 169 && ip[1] == 254) {
+				s.Info(fmt.Sprintf("ignore packets to %v", target))
+				conn.Close()
+				return
+			}
+		}
+
 		s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), target))
 		if err := s.Handler.Handle(conn, target); err != nil {
 			s.Error(fmt.Sprintf("handle tcp error: %v", err))
@@ -268,17 +281,31 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 	}
 
 	addr, err := s.LookupAddr(target)
-	if target.Port == 53 && err == ErrNotFake {
-		s.Info(fmt.Sprintf("hijack %v <-UDP-> %v", conn.RemoteAddr(), target))
-		s.HandleQuery(conn)
-		return
-	}
 	if err == ErrNotFound {
 		s.Error(fmt.Sprintf("%v not found", target))
 		return
 	}
 	if err == ErrNotFake {
-		s.Info(fmt.Sprintf("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr()))
+		if target.Port == 53 {
+			s.Info(fmt.Sprintf("hijack %v <-UDP-> %v", conn.RemoteAddr(), target))
+			s.HandleQuery(conn)
+			return
+		}
+		if ip := target.IP.To4(); ip != nil {
+			if (ip[0] == 224) ||
+				(ip[0] == 255 && ip[1] == 255 && ip[2] == 255 && ip[3] == 255) ||
+				(ip[0] == 239 && ip[1] == 255 && ip[2] == 255 && ip[3] == 250) ||
+				(ip[0] == 10) ||
+				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
+				(ip[0] == 192 && ip[1] == 168) ||
+				(ip[0] == 169 && ip[1] == 254) {
+				s.Info(fmt.Sprintf("ignore packets to %v", target))
+				conn.Close()
+				return
+			}
+		}
+
+		s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target))
 		if err := s.Handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
 			s.Error(fmt.Sprintf("handle udp error: %v", err))
 		}
@@ -312,7 +339,7 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 			break
 		}
 
-		if err := m.Unpack(b[2:2+n]); err != nil {
+		if err := m.Unpack(b[2 : 2+n]); err != nil {
 			s.Error(fmt.Sprintf("unpack message error: %v", err))
 			continue
 		}

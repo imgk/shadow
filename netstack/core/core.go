@@ -9,6 +9,7 @@ import (
 
 	"github.com/eycorsican/go-tun2socks/core"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Device interface {
@@ -56,12 +57,21 @@ type Stack struct {
 	conns map[core.UDPConn]*UDPConn
 }
 
-func (s *Stack) Init(device Device, handler Handler, verbose bool) {
-	if verbose {
-		s.Logger, _ = zap.NewDevelopment()
-	} else {
-		s.Logger = zap.NewNop()
+type writerSyncer struct { io.Writer }
+
+func (w writerSyncer) Sync() error { return nil }
+
+func newWriterSyncer(w io.Writer) zapcore.WriteSyncer {
+	if wt, ok := w.(zapcore.WriteSyncer); ok {
+		return wt
 	}
+	return writerSyncer{Writer: w}
+}
+
+func (s *Stack) Init(device Device, handler Handler, w io.Writer) {
+	conf := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
+	zcore := zapcore.NewCore(conf, newWriterSyncer(w), zap.NewAtomicLevelAt(zap.InfoLevel))
+	s.Logger = zap.New(zcore, zap.Development())
 
 	s.Device = device
 	s.Handler = handler

@@ -285,14 +285,15 @@ func (b Buffer) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 	}
 	return
-} 
+}
 
-type Conn struct {}
-func (c Conn) Close() error { return nil }
-func (c Conn) LocalAddr() net.Addr { return nil }
-func (c Conn) RemoteAddr() net.Addr { return nil }
-func (c Conn) SetDeadline(t time.Time) error { return nil }
-func (c Conn) SetReadDeadline(t time.Time) error { return nil }
+type Conn struct{}
+
+func (c Conn) Close() error                       { return nil }
+func (c Conn) LocalAddr() net.Addr                { return nil }
+func (c Conn) RemoteAddr() net.Addr               { return nil }
+func (c Conn) SetDeadline(t time.Time) error      { return nil }
+func (c Conn) SetReadDeadline(t time.Time) error  { return nil }
 func (c Conn) SetWriteDeadline(t time.Time) error { return nil }
 
 type PacketConnPost struct {

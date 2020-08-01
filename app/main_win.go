@@ -3,9 +3,8 @@
 package app
 
 import (
-	"context"
 	"fmt"
-	"time"
+	"net"
 
 	"golang.org/x/sys/windows"
 
@@ -20,13 +19,15 @@ func CloseMutex(mutex windows.Handle) {
 	windows.CloseHandle(mutex)
 }
 
-func Run(mode bool, ctx context.Context, reload chan struct{}, done chan struct{}) error {
-	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, windows.StringToUTF16Ptr("SHADOW-MUTEX"))
+func Run(opt Option) error {
+	mutexName := windows.StringToUTF16Ptr("SHADOW-MUTEX")
+
+	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, mutexName)
 	if err == nil {
 		windows.CloseHandle(mutex)
 		return fmt.Errorf("shadow is already running")
 	}
-	mutex, err = windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("SHADOW-MUTEX"))
+	mutex, err = windows.CreateMutex(nil, false, mutexName)
 	if err != nil {
 		return fmt.Errorf("create mutex error: %w", err)
 	}
@@ -42,65 +43,62 @@ func Run(mode bool, ctx context.Context, reload chan struct{}, done chan struct{
 		return fmt.Errorf("wait for mutex event id error: %w", event)
 	}
 
-	resolver, err := utils.NewResolver(conf.NameServer)
+	resolver, err := utils.NewResolver(opt.Conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
-	SetDefaultResolver(resolver)
-
-	handler, err := protocol.NewHandler(conf.Server, time.Minute)
-	if err != nil {
-		return fmt.Errorf("shadowsocks error %w", err)
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial:     resolver.DialContext,
 	}
 
-	dev, err := windivert.NewDevice(conf.FilterString)
+	handler, err := protocol.NewHandler(opt.Conf.Server, opt.Timeout)
+	if err != nil {
+		return fmt.Errorf("protocol error %w", err)
+	}
+
+	dev, err := windivert.NewDevice(opt.Conf.FilterString)
 	if err != nil {
 		return fmt.Errorf("windivert error: %w", err)
 	}
 
-	stack := netstack.NewStack(handler, dev, resolver, mode)
-	defer func() {
-		stack.Close()
-		close(done)
-	}()
+	stack := netstack.NewStack(handler, dev, resolver, opt.Writer)
 
 RELOAD:
 	for {
-		LoadAppRules(dev.AppFilter)
-		LoadIPCIDRRules(dev.IPFilter)
-		LoadDomainRules(stack.DomainTree)
-
+		loadAppRules(dev.AppFilter, opt.Conf.AppRules.Proxy)
+		loadIPCIDRRules(dev.IPFilter, opt.Conf.IPCIDRRules.Proxy)
+		loadDomainRules(stack.DomainTree, opt.Conf.DomainRules.Proxy, opt.Conf.DomainRules.Direct, opt.Conf.DomainRules.Blocked)
+		opt.Conf.free()
 		select {
-		case <-ctx.Done():
+		case <-opt.Ctx.Done():
 			break RELOAD
-		case <-reload:
+		case <-opt.Reload:
 			continue
 		}
 	}
 
+	stack.Close()
+	close(opt.Done)
 	return nil
 }
 
-func LoadIPCIDRRules(ipfilter *utils.IPFilter) {
+func loadIPCIDRRules(ipfilter *utils.IPFilter, cidr []string) {
 	ipfilter.Lock()
 	defer ipfilter.Unlock()
 
 	ipfilter.UnsafeReset()
-
-	for _, ip := range conf.IPRules.Proxy {
-		if err := ipfilter.UnsafeAdd(ip); err != nil {
-			fmt.Printf("add ip rule %v error: %v\n", ip, err)
-		}
+	for _, item := range cidr {
+		ipfilter.UnsafeAdd(item)
 	}
 }
 
-func LoadAppRules(appfilter *utils.AppFilter) {
+func loadAppRules(appfilter *utils.AppFilter, apps []string) {
 	appfilter.Lock()
 	defer appfilter.Unlock()
 
 	appfilter.UnsafeReset()
-
-	for _, v := range conf.AppRules.Proxy {
-		appfilter.UnsafeAdd(v)
+	for _, item := range apps {
+		appfilter.UnsafeAdd(item)
 	}
 }

@@ -4,7 +4,6 @@ package utils
 
 import (
 	"reflect"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -116,8 +115,8 @@ func GetExtendedTcpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, 
 			uintptr(uint32(0)),
 		)
 
-		if ret != 0 {
-			if syscall.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
+		if ret != windows.NO_ERROR {
+			if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
 				buffer = make([]byte, dwSize)
 				pTcpTable = &buffer[0]
 				continue
@@ -211,8 +210,8 @@ func GetExtendedUdpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, 
 			uintptr(uint32(0)),
 		)
 
-		if ret != 0 {
-			if syscall.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
+		if ret != windows.NO_ERROR {
+			if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
 				buffer = make([]byte, dwSize)
 				pUdpTable = &buffer[0]
 				continue

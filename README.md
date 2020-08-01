@@ -5,15 +5,17 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 ## How to build
 
 ```
-GOOS=windows go build -v -ldflags="-s -w" -trimpath
-GOOS=darwin  go build -v -ldflags="-s -w" -trimpath
-GOOS=linux   go build -v -ldflags="-s -w" -trimpath
+# linux darwin windows,!wintun
+go build -v -ldflags="-s -w" -trimpath
+
+# windows,wintun
+go build -v -ldflags="-s -w" -trimpath -tags=wintun
 ```
 
 ## How to use it
 
 ```
-➜  ~ go/bin/shadow -h
+->  ~ go/bin/shadow -h
 Usage of go/bin/shadow:
   -c string
     	config file (default "config.json")
@@ -22,18 +24,23 @@ Usage of go/bin/shadow:
 
 ### Windows
 
-1. Run shadow.exe with administrator privilege.
+#### a. WinDivert
 
+Run shadow.exe with administrator privilege.
 ```
 go/bin/shadow.exe -c C:/Users/example/shadow/config.json -v
 ```
+
+#### b. WinTun
+
+Due to the limitation of WinTun, please run shadow with PSExec(`PSExec -s -i /path/to/shadow.exe -c /path/to/config/json -v`) in [PSTools](https://docs.microsoft.com/zh-cn/sysinternals/downloads/pstools) or with a service wrapper, such as [nssm](https://nssm.cc) and [winsw](https://github.com/winsw/winsw).
 
 ### Linux and Openwrt Router
 
 1. Set system dns server to 8.8.8.8
 
 ```
-sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="198.18.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
+sudo go/bin/shadow -c /etc/shadow.json -v
 ```
 
 ```
@@ -47,7 +54,7 @@ iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
 1. Set system dns server to 8.8.8.8
 
 ```
-sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="198.18.0.0/16;8.8.8.8/32" go/bin/shadow -c /etc/shadow.json -v
+sudo go/bin/shadow -c /etc/shadow.json -v
 ```
 
 ## Config File
@@ -97,12 +104,19 @@ sudo TunName=utun8 TunAddr=192.168.0.11/24 TunRoute="198.18.0.0/16;8.8.8.8/32" g
     // example: outbound and (ip ? true : ipv6.DstAddr != 2001:AEDE:5678::1234 and ipv6.DstAddr != 2001:4860:4860::8888)
     "FilterString": "outbound and (ip ? ip.DstAddr != 1.2.3.4 and ip.DstAddr != 1.1.1.1 : true)",
 
-    // windivert only
+
+    // tun device only
+    "TunName": "utun",
+    "TunAddr": [
+        "192.168.0.11/24"
+    ],
+
+
     // IPs in this list will be proxied
-    "IPRules": {
+    "IPCIDRRules": {
         "Proxy": [
             "198.18.0.0/16",
-            "8.8.8.8"
+            "8.8.8.8/32"
         ]
     },
 

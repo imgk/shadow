@@ -1,8 +1,9 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
-	"net"
+	"io"
 	"runtime/debug"
 	"time"
 
@@ -11,22 +12,22 @@ import (
 
 func init() {
 	debug.SetGCPercent(10)
-	go FreeMemory(time.NewTicker(time.Minute))
+	go freeOSMemory(time.NewTicker(time.Minute))
 }
 
-func FreeMemory(ticker *time.Ticker) {
+func freeOSMemory(ticker *time.Ticker) {
 	for range ticker.C {
 		debug.FreeOSMemory()
 	}
 }
 
-var conf Conf
-
 type Conf struct {
 	Server       []string
 	NameServer   string
 	FilterString string
-	IPRules      struct {
+	TunName      string
+	TunAddr      []string
+	IPCIDRRules  struct {
 		Proxy []string
 	}
 	AppRules struct {
@@ -39,36 +40,39 @@ type Conf struct {
 	}
 }
 
-func SetConfig(b []byte) error {
-	return json.Unmarshal(b, &conf)
+func (conf *Conf) Unmarshal(b []byte) error {
+	return json.Unmarshal(b, conf)
 }
 
-func GetConfig() ([]byte, error) {
-	return json.Marshal(&conf)
+func (conf *Conf) free() {
+	conf.AppRules.Proxy = []string{}
+	conf.IPCIDRRules.Proxy = []string{}
+	conf.DomainRules.Proxy = []string{}
+	conf.DomainRules.Direct = []string{}
+	conf.DomainRules.Blocked = []string{}
 }
 
-func LoadDomainRules(matchTree *utils.DomainTree) {
+type Option struct {
+	Conf    *Conf
+	Writer  io.Writer
+	Ctx     context.Context
+	Reload  chan struct{}
+	Done    chan struct{}
+	Timeout time.Duration
+}
+
+func loadDomainRules(matchTree *utils.DomainTree, proxy, direct, blocked []string) {
 	matchTree.Lock()
 	defer matchTree.Unlock()
 
 	matchTree.UnsafeReset()
-
-	for _, v := range conf.DomainRules.Proxy {
-		matchTree.UnsafeStore(v, "PROXY")
+	for _, domain := range proxy {
+		matchTree.UnsafeStore(domain, "PROXY")
 	}
-
-	for _, v := range conf.DomainRules.Direct {
-		matchTree.UnsafeStore(v, "DIRECT")
+	for _, domain := range direct {
+		matchTree.UnsafeStore(domain, "DIRECT")
 	}
-
-	for _, v := range conf.DomainRules.Blocked {
-		matchTree.UnsafeStore(v, "BLOCKED")
-	}
-}
-
-func SetDefaultResolver(resolver utils.Resolver) {
-	net.DefaultResolver = &net.Resolver{
-		PreferGo: true,
-		Dial:     resolver.DialContext,
+	for _, domain := range blocked {
+		matchTree.UnsafeStore(domain, "BLOCKED")
 	}
 }
