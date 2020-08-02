@@ -100,7 +100,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 			if errors.Is(er, os.ErrClosed) {
 				break
 			}
-			if err != io.EOF {
+			if er != io.EOF {
 				err = er
 			}
 			break
