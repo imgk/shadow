@@ -1,0 +1,51 @@
+
+#include <windows.h>
+
+#pragma code_page(65001) // UTF-8
+
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST shadow.manifest
+$shadow.ico ICON shadow.ico
+
+#define VERSIONINFO_TEMPLATE(block_id, lang_id, codepage_id, file_desc, comments) \
+VS_VERSION_INFO VERSIONINFO \
+FILEVERSION    0,0,0 \
+PRODUCTVERSION 0,0,0 \
+FILEOS         VOS_NT_WINDOWS32 \
+FILETYPE       VFT_APP \
+FILESUBTYPE    VFT2_UNKNOWN \
+BEGIN \
+  BLOCK "StringFileInfo" \
+  BEGIN \
+    BLOCK block_id \
+    BEGIN \
+      VALUE "CompanyName", "" \
+      VALUE "FileDescription", file_desc \
+      VALUE "FileVersion", "0.0.0" \
+      VALUE "InternalName", "shadow-windows" \
+      VALUE "LegalCopyright", "Copyright © 2015-2020 John Xiong. All Rights Reserved." \
+      VALUE "OriginalFilename", "shadow.exe" \
+      VALUE "ProductName", "Shadow" \
+      VALUE "ProductVersion", "0.0.0" \
+      VALUE "Comments", comments \
+    END \
+  END \
+  BLOCK "VarFileInfo" \
+  BEGIN \
+    VALUE "Translation", lang_id, codepage_id \
+  END \
+END
+
+LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
+VERSIONINFO_TEMPLATE(
+  "040904b0", 0x409, 0x4b0,
+  "Shadow: A Transparent Proxy for Windows, Linux and macOS",
+  "https://github.com/imgk/shadow/"
+)
+
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL
+VERSIONINFO_TEMPLATE(
+  "040404b0", 0x404, 0x4b0,
+  "Shadow: 适用于 Windows, Linux and macOS 的透明代理",
+  "https://github.com/imgk/shadow/"
+)

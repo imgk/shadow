@@ -20,12 +20,16 @@ const (
 	IOC_IN    = 0x80000000
 	IOC_INOUT = IOC_IN | IOC_OUT
 
-	// #define	SIOCAIFADDR_IN6		_IOW('i', 26, struct in6_aliasreq) = 0x8080691a
-	// #define	SIOCPROTOATTACH_IN6	_IOWR('i', 110, struct in6_aliasreq_64)
-	// #define	SIOCLL_START		_IOWR('i', 130, struct in6_aliasreq)
+	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/in6_var.h
+	// #define SIOCAIFADDR_IN6	   _IOW('i', 26, struct in6_aliasreq)
+	// #define SIOCPROTOATTACH_IN6 _IOWR('i', 110, struct in6_aliasreq_64)
+	// #define SIOCLL_START        _IOWR('i', 130, struct in6_aliasreq)
 	SIOCAIFADDR_IN6     = IOC_IN | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 26
 	SIOCPROTOATTACH_IN6 = IOC_INOUT | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 110
 	SIOCLL_START        = IOC_INOUT | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 130
+
+	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/nd6.h#L469
+	ND6_INFINITE_LIFETIME = 0xffffffff
 )
 
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
@@ -33,8 +37,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 	d.Conf4.Mask = Parse4(mask)
 	d.Conf4.Gateway = Parse4(gateway)
 
-	// set IPv4 address
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, 0)
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
 		return err
 	}
@@ -81,14 +84,16 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 	d.Conf6.Mask = Parse6(mask)
 	d.Conf6.Gateway = Parse6(gateway)
 
-	// set IPv6 address
-	fd, err := unix.Socket(unix.AF_INET6, unix.SOCK_DGRAM, 0)
+	fd, err := unix.Socket(unix.AF_INET6, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(fd)
 
-	// SIOCAIFADDR_IN6
+	if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_SETFD), uintptr(unix.FD_CLOEXEC)); errno != 0 {
+		return os.NewSyscallError("fcntl: F_SETFD, FD_CLOEXEC", errno)
+	}
+
 	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/in6_var.h#L114-L119
 	// https://opensource.apple.com/source/network_cmds/network_cmds-543.260.3/
 	type in6_addrlifetime struct {
@@ -109,49 +114,81 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 		ifra_lifetime   in6_addrlifetime
 	}
 
-	ifra := in6_aliasreq{
-		ifra_addr:       unix.RawSockaddrInet6{},
-		ifra_dstaddr:    unix.RawSockaddrInet6{},
-		ifra_prefixmask: unix.RawSockaddrInet6{},
+	in6_ifra := in6_aliasreq{
+		ifra_addr: unix.RawSockaddrInet6{
+			Len:    unix.SizeofSockaddrInet6,
+			Family: unix.AF_INET6,
+			Addr:   d.Conf6.Addr,
+		},
+		ifra_prefixmask: unix.RawSockaddrInet6{
+			Len:    unix.SizeofSockaddrInet6,
+			Family: unix.AF_INET6,
+			Addr:   d.Conf6.Mask,
+		},
+		ifra_lifetime: in6_addrlifetime{
+			ia6t_expire:    ND6_INFINITE_LIFETIME,
+			ia6t_preferred: ND6_INFINITE_LIFETIME,
+			ia6t_vltime:    ND6_INFINITE_LIFETIME,
+			ia6t_pltime:    ND6_INFINITE_LIFETIME,
+		},
 	}
-	copy(ifra.ifra_name[:], []byte(d.Name))
+	copy(in6_ifra.ifra_name[:], []byte(d.Name))
 
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCAIFADDR_IN6), uintptr(unsafe.Pointer(&ifra))); errno != 0 {
-		return os.NewSyscallError("ioctl: SIOCAIFADDR", errno)
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCAIFADDR_IN6), uintptr(unsafe.Pointer(&in6_ifra))); errno != 0 {
+		return os.NewSyscallError("ioctl: SIOCAIFADDR_IN6", errno)
 	}
+
+	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/in6_var.h#L319-L334
+	type in6_ifreq struct {
+		ifra_name [unix.IFNAMSIZ]byte
+		_         [unix.SizeofSockaddrInet6]byte
+	}
+
+	in6_ifr := in6_ifreq{}
+	copy(in6_ifr.ifra_name[:], []byte(d.Name))
 
 	// Attach link-local address
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCPROTOATTACH_IN6), uintptr(unsafe.Pointer(&ifra))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCPROTOATTACH_IN6), uintptr(unsafe.Pointer(&in6_ifr))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCPROTOATTACH_IN6", errno)
 	}
 
-	return nil
-}
-
-func (d *Device) Activate() error {
-	fd, err := unix.Socket(unix.AF_INET6, unix.SOCK_DGRAM, 0)
-	if err != nil {
-		return err
-	}
-	defer unix.Close(fd)
-
-	type aliasreq struct {
-		ifra_name [unix.IFNAMSIZ]byte
-		_         [1024 - unix.IFNAMSIZ]byte
-	}
-
-	ifra := aliasreq{}
-	copy(ifra.ifra_name[:], []byte(d.Name))
-
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCLL_START), uintptr(unsafe.Pointer(&ifra))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCLL_START), uintptr(unsafe.Pointer(&in6_ifr))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCLL_START", errno)
 	}
 
 	return nil
 }
 
-// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h#L343-L356
-type rtMetrics struct {
+func (d *Device) Activate() error {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_IP)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+
+	type ifreqflags struct {
+		Name  [16]byte
+		Flags uint16
+		_     [unsafe.Sizeof(unix.RawSockaddrInet4{}) - unsafe.Sizeof(uint16(0))]byte
+	}
+
+	ifrf := ifreqflags{}
+	copy(ifrf.Name[:], []byte(d.Name))
+
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCGIFFLAGS, uintptr(unsafe.Pointer(&ifrf))); errno != 0 {
+		return os.NewSyscallError("ioctl: SIOCGIFFLAGS", errno)
+	}
+
+	ifrf.Flags = ifrf.Flags | unix.IFF_UP | unix.IFF_RUNNING
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCSIFFLAGS, uintptr(unsafe.Pointer(&ifrf))); errno != 0 {
+		return os.NewSyscallError("ioctl: SIOCSIFFLAGS", errno)
+	}
+
+	return nil
+}
+
+// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h#L75-L88
+type rt_metrics struct {
 	rmx_locks    uint32
 	rmx_mtu      uint32
 	rmx_hopcount uint32
@@ -166,7 +203,8 @@ type rtMetrics struct {
 	rmx_filler   [3]uint32
 }
 
-type rtMessageHeader struct {
+// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h#L343-L356
+type rt_msghdr struct {
 	rtm_msglen  uint16
 	rtm_version byte
 	rtm_type    byte
@@ -178,10 +216,10 @@ type rtMessageHeader struct {
 	rtm_errno   int32
 	rtm_use     int32
 	rtm_inits   uint32
-	rtm_rmx     rtMetrics
+	rtm_rmx     rt_metrics
 }
 
-func Roundup(a uintptr) uintptr {
+func roundup(a uintptr) uintptr {
 	if a > 0 {
 		return 1 + ((a - 1) | (unsafe.Sizeof(uint32(0)) - 1))
 	}
@@ -197,10 +235,10 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	}
 	defer unix.Close(fd)
 
-	l := Roundup(unix.SizeofSockaddrInet4)
+	l := roundup(unix.SizeofSockaddrInet4)
 
-	type message struct {
-		hdr rtMessageHeader
+	type rt_message struct {
+		hdr rt_msghdr
 		bb  [512]byte
 	}
 
@@ -210,10 +248,10 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	}
 
 	// https://gitlab.run.montefiore.ulg.ac.be/sdn-pp/fastclick/blob/master/elements/userlevel/kerneltun.cc#L292-334
-	msgSlice := make([]byte, unsafe.Sizeof(message{}))
+	msgSlice := make([]byte, unsafe.Sizeof(rt_msghdr{})+l+l+l)
 
-	msg := (*message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rtMessageHeader{}) + l + l + l)
+	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
+	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + l + l)
 	msg.hdr.rtm_version = RTM_VERSION
 	msg.hdr.rtm_type = RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
@@ -265,10 +303,11 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	}
 	defer unix.Close(fd)
 
-	l := Roundup(unix.SizeofSockaddrInet6)
+	l := roundup(unix.SizeofSockaddrInet6)
+	n := roundup(unix.SizeofSockaddrDatalink)
 
-	type message struct {
-		hdr rtMessageHeader
+	type rt_message struct {
+		hdr rt_msghdr
 		bb  [512]byte
 	}
 
@@ -278,10 +317,10 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	}
 
 	// https://gitlab.run.montefiore.ulg.ac.be/sdn-pp/fastclick/blob/master/elements/userlevel/kerneltun.cc#L292-334
-	msgSlice := make([]byte, unsafe.Sizeof(message{}))
+	msgSlice := make([]byte, unsafe.Sizeof(rt_msghdr{})+l+n+l)
 
-	msg := (*message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rtMessageHeader{}) + l + l + l)
+	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
+	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + n + l)
 	msg.hdr.rtm_version = RTM_VERSION
 	msg.hdr.rtm_type = RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
@@ -297,12 +336,12 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	msg_dest.Len = unix.SizeofSockaddrInet6
 	msg_dest.Family = unix.AF_INET6
 
-	msg_gateway := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l))
-	msg_gateway.Len = unix.SizeofSockaddrInet6
-	msg_gateway.Family = unix.AF_INET6
-	msg_gateway.Addr = d.Conf6.Gateway
+	msg_gateway := (*unix.RawSockaddrDatalink)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l))
+	msg_gateway.Len = unix.SizeofSockaddrDatalink
+	msg_gateway.Family = unix.AF_LINK
+	msg_gateway.Index = uint16(interf.Index)
 
-	msg_mask := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l + l))
+	msg_mask := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l + n))
 	msg_mask.Len = unix.SizeofSockaddrInet6
 	msg_mask.Family = unix.AF_INET6
 
