@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
+
 	"github.com/imgk/shadow/app"
 )
 
