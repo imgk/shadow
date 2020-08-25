@@ -314,7 +314,7 @@ func (d *Device) CheckUDP4(b []byte) bool {
 
 	for i := range rs {
 		if rs[i].LocalPort == p {
-			if *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr {
+			if 0 == rs[i].LocalAddr || *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr {
 				return d.AppFilter.Lookup(rs[i].OwningPid)
 			}
 		}
@@ -428,7 +428,7 @@ func (d *Device) CheckUDP6(b []byte) bool {
 
 	for i := range rs {
 		if rs[i].LocalPort == p {
-			if a[0] == rs[i].LocalAddr[0] && a[1] == rs[i].LocalAddr[1] && a[2] == rs[i].LocalAddr[2] && a[3] == rs[i].LocalAddr[3] {
+			if (0 == rs[i].LocalAddr[0] && 0 == rs[i].LocalAddr[1] && 0 == rs[i].LocalAddr[2] && 0 == rs[i].LocalAddr[3]) || (a[0] == rs[i].LocalAddr[0] && a[1] == rs[i].LocalAddr[1] && a[2] == rs[i].LocalAddr[2] && a[3] == rs[i].LocalAddr[3]) {
 				return d.AppFilter.Lookup(rs[i].OwningPid)
 			}
 		}
