@@ -2,12 +2,10 @@ package windivert
 
 import (
 	"fmt"
-	"syscall"
-
 	"golang.org/x/sys/windows"
 )
 
-type Error syscall.Errno
+type Error windows.Errno
 
 const (
 	ErrInsufficientBuffer = Error(windows.ERROR_INSUFFICIENT_BUFFER)
@@ -17,7 +15,7 @@ const (
 )
 
 func (e Error) Error() string {
-	switch syscall.Errno(e) {
+	switch windows.Errno(e) {
 	case windows.ERROR_FILE_NOT_FOUND:
 		return "The driver files WinDivert32.sys or WinDivert64.sys were not found"
 	case windows.ERROR_ACCESS_DENIED:
@@ -43,6 +41,6 @@ func (e Error) Error() string {
 	case windows.EPT_S_NOT_REGISTERED:
 		return "This error occurs when the Base Filtering Engine service has been disabled"
 	default:
-		return fmt.Sprintf("windivert error: %v", syscall.Errno(e))
+		return fmt.Sprintf("windivert error: %v", windows.Errno(e))
 	}
 }

@@ -8,8 +8,10 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/imgk/shadow/utils"
+	"github.com/imgk/shadow/common"
 )
+
+var errAddrType = errors.New("not support")
 
 func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 	switch addr.(type) {
@@ -27,10 +29,10 @@ func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 		}
 		binary.BigEndian.PutUint16(buf[len(buf)-2:], uint16(addr.(*net.UDPAddr).Port))
 		return buf, nil
-	case utils.Addr:
+	case common.Addr:
 		return addr, nil
 	default:
-		return addr, errors.New("not support")
+		return addr, errAddrType
 	}
 }
 
@@ -39,16 +41,16 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
-func (s *Stack) LookupIP(addr net.IP) (utils.Addr, error) {
+func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 	if ip := addr.To4(); ip != nil {
 		if ip[0] != 198 || ip[1] != 18 {
 			return nil, ErrNotFake
 		}
 
-		option := s.DomainTree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2]))
+		option := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2]))
 		if rr, ok := option.(*dns.PTR); ok {
-			b := make([]byte, utils.MaxAddrLen)
-			b[0] = utils.AddrTypeDomain
+			b := make([]byte, common.MaxAddrLen)
+			b[0] = common.AddrTypeDomain
 			b[1] = byte(len(rr.Ptr))
 			n := copy(b[2:], rr.Ptr[:])
 			return b[:2+n+2], nil
@@ -59,7 +61,7 @@ func (s *Stack) LookupIP(addr net.IP) (utils.Addr, error) {
 }
 
 func (s *Stack) HandleMessage(m *dns.Msg) {
-	option := s.DomainTree.Load(m.Question[0].Name)
+	option := s.tree.Load(m.Question[0].Name)
 	switch option.(type) {
 	case string:
 		if ok := s.HandleMessageByRule(m, option.(string)); ok {
@@ -93,14 +95,14 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 		default:
 			m.MsgHdr.Rcode = dns.RcodeRefused
 		}
-	case Both:
+	case both:
 		switch m.Question[0].Qtype {
 		case dns.TypeA:
 			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(Both).A)
+			m.Answer = append(m.Answer[:0], option.(both).A)
 		case dns.TypeAAAA:
 			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(Both).AAAA)
+			m.Answer = append(m.Answer[:0], option.(both).AAAA)
 		default:
 			m.MsgHdr.Rcode = dns.RcodeRefused
 		}
@@ -114,7 +116,7 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 	m.MsgHdr.RecursionAvailable = false
 }
 
-type Both struct {
+type both struct {
 	A    *dns.A
 	AAAA *dns.AAAA
 }
@@ -133,7 +135,7 @@ func (s *Stack) HandleMessageByRule(m *dns.Msg, option string) bool {
 			},
 			A: net.IP([]byte{198, 18, byte(s.counter >> 8), byte(s.counter)}),
 		}
-		s.DomainTree.Store(rrA.Hdr.Name, rrA)
+		s.tree.Store(rrA.Hdr.Name, rrA)
 
 		rrPTR := &dns.PTR{
 			Hdr: dns.RR_Header{
@@ -144,7 +146,7 @@ func (s *Stack) HandleMessageByRule(m *dns.Msg, option string) bool {
 			},
 			Ptr: m.Question[0].Name,
 		}
-		s.DomainTree.Store(rrPTR.Hdr.Name, rrPTR)
+		s.tree.Store(rrPTR.Hdr.Name, rrPTR)
 
 		switch m.Question[0].Qtype {
 		case dns.TypeA:
@@ -178,7 +180,7 @@ func (s *Stack) HandleMessageByRule(m *dns.Msg, option string) bool {
 			AAAA: net.IPv6zero,
 		}
 
-		s.DomainTree.Store(rrA.Hdr.Name, Both{A: rrA, AAAA: rrAAAA})
+		s.tree.Store(rrA.Hdr.Name, both{A: rrA, AAAA: rrAAAA})
 
 		switch m.Question[0].Qtype {
 		case dns.TypeA:

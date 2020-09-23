@@ -7,8 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
-	"github.com/imgk/shadow/utils"
+	"github.com/imgk/shadow/common"
 )
 
 const (
@@ -38,7 +37,11 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}, nil
 }
 
-func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, utils.Addr, error) {
+func (*Handler) Close() error {
+	return nil
+}
+
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, common.Addr, error) {
 	conn, err := net.Dial("tcp", h.server)
 	if err != nil {
 		return nil, nil, err
@@ -62,8 +65,8 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	defer rc.Close()
 
-	if err := netstack.Relay(conn, rc); err != nil {
-		if ne, ok := err.(net.Error); ok {
+	if err := common.Relay(conn, rc); err != nil {
+		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
 			}
@@ -83,7 +86,7 @@ func CloseFromRemote(conn net.Conn, rc net.PacketConn) {
 
 	for {
 		if _, err := conn.Read(b[:]); err != nil {
-			if ne, ok := err.(net.Error); ok {
+			if ne := net.Error(nil); errors.As(err, &ne) {
 				if ne.Timeout() {
 					continue
 				}
@@ -96,7 +99,7 @@ func CloseFromRemote(conn net.Conn, rc net.PacketConn) {
 	rc.Close()	
 }
 
-func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	defer conn.Close()
 
 	c, addr, err := h.Dial(conn.LocalAddr(), Associate)
@@ -105,7 +108,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	}
 	defer c.Close()
 
-	raddr, err := utils.ResolveUDPAddr(addr)
+	raddr, err := common.ResolveUDPAddr(addr)
 	if err != nil {
 		return err
 	}
@@ -121,12 +124,12 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := make([]byte, 3+utils.MaxAddrLen+MaxBufferSize)
+	b := make([]byte, 3+common.MaxAddrLen+MaxBufferSize)
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		n, _, er := rc.ReadFrom(b)
 		if er != nil {
-			if ne, ok := er.(net.Error); ok {
+			if ne := net.Error(nil); errors.As(err, &ne) {
 				if ne.Timeout() {
 					break
 				}
@@ -135,7 +138,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 			break
 		}
 
-		raddr, er := utils.ParseAddr(b[3:n])
+		raddr, er := common.ParseAddr(b[3:n])
 		if er != nil {
 			err = fmt.Errorf("parse addr error: %v", er)
 			break
@@ -160,11 +163,11 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	return <-errCh
 }
 
-func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := make([]byte, 3+utils.MaxAddrLen+MaxBufferSize)
-	buf := make([]byte, utils.MaxAddrLen)
+func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
+	b := make([]byte, 3+common.MaxAddrLen+MaxBufferSize)
+	buf := make([]byte, common.MaxAddrLen)
 	for {
-		n, tgt, err := conn.ReadTo(b[3+utils.MaxAddrLen:])
+		n, tgt, err := conn.ReadTo(b[3+common.MaxAddrLen:])
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
@@ -174,22 +177,22 @@ func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.D
 			break
 		}
 
-		addr, ok := tgt.(utils.Addr)
+		addr, ok := tgt.(common.Addr)
 		if !ok {
-			addr, err = utils.ResolveAddrBuffer(tgt, buf)
+			addr, err = common.ResolveAddrBuffer(tgt, buf)
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %v", err)
 				break
 			}
 		}
 
-		offset := utils.MaxAddrLen - len(addr)
+		offset := common.MaxAddrLen - len(addr)
 		copy(b[3+offset:], addr)
 
 		b[offset], b[offset+1], b[offset+2] = 0, 0, 0
 
 		rc.SetWriteDeadline(time.Now().Add(timeout))
-		_, err = rc.WriteTo(b[offset:3+utils.MaxAddrLen+n], raddr)
+		_, err = rc.WriteTo(b[offset:3+common.MaxAddrLen+n], raddr)
 		if err != nil {
 			errCh <- err
 			break

@@ -1,6 +1,6 @@
 // +build windows
 
-package utils
+package common
 
 import (
 	"fmt"
@@ -45,13 +45,13 @@ func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, 
 func QueryName(pid uint32) (string, error) {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
-		return "", fmt.Errorf("open process error: %v", err)
+		return "", fmt.Errorf("open process error: %w", err)
 	}
 	defer windows.CloseHandle(h)
 
 	path, err := QueryFullProcessImageName(h, 0)
 	if err != nil {
-		return "", fmt.Errorf("query full process name error: %v", err)
+		return "", fmt.Errorf("query full process name error: %w", err)
 	}
 
 	_, file := filepath.Split(path)
@@ -75,9 +75,8 @@ func NewAppFilter() *AppFilter {
 
 func (f *AppFilter) Reset() {
 	f.Lock()
-	defer f.Unlock()
-
 	f.UnsafeReset()
+	f.Unlock()
 }
 
 func (f *AppFilter) UnsafeReset() {
@@ -86,9 +85,8 @@ func (f *AppFilter) UnsafeReset() {
 
 func (f *AppFilter) Add(s string) {
 	f.Lock()
-	defer f.Unlock()
-
 	f.UnsafeAdd(s)
+	f.Unlock()
 }
 
 func (f *AppFilter) UnsafeAdd(s string) {

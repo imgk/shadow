@@ -8,7 +8,24 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"golang.zx2c4.com/wireguard/tun"
 )
+
+func NewUnmonitoredDeviceFromFD(fd int, mtu int) (dev *Device, err error) {
+	dev = &Device{}
+	device, _, err := tun.CreateUnmonitoredTUNFromFD(fd)
+	if err != nil {
+		return
+	}
+	dev.NativeTun = device.(*tun.NativeTun)
+	if dev.Name, err = dev.NativeTun.Name(); err != nil {
+		return
+	}
+	dev.MTU = mtu
+	dev.buff = make([]byte, 4+dev.MTU)
+	return
+}
 
 // https://github.com/daaku/go.ip/blob/master/ip.go
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {

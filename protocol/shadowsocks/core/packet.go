@@ -1,4 +1,4 @@
-package shadowsocks
+package core
 
 import (
 	"crypto/rand"
@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 )
+
+const MaxBufferSize = 4096 // Max 65536
 
 var ErrShortPacket = errors.New("short packet")
 var _zerononce [128]byte

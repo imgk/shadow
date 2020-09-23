@@ -1,6 +1,7 @@
 package netstack
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -9,150 +10,11 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack/core"
-	"github.com/imgk/shadow/utils"
 )
 
-const MaxBufferSize = 4096
-
-type CloseReader interface {
-	CloseRead() error
-}
-
-type CloseWriter interface {
-	CloseWrite() error
-}
-
-type DuplexConn interface {
-	net.Conn
-	CloseReader
-	CloseWriter
-}
-
-type Conn struct {
-	net.Conn
-}
-
-func (c Conn) ReadFrom(r io.Reader) (int64, error) {
-	return Copy(c.Conn, r)
-}
-
-func (c Conn) WriteTo(w io.Writer) (int64, error) {
-	return Copy(w, c.Conn)
-}
-
-func (c Conn) CloseRead() error {
-	if close, ok := c.Conn.(CloseReader); ok {
-		return close.CloseRead()
-	}
-
-	return c.Conn.Close()
-}
-
-func (c Conn) CloseWrite() error {
-	if close, ok := c.Conn.(CloseWriter); ok {
-		return close.CloseWrite()
-	}
-
-	return c.Conn.Close()
-}
-
-func Relay(c, rc net.Conn) error {
-	l, ok := c.(core.Conn)
-	if !ok {
-		return fmt.Errorf("relay error")
-	}
-
-	r, ok := rc.(DuplexConn)
-	if !ok {
-		r = Conn{Conn: rc}
-	}
-
-	return relay(l, r)
-}
-
-func relay(c core.Conn, rc DuplexConn) error {
-	errCh := make(chan error, 1)
-	go relay2(c, rc, errCh)
-
-	_, err := Copy(c, rc)
-	if err != nil {
-		c.Close()
-		rc.Close()
-	} else {
-		c.CloseWrite()
-		rc.CloseRead()
-	}
-
-	if err != nil {
-		<-errCh
-		return err
-	}
-
-	return <-errCh
-}
-
-func relay2(c core.Conn, rc DuplexConn, errCh chan error) {
-	_, err := Copy(rc, c)
-	if err != nil {
-		rc.Close()
-		c.Close()
-	} else {
-		rc.CloseWrite()
-		c.CloseRead()
-	}
-
-	errCh <- err
-}
-
-func Copy(w io.Writer, r io.Reader) (n int64, err error) {
-	if wt, ok := r.(io.WriterTo); ok {
-		return wt.WriteTo(w)
-	}
-	if rt, ok := w.(io.ReaderFrom); ok {
-		return rt.ReadFrom(r)
-	}
-
-	b := make([]byte, MaxBufferSize)
-	for {
-		nr, er := r.Read(b)
-		if nr > 0 {
-			nw, ew := w.Write(b[:nr])
-			if nw > 0 {
-				n += int64(nw)
-			}
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er != nil {
-			if er != io.EOF {
-				err = er
-			}
-			break
-		}
-	}
-
-	return n, err
-}
-
-type PacketConn interface {
-	LocalAddr() net.Addr
-	RemoteAddr() net.Addr
-	SetDeadline(time.Time) error
-	SetReadDeadline(time.Time) error
-	SetWriteDeadline(time.Time) error
-	ReadTo([]byte) (int, net.Addr, error)
-	WriteFrom([]byte, net.Addr) (int, error)
-	Close() error
-}
-
-func NewPacketConn(conn core.PacketConn, target net.Addr, addr net.Addr, stack *Stack) PacketConn {
+func NewPacketConn(conn core.PacketConn, target net.Addr, addr net.Addr, stack *Stack) common.PacketConn {
 	if target == nil && addr == nil {
 		return UDPConn{PacketConn: conn, Stack: stack}
 	}
@@ -198,8 +60,8 @@ func (conn UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 }
 
 func (conn UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
-	if saddr, ok := addr.(utils.Addr); ok {
-		target, err := utils.ResolveUDPAddr(saddr)
+	if saddr, ok := addr.(common.Addr); ok {
+		target, err := common.ResolveUDPAddr(saddr)
 		if err != nil {
 			return 0, fmt.Errorf("resolve udp addr error: %w", err)
 		}
@@ -209,30 +71,31 @@ func (conn UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.PacketConn.WriteFrom(b, addr)
 }
 
-type Handler interface {
-	Handle(net.Conn, net.Addr) error
-	HandlePacket(PacketConn) error
-}
-
 type Stack struct {
 	core.Stack
-	DomainTree *utils.DomainTree
-	Resolver   utils.Resolver
-	Handler    Handler
-	Pool       sync.Pool
-	counter    uint16
+	handler    common.Handler
+
+	resolver   common.Resolver
+	tree       *common.DomainTree
+
+	buffer  sync.Pool
+	counter uint16
 }
 
-func NewStack(handler Handler, dev core.Device, resolver utils.Resolver, w io.Writer) *Stack {
+func NewStack(handler common.Handler, dev common.Device, resolver common.Resolver, w io.Writer) *Stack {
 	s := &Stack{
-		DomainTree: utils.NewDomainTree("."),
-		Resolver:   resolver,
-		Handler:    handler,
-		Pool:       sync.Pool{New: func() interface{} { return make([]byte, 1024*2) }},
+		handler:    handler,
+		resolver:   resolver,
+		tree:       common.NewDomainTree("."),
+		buffer:     sync.Pool{New: func() interface{} { return make([]byte, 1024*2) }},
 		counter:    uint16(time.Now().Unix()),
 	}
-	s.Stack.Init(dev, s, w)
+	s.Stack.Init(dev.(core.Device), s, w)
 	return s
+}
+
+func (s *Stack) DomainTree() *common.DomainTree {
+	return s.tree
 }
 
 func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
@@ -253,7 +116,7 @@ func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 		}
 
 		s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), target))
-		if err := s.Handler.Handle(conn, target); err != nil {
+		if err := s.handler.Handle(conn, target); err != nil {
 			s.Error(fmt.Sprintf("handle tcp error: %v", err))
 		}
 		return
@@ -265,7 +128,7 @@ func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 	}
 
 	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr))
-	if err := s.Handler.Handle(conn, addr); err != nil {
+	if err := s.handler.Handle(conn, addr); err != nil {
 		s.Error(fmt.Sprintf("handle tcp error: %v", err))
 	}
 	return
@@ -274,7 +137,7 @@ func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 	if target == nil {
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr()))
-		if err := s.Handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
+		if err := s.handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
 			s.Error(fmt.Sprintf("handle udp error: %v", err))
 		}
 		return
@@ -306,14 +169,14 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 		}
 
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target))
-		if err := s.Handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
+		if err := s.handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
 			s.Error(fmt.Sprintf("handle udp error: %v", err))
 		}
 		return
 	}
 
 	s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), addr))
-	if err := s.Handler.HandlePacket(NewPacketConn(conn, target, addr, s)); err != nil {
+	if err := s.handler.HandlePacket(NewPacketConn(conn, target, addr, s)); err != nil {
 		s.Error(fmt.Sprintf("handle udp error: %v", err))
 	}
 	return
@@ -322,15 +185,15 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 func (s *Stack) HandleQuery(conn core.PacketConn) {
 	defer conn.Close()
 
-	b := s.Pool.Get().([]byte)
+	b := s.buffer.Get().([]byte)
 	m := new(dns.Msg)
-	defer s.Pool.Put(b)
+	defer s.buffer.Put(b)
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 		n, addr, err := conn.ReadTo(b[2:])
 		if err != nil {
-			if ne, ok := err.(net.Error); ok {
+			if ne := net.Error(nil); errors.As(err, &ne) {
 				if ne.Timeout() {
 					break
 				}
@@ -359,9 +222,9 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 			}
 			n = len(bb)
 		} else {
-			nr, err := s.Resolver.Resolve(b, n)
+			nr, err := s.resolver.Resolve(b, n)
 			if err != nil {
-				if ne, ok := err.(net.Error); ok {
+				if ne := net.Error(nil); errors.As(err, &ne) {
 					if ne.Timeout() {
 						continue
 					}

@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/device/tun"
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/utils"
 )
 
-func Run(opt Option) error {
-	resolver, err := utils.NewResolver(opt.Conf.NameServer)
+func (app *App) Run() (err error) {
+	resolver, err := common.NewResolver(app.conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -22,20 +22,29 @@ func Run(opt Option) error {
 		Dial:     resolver.DialContext,
 	}
 
-	handler, err := protocol.NewHandler(opt.Conf.Server, opt.Timeout)
+	handler, err := protocol.NewHandler(app.conf.Server, app.timeout)
 	if err != nil {
-		return fmt.Errorf("protocol error %w", err)
+		return fmt.Errorf("protocol error: %w", err)
 	}
+	app.attachCloser(handler)
+	defer func() {
+		if err != nil {
+			for _, closer := range app.closers {
+				closer.Close()
+			}
+		}
+	}()
 
 	name := "utun"
-	if tunName := opt.Conf.TunName; tunName != "" {
+	if tunName := app.conf.TunName; tunName != "" {
 		name = tunName
 	}
 	dev, err := tun.NewDevice(name)
 	if err != nil {
 		return fmt.Errorf("tun device from name error: %w", err)
 	}
-	for _, address := range opt.Conf.TunAddr {
+	app.attachCloser(dev)
+	for _, address := range app.conf.TunAddr {
 		err := dev.SetInterfaceAddress(address)
 		if err != nil {
 			return err
@@ -45,25 +54,13 @@ func Run(opt Option) error {
 		return fmt.Errorf("turn up tun device error: %w", err)
 	}
 
-	stack := netstack.NewStack(handler, dev, resolver, opt.Writer)
+	stack := netstack.NewStack(handler, dev, resolver, app.writer)
+	app.loadDomainRules(stack.DomainTree())
+	app.attachCloser(stack)
 
-	if err := dev.AddRouteEntry(opt.Conf.IPCIDRRules.Proxy); err != nil {
+	if err := dev.AddRouteEntry(app.conf.IPCIDRRules.Proxy); err != nil {
 		return fmt.Errorf("add route entry error: %w", err)
 	}
 
-RELOAD:
-	for {
-		loadDomainRules(stack.DomainTree, opt.Conf.DomainRules.Proxy, opt.Conf.DomainRules.Direct, opt.Conf.DomainRules.Blocked)
-		opt.Conf.free()
-		select {
-		case <-opt.Ctx.Done():
-			break RELOAD
-		case <-opt.Reload:
-			continue
-		}
-	}
-
-	stack.Close()
-	close(opt.Done)
 	return nil
 }

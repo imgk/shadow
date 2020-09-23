@@ -8,30 +8,32 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/device/windivert"
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/utils"
 )
 
-func CloseMutex(mutex windows.Handle) {
-	windows.ReleaseMutex(mutex)
-	windows.CloseHandle(mutex)
-}
+func (app *App) Run() (err error) {
+	muName := windows.StringToUTF16Ptr("SHADOW-MUTEX")
 
-func Run(opt Option) error {
-	mutexName := windows.StringToUTF16Ptr("SHADOW-MUTEX")
-
-	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, mutexName)
+	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, muName)
 	if err == nil {
 		windows.CloseHandle(mutex)
 		return fmt.Errorf("shadow is already running")
 	}
-	mutex, err = windows.CreateMutex(nil, false, mutexName)
+	mutex, err = windows.CreateMutex(nil, false, muName)
 	if err != nil {
 		return fmt.Errorf("create mutex error: %w", err)
 	}
-	defer CloseMutex(mutex)
+	app.attachCloser(winMutex(mutex))
+	defer func() {
+		if err != nil {
+			for _, closer := range app.closers {
+				closer.Close()
+			}
+		}
+	}()
 
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
 	if err != nil {
@@ -43,7 +45,7 @@ func Run(opt Option) error {
 		return fmt.Errorf("wait for mutex event id error: %w", event)
 	}
 
-	resolver, err := utils.NewResolver(opt.Conf.NameServer)
+	resolver, err := common.NewResolver(app.conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -52,53 +54,49 @@ func Run(opt Option) error {
 		Dial:     resolver.DialContext,
 	}
 
-	handler, err := protocol.NewHandler(opt.Conf.Server, opt.Timeout)
+	handler, err := protocol.NewHandler(app.conf.Server, app.timeout)
 	if err != nil {
-		return fmt.Errorf("protocol error %w", err)
+		return fmt.Errorf("protocol error: %w", err)
 	}
+	app.attachCloser(handler)
 
-	dev, err := windivert.NewDevice(opt.Conf.FilterString)
+	dev, err := windivert.NewDevice(app.conf.FilterString)
 	if err != nil {
 		return fmt.Errorf("windivert error: %w", err)
 	}
+	app.attachCloser(dev)
+	app.loadAppRules(dev.AppFilter)
+	app.loadIPCIDRRules(dev.IPFilter)
 
-	stack := netstack.NewStack(handler, dev, resolver, opt.Writer)
+	stack := netstack.NewStack(handler, dev, resolver, app.writer)
+	app.loadDomainRules(stack.DomainTree())
+	app.attachCloser(stack)
 
-RELOAD:
-	for {
-		loadAppRules(dev.AppFilter, opt.Conf.AppRules.Proxy)
-		loadIPCIDRRules(dev.IPFilter, opt.Conf.IPCIDRRules.Proxy)
-		loadDomainRules(stack.DomainTree, opt.Conf.DomainRules.Proxy, opt.Conf.DomainRules.Direct, opt.Conf.DomainRules.Blocked)
-		opt.Conf.free()
-		select {
-		case <-opt.Ctx.Done():
-			break RELOAD
-		case <-opt.Reload:
-			continue
-		}
-	}
-
-	stack.Close()
-	close(opt.Done)
 	return nil
 }
 
-func loadIPCIDRRules(ipfilter *utils.IPFilter, cidr []string) {
-	ipfilter.Lock()
-	defer ipfilter.Unlock()
-
-	ipfilter.UnsafeReset()
-	for _, item := range cidr {
-		ipfilter.UnsafeAdd(item)
+func (app *App) loadIPCIDRRules(filter *common.IPFilter) {
+	filter.Lock()
+	filter.UnsafeReset()
+	for _, item := range app.conf.IPCIDRRules.Proxy {
+		filter.UnsafeAdd(item)
 	}
+	filter.Unlock()
 }
 
-func loadAppRules(appfilter *utils.AppFilter, apps []string) {
-	appfilter.Lock()
-	defer appfilter.Unlock()
-
-	appfilter.UnsafeReset()
-	for _, item := range apps {
-		appfilter.UnsafeAdd(item)
+func (app *App) loadAppRules(filter *common.AppFilter) {
+	filter.Lock()
+	filter.UnsafeReset()
+	for _, item := range app.conf.AppRules.Proxy {
+		filter.UnsafeAdd(item)
 	}
+	filter.Unlock()
+}
+
+type winMutex windows.Handle
+
+func (mu winMutex) Close() error {
+	windows.ReleaseMutex(windows.Handle(mu))
+	windows.CloseHandle(windows.Handle(mu))
+	return nil
 }

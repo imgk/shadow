@@ -20,8 +20,8 @@ func NewDevice(name string) (*Device, error) {
 	return CreateTUN(name, 1500)
 }
 
-func (d *Device) Close() error {
-	return d.Device.Close()
+func NewDeviceWithMTU(name string, mtu int) (*Device, error) {
+	return CreateTUN(name, mtu)
 }
 
 func (d *Device) SetInterfaceAddress(address string) error {

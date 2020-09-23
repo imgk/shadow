@@ -7,7 +7,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/imgk/shadow/utils"
+	"github.com/imgk/shadow/common"
 )
 
 const (
@@ -59,8 +59,8 @@ const (
 	ErrAddressNotSupported  = Error(8)
 )
 
-func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *Auth) (utils.Addr, error) {
-	b := make([]byte, 3+utils.MaxAddrLen)
+func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *Auth) (common.Addr, error) {
+	b := make([]byte, 3+common.MaxAddrLen)
 
 	if auth == nil {
 		b[0], b[1], b[2] = 5, 1, AuthNone
@@ -89,13 +89,13 @@ func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *Auth) (utils.Addr, e
 	}
 
 	b[0], b[1], b[2] = 5, cmd, 0
-	if addr, ok := tgt.(utils.Addr); ok {
+	if addr, ok := tgt.(common.Addr); ok {
 		copy(b[3:], addr)
 		if _, err := conn.Write(b[:3+len(addr)]); err != nil {
 			return nil, err
 		}
 	} else {
-		addr, err := utils.ResolveAddrBuffer(tgt, b[3:])
+		addr, err := common.ResolveAddrBuffer(tgt, b[3:])
 		if err != nil {
 			return nil, fmt.Errorf("resolve addr error: %w", err)
 		}
@@ -112,7 +112,7 @@ func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *Auth) (utils.Addr, e
 		return nil, Error(b[1])
 	}
 
-	return utils.ReadAddrBuffer(conn, b)
+	return common.ReadAddrBuffer(conn, b)
 }
 
 type Auth struct {

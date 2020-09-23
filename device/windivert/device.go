@@ -5,23 +5,43 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/imgk/shadow/device/windivert/internal/iana"
-	"github.com/imgk/shadow/utils"
+	"github.com/imgk/shadow/common"
 )
+
+const (
+	ProtocolTCP = 6
+	ProtocolUDP = 17
+)
+
+type AtomicBool int32
+
+const (
+	AtomicFalse AtomicBool = 0
+	AtomicTrue  AtomicBool = 1
+)
+
+func (b *AtomicBool) Get() bool {
+	return atomic.LoadInt32((*int32)(unsafe.Pointer(b))) == int32(AtomicTrue)
+}
+
+func (b *AtomicBool) Set(v AtomicBool) bool {
+	return atomic.SwapInt32((*int32)(unsafe.Pointer(b)), int32(v)) == int32(AtomicTrue)
+}
 
 type Device struct {
 	*Address
-	*io.PipeReader
-	*io.PipeWriter
-	*utils.AppFilter
-	*utils.IPFilter
+	*common.AppFilter
+	*common.IPFilter
 	*Handle
+	r      *io.PipeReader
+	w      *io.PipeWriter
 	TCP    [65536]uint8
 	UDP    [65536]uint8
 	TCP6   [65536]uint8
@@ -31,12 +51,6 @@ type Device struct {
 }
 
 func NewDevice(filter string) (dev *Device, err error) {
-	CloseWhenError := func(hd *Handle) {
-		if err != nil {
-			hd.Close()
-		}
-	}
-
 	ifIdx, subIfIdx, er := GetInterfaceIndex()
 	if er != nil {
 		err = er
@@ -46,34 +60,38 @@ func NewDevice(filter string) (dev *Device, err error) {
 	filter = fmt.Sprintf("ifIdx = %d and ", ifIdx) + filter
 	hd, er := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
 	if er != nil {
-		err = fmt.Errorf("open handle error: %v", er)
+		err = fmt.Errorf("open handle error: %w", er)
 		return
 	}
-	defer CloseWhenError(hd)
+	defer func(hd *Handle) {
+		if err != nil {
+			hd.Close()
+		}
+	}(hd)
 
 	if er := hd.SetParam(QueueLength, QueueLengthMax); er != nil {
-		err = fmt.Errorf("set handle parameter queue length error %v", er)
+		err = fmt.Errorf("set handle parameter queue length error: %w", er)
 		return
 	}
 	if er := hd.SetParam(QueueTime, QueueTimeMax); er != nil {
-		err = fmt.Errorf("set handle parameter queue time error %v", er)
+		err = fmt.Errorf("set handle parameter queue time error: %w", er)
 		return
 	}
 	if er := hd.SetParam(QueueSize, QueueSizeMax); er != nil {
-		err = fmt.Errorf("set handle parameter queue size error %v", er)
+		err = fmt.Errorf("set handle parameter queue size error: %w", er)
 		return
 	}
 
 	r, w := io.Pipe()
 	dev = &Device{
-		Address:    new(Address),
-		PipeReader: r,
-		PipeWriter: w,
-		AppFilter:  utils.NewAppFilter(),
-		IPFilter:   utils.NewIPFilter(),
-		Handle:     hd,
-		active:     make(chan struct{}),
-		event:      make(chan struct{}, 1),
+		Address:   new(Address),
+		r:         r,
+		w:         w,
+		AppFilter: common.NewAppFilter(),
+		IPFilter:  common.NewIPFilter(),
+		Handle:    hd,
+		active:    make(chan struct{}),
+		event:     make(chan struct{}, 1),
 	}
 
 	go dev.writeLoop()
@@ -94,15 +112,15 @@ func (d *Device) Close() error {
 	}
 	defer d.Handle.Close()
 
-	d.PipeReader.Close()
-	d.PipeWriter.Close()
+	d.r.Close()
+	d.w.Close()
 
 	if err := d.Handle.Shutdown(ShutdownBoth); err != nil {
-		return fmt.Errorf("shutdown handle error: %v", err)
+		return fmt.Errorf("shutdown handle error: %w", err)
 	}
 
 	if err := d.Handle.Close(); err != nil {
-		return fmt.Errorf("close handle error: %v", err)
+		return fmt.Errorf("close handle error: %w", err)
 	}
 
 	return nil
@@ -212,7 +230,7 @@ const (
 
 func (d *Device) CheckIPv4(b []byte) bool {
 	switch b[9] {
-	case iana.ProtocolTCP:
+	case ProtocolTCP:
 		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
 		switch d.TCP[p] {
 		case 0:
@@ -246,7 +264,7 @@ func (d *Device) CheckIPv4(b []byte) bool {
 
 			return true
 		}
-	case iana.ProtocolUDP:
+	case ProtocolUDP:
 		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
 
 		switch d.UDP[p] {
@@ -286,7 +304,7 @@ func (d *Device) CheckIPv4(b []byte) bool {
 }
 
 func (d *Device) CheckTCP4(b []byte) bool {
-	rs, err := utils.GetTCPTable()
+	rs, err := common.GetTCPTable()
 	if err != nil {
 		return false
 	}
@@ -305,7 +323,7 @@ func (d *Device) CheckTCP4(b []byte) bool {
 }
 
 func (d *Device) CheckUDP4(b []byte) bool {
-	rs, err := utils.GetUDPTable()
+	rs, err := common.GetUDPTable()
 	if err != nil {
 		return false
 	}
@@ -325,7 +343,7 @@ func (d *Device) CheckUDP4(b []byte) bool {
 
 func (d *Device) CheckIPv6(b []byte) bool {
 	switch b[6] {
-	case iana.ProtocolTCP:
+	case ProtocolTCP:
 		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
 		switch d.TCP6[p] {
 		case 0:
@@ -359,7 +377,7 @@ func (d *Device) CheckIPv6(b []byte) bool {
 
 			return true
 		}
-	case iana.ProtocolUDP:
+	case ProtocolUDP:
 		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
 
 		switch d.UDP6[p] {
@@ -398,7 +416,7 @@ func (d *Device) CheckIPv6(b []byte) bool {
 }
 
 func (d *Device) CheckTCP6(b []byte) bool {
-	rs, err := utils.GetTCP6Table()
+	rs, err := common.GetTCP6Table()
 	if err != nil {
 		return false
 	}
@@ -418,7 +436,7 @@ func (d *Device) CheckTCP6(b []byte) bool {
 }
 
 func (d *Device) CheckUDP6(b []byte) bool {
-	rs, err := utils.GetUDP6Table()
+	rs, err := common.GetUDP6Table()
 	if err != nil {
 		return false
 	}
@@ -472,7 +490,7 @@ func (d *Device) writeLoop() {
 				n, m = 0, 0
 			}
 		case <-d.event:
-			nr, err := d.PipeReader.Read(b[n:])
+			nr, err := d.r.Read(b[n:])
 			if err != nil {
 				select {
 				case <-d.active:
@@ -514,7 +532,7 @@ func (d *Device) Write(b []byte) (int, error) {
 	case d.event <- struct{}{}:
 	}
 
-	n, err := d.PipeWriter.Write(b)
+	n, err := d.w.Write(b)
 	if err != nil {
 		select {
 		case <-d.active:

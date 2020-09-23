@@ -26,7 +26,7 @@ func Download() error {
 		dll = "x86/WinDivert.dll"
 	}
 
-	if _, err := os.Stat(windivertsys); err == nil {
+	if _, err := os.Stat(winDivertSYS); err == nil {
 		return nil
 	}
 
@@ -65,7 +65,7 @@ func Download() error {
 				return err
 			}
 
-			if err = ioutil.WriteFile(windivertsys, data, 0444); err != nil {
+			if err = ioutil.WriteFile(winDivertSYS, data, 0444); err != nil {
 				return err
 			}
 		}
@@ -82,7 +82,7 @@ func Download() error {
 				return err
 			}
 
-			if err = ioutil.WriteFile(windivertdll, data, 0444); err != nil {
+			if err = ioutil.WriteFile(winDivertDLL, data, 0444); err != nil {
 				return err
 			}
 		}

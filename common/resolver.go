@@ -1,4 +1,4 @@
-package utils
+package common
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 type Dialer struct {
 	net.Dialer
 	server string
-	Config *tls.Config
+	config *tls.Config
 }
 
 func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
@@ -45,7 +45,7 @@ func (d *Dialer) DialTLS(network, addr string) (net.Conn, error) {
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
 	}
-	return tls.Client(conn, d.Config), err
+	return tls.Client(conn, d.config), err
 }
 
 func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -56,7 +56,7 @@ func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
 	}
-	return tls.Client(conn, d.Config), nil
+	return tls.Client(conn, d.config), nil
 }
 
 type Resolver interface {
@@ -67,7 +67,7 @@ type Resolver interface {
 func NewResolver(s string) (Resolver, error) {
 	u, err := url.Parse(s)
 	if err != nil {
-		return nil, fmt.Errorf("parse url %v error: %v", s, err)
+		return nil, fmt.Errorf("parse url %v error: %w", s, err)
 	}
 
 	switch u.Scheme {
@@ -119,7 +119,7 @@ func NewResolver(s string) (Resolver, error) {
 			Dialer: Dialer{
 				Dialer: net.Dialer{},
 				server: addr.String(),
-				Config: &tls.Config{
+				config: &tls.Config{
 					ServerName:         u.Host,
 					ClientSessionCache: tls.NewLRUClientSessionCache(32),
 					InsecureSkipVerify: false,
@@ -134,7 +134,7 @@ func NewResolver(s string) (Resolver, error) {
 		resolver.Client.Transport = &http.Transport{
 			Dial:              resolver.Dialer.Dial,
 			DialContext:       resolver.Dialer.DialContext,
-			TLSClientConfig:   resolver.Dialer.Config,
+			TLSClientConfig:   resolver.Dialer.config,
 			DialTLS:           resolver.Dialer.DialTLS,
 			DialTLSContext:    resolver.Dialer.DialTLSContext,
 			ForceAttemptHTTP2: true,

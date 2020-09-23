@@ -1,78 +1,104 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"io"
-	"runtime/debug"
+	"io/ioutil"
 	"time"
 
-	"github.com/imgk/shadow/utils"
+	"github.com/imgk/shadow/common"
 )
 
-func init() {
-	debug.SetGCPercent(10)
-	go freeOSMemory(time.NewTicker(time.Minute))
-}
-
-func freeOSMemory(ticker *time.Ticker) {
-	for range ticker.C {
-		debug.FreeOSMemory()
-	}
-}
-
 type Conf struct {
-	Server       []string
-	NameServer   string
-	FilterString string
-	TunName      string
-	TunAddr      []string
+	Server       string   `json:"server"`
+	NameServer   string   `json:"name_server"`
+	FilterString string   `json:"windivert_filter_string"`
+	TunName      string   `json:"tun_name"`
+	TunAddr      []string `json:"tun_addr"`
 	IPCIDRRules  struct {
-		Proxy []string
-	}
+		Proxy []string `json:"proxy"`
+	} `json:"ip_cidr_rules"`
 	AppRules struct {
-		Proxy []string
-	}
+		Proxy []string `json:"proxy"`
+	} `json:"app_rules"`
 	DomainRules struct {
-		Proxy   []string
-		Direct  []string
-		Blocked []string
+		Proxy   []string `json:"proxy"`
+		Direct  []string `json:"direct"`
+		Blocked []string `json:"blocked"`
+	} `json:"domain_rules"`
+}
+
+type App struct {
+	conf    Conf
+	done    chan struct{}
+	config  string
+	writer  io.Writer
+	timeout time.Duration
+	closers []io.Closer
+}
+
+func NewApp(file string, timeout time.Duration) (app *App, err error) {
+	app = &App{
+		done:    make(chan struct{}),
+		config:  file,
+		writer:  emptyWriter{},
+		timeout: timeout,
+	}
+	err = app.readConfig()
+	return
+}
+
+func (app *App) readConfig() error {
+	b, err := ioutil.ReadFile(app.config)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(b, &app.conf); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (app *App) SetWriter(w io.Writer) {
+	app.writer = w
+}
+
+func (app *App) Done() chan struct{} {
+	return app.done
+}
+
+func (app *App) attachCloser(closer io.Closer) {
+	app.closers = append(app.closers, closer)
+}
+
+func (app *App) Close() {
+	select {
+	case <-app.done:
+		return
+	default:
+		close(app.done)
+	}
+	for _, closer := range app.closers {
+		closer.Close()
 	}
 }
 
-func (conf *Conf) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, conf)
-}
-
-func (conf *Conf) free() {
-	conf.AppRules.Proxy = []string{}
-	conf.IPCIDRRules.Proxy = []string{}
-	conf.DomainRules.Proxy = []string{}
-	conf.DomainRules.Direct = []string{}
-	conf.DomainRules.Blocked = []string{}
-}
-
-type Option struct {
-	Conf    *Conf
-	Writer  io.Writer
-	Ctx     context.Context
-	Reload  chan struct{}
-	Done    chan struct{}
-	Timeout time.Duration
-}
-
-func loadDomainRules(matchTree *utils.DomainTree, proxy, direct, blocked []string) {
-	matchTree.Lock()
-	defer matchTree.Unlock()
-
-	matchTree.UnsafeReset()
-	for _, domain := range proxy {
-		matchTree.UnsafeStore(domain, "PROXY")
+func (app *App) loadDomainRules(tree *common.DomainTree) {
+	tree.Lock()
+	tree.UnsafeReset()
+	for _, domain := range app.conf.DomainRules.Proxy {
+		tree.UnsafeStore(domain, "PROXY")
 	}
-	for _, domain := range direct {
-		matchTree.UnsafeStore(domain, "DIRECT")
+	for _, domain := range app.conf.DomainRules.Direct {
+		tree.UnsafeStore(domain, "DIRECT")
 	}
-	for _, domain := range blocked {
-		matchTree.UnsafeStore(domain, "BLOCKED")
+	for _, domain := range app.conf.DomainRules.Blocked {
+		tree.UnsafeStore(domain, "BLOCKED")
 	}
+	tree.Unlock()
 }
+
+type emptyWriter struct{}
+
+func (w emptyWriter) Write(b []byte) (int, error) { return len(b), nil }
+func (w emptyWriter) Sync() error                 { return nil }

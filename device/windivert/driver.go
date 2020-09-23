@@ -11,17 +11,15 @@ import (
 
 const types = 7
 
-func CloseMutex(mutex windows.Handle) {
-	windows.ReleaseMutex(mutex)
-	windows.CloseHandle(mutex)
-}
-
 func InstallDriver() error {
 	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("WinDivertDriverInstallMutex"))
 	if err != nil {
 		return err
 	}
-	defer CloseMutex(mutex)
+	defer func (mu windows.Handle) {
+		windows.ReleaseMutex(mu)
+		windows.CloseHandle(mu)
+	}(mutex)
 
 	event, err := windows.WaitForSingleObject(mutex, windows.INFINITE)
 	if err != nil {
@@ -115,17 +113,17 @@ func RemoveDriver() error {
 func GetDriverFileName() (string, error) {
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\EventLog\\System\\WinDivert", registry.QUERY_VALUE)
 	if err != nil {
-		if _, err := os.Stat(windivertsys); err != nil {
+		if _, err := os.Stat(winDivertSYS); err != nil {
 			if er := Download(); er != nil {
 				return "", fmt.Errorf("file error: %w, download error: %w", err, er)
 			}
 		}
 
-		if err := RegisterEventSource(windivertsys); err != nil {
+		if err := RegisterEventSource(winDivertSYS); err != nil {
 			return "", err
 		}
 
-		return windivertsys, nil
+		return winDivertSYS, nil
 	}
 	defer key.Close()
 
@@ -135,17 +133,17 @@ func GetDriverFileName() (string, error) {
 	}
 
 	if _, err := os.Stat(val); err != nil {
-		if _, err := os.Stat(windivertsys); err != nil {
+		if _, err := os.Stat(winDivertSYS); err != nil {
 			if er := Download(); er != nil {
 				return "", fmt.Errorf("file error: %w, download error: %w", err, er)
 			}
 		}
 
-		if err := RegisterEventSource(windivertsys); err != nil {
+		if err := RegisterEventSource(winDivertSYS); err != nil {
 			return "", err
 		}
 
-		return windivertsys, nil
+		return winDivertSYS, nil
 	}
 
 	return val, nil

@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -17,8 +16,8 @@ import (
 var (
 	winDivert     = (*windows.DLL)(nil)
 	winDivertOpen = (*windows.Proc)(nil)
-	windivertsys  = ""
-	windivertdll  = ""
+	winDivertSYS  = ""
+	winDivertDLL  = ""
 	DeviceName    = windows.StringToUTF16Ptr("WinDivert")
 )
 
@@ -31,8 +30,8 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	windivertsys = filepath.Join(system32, "WinDivert"+strconv.Itoa(32<<(^uint(0)>>63))+".sys")
-	windivertdll = filepath.Join(system32, "WinDivert.dll")
+	winDivertSYS = filepath.Join(system32, "WinDivert"+strconv.Itoa(32<<(^uint(0)>>63))+".sys")
+	winDivertDLL = filepath.Join(system32, "WinDivert.dll")
 
 	if err := InstallDriver(); err != nil {
 		panic(err)
@@ -162,7 +161,7 @@ func (h *Handle) Recv(buffer []byte, address *Address) (uint, error) {
 
 	iolen, err := IoControlEx(h.Handle, IoCtlRecv, unsafe.Pointer(&recv), &buffer[0], uint32(len(buffer)), &h.rOverlapped)
 	if err != nil {
-		return uint(iolen), Error(err.(syscall.Errno))
+		return uint(iolen), Error(err.(windows.Errno))
 	}
 
 	return uint(iolen), nil
@@ -177,7 +176,7 @@ func (h *Handle) RecvEx(buffer []byte, address []Address, overlapped *windows.Ov
 
 	iolen, err := IoControlEx(h.Handle, IoCtlRecv, unsafe.Pointer(&recv), &buffer[0], uint32(len(buffer)), &h.rOverlapped)
 	if err != nil {
-		return uint(iolen), addrLen / uint(unsafe.Sizeof(Address{})), Error(err.(syscall.Errno))
+		return uint(iolen), addrLen / uint(unsafe.Sizeof(Address{})), Error(err.(windows.Errno))
 	}
 
 	return uint(iolen), addrLen / uint(unsafe.Sizeof(Address{})), nil
@@ -191,7 +190,7 @@ func (h *Handle) Send(buffer []byte, address *Address) (uint, error) {
 
 	iolen, err := IoControlEx(h.Handle, IoCtlSend, unsafe.Pointer(&send), &buffer[0], uint32(len(buffer)), &h.wOverlapped)
 	if err != nil {
-		return uint(iolen), Error(err.(syscall.Errno))
+		return uint(iolen), Error(err.(windows.Errno))
 	}
 
 	return uint(iolen), nil
@@ -205,7 +204,7 @@ func (h *Handle) SendEx(buffer []byte, address []Address, overlapped *windows.Ov
 
 	iolen, err := IoControlEx(h.Handle, IoCtlSend, unsafe.Pointer(&send), &buffer[0], uint32(len(buffer)), &h.wOverlapped)
 	if err != nil {
-		return uint(iolen), Error(err.(syscall.Errno))
+		return uint(iolen), Error(err.(windows.Errno))
 	}
 
 	return uint(iolen), nil
@@ -218,7 +217,7 @@ func (h *Handle) Shutdown(how Shutdown) error {
 
 	_, err := IoControl(h.Handle, IoCtlShutdown, unsafe.Pointer(&shutdown), nil, 0)
 	if err != nil {
-		return Error(err.(syscall.Errno))
+		return Error(err.(windows.Errno))
 	}
 
 	return nil
@@ -230,7 +229,7 @@ func (h *Handle) Close() error {
 
 	err := windows.CloseHandle(h.Handle)
 	if err != nil {
-		return Error(err.(syscall.Errno))
+		return Error(err.(windows.Errno))
 	}
 
 	return nil
@@ -244,7 +243,7 @@ func (h *Handle) GetParam(p Param) (uint64, error) {
 
 	_, err := IoControl(h.Handle, IoCtlGetParam, unsafe.Pointer(&getParam), (*byte)(unsafe.Pointer(&getParam.Value)), uint32(unsafe.Sizeof(getParam.Value)))
 	if err != nil {
-		return getParam.Value, Error(err.(syscall.Errno))
+		return getParam.Value, Error(err.(windows.Errno))
 	}
 
 	return getParam.Value, nil
@@ -275,7 +274,7 @@ func (h *Handle) SetParam(p Param, v uint64) error {
 
 	_, err := IoControl(h.Handle, IoCtlSetParam, unsafe.Pointer(&setParam), nil, 0)
 	if err != nil {
-		return Error(err.(syscall.Errno))
+		return Error(err.(windows.Errno))
 	}
 
 	return nil

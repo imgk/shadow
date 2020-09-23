@@ -7,13 +7,20 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
+
 	"github.com/eycorsican/go-tun2socks/core"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+const (
+	ProtocolTCP = 6
+	ProtocolUDP = 17
+)
+
 type Device interface {
-	io.Closer
 	io.Writer
 	io.WriterTo
 }
@@ -47,31 +54,34 @@ type PacketConn interface {
 	WriteFrom([]byte, net.Addr) (int, error)
 }
 
+type emptySyncer struct { io.Writer }
+
+func (emptySyncer) Sync() error { return nil }
+
+func newWriteSyncer(w io.Writer) zapcore.WriteSyncer {
+	if wt, ok := w.(zapcore.WriteSyncer); ok {
+		return wt
+	}
+	return emptySyncer{Writer: w}
+}
+
 type Stack struct {
 	*zap.Logger
 	Device  Device
 	Handler Handler
 	Stack   core.LWIPStack
 
+	mtu   int32
 	mutex sync.Mutex
 	conns map[core.UDPConn]*UDPConn
 }
 
-type writerSyncer struct { io.Writer }
-
-func (w writerSyncer) Sync() error { return nil }
-
-func newWriterSyncer(w io.Writer) zapcore.WriteSyncer {
-	if wt, ok := w.(zapcore.WriteSyncer); ok {
-		return wt
-	}
-	return writerSyncer{Writer: w}
-}
-
 func (s *Stack) Init(device Device, handler Handler, w io.Writer) {
-	conf := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
-	zcore := zapcore.NewCore(conf, newWriterSyncer(w), zap.NewAtomicLevelAt(zap.InfoLevel))
-	s.Logger = zap.New(zcore, zap.Development())
+	s.Logger = zap.New(zapcore.NewCore(
+		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
+		newWriteSyncer(w),
+		zap.NewAtomicLevelAt(zap.InfoLevel),
+	), zap.Development())
 
 	s.Device = device
 	s.Handler = handler
@@ -82,17 +92,43 @@ func (s *Stack) Init(device Device, handler Handler, w io.Writer) {
 	core.RegisterTCPConnHandler(s)
 	core.RegisterUDPConnHandler(s)
 
-	go s.ReadFrom(device)
+	go s.readLoop(device)
 }
 
-func (s *Stack) ReadFrom(rt io.WriterTo) {
-	if _, err := rt.WriteTo(s.Stack); err != nil {
+func (s *Stack) Write(b []byte) (int, error) {
+	return s.WriteOffset(b, 0)
+}
+
+func (s *Stack) WriteOffset(b []byte, offset int) (int, error) {
+	switch b[offset+0] >> 4 {
+	case ipv4.Version:
+		switch b[offset+9] {
+		case ProtocolTCP:
+			return s.Stack.Write(b[offset:])
+		case ProtocolUDP:
+			return s.Stack.Write(b[offset:])
+		default:
+		}
+	case ipv6.Version:
+		switch b[offset+6] {
+		case ProtocolTCP:
+			return s.Stack.Write(b[offset:])
+		case ProtocolUDP:
+			return s.Stack.Write(b[offset:])
+		default:
+		}
+	default:
+	}
+	return len(b[offset:]), nil
+}
+
+func (s *Stack) readLoop(rt io.WriterTo) {
+	if _, err := rt.WriteTo(s); err != nil {
 		s.Error(fmt.Sprintf("netstack exit error: %v", err))
 	}
 }
 
 func (s *Stack) Close() error {
-	s.Device.Close()
 	s.Logger.Sync()
 	return s.Stack.Close()
 }
@@ -255,12 +291,13 @@ func (conn TCPConn) LocalAddr() net.Addr {
 	return conn.TCPConn.RemoteAddr()
 }
 
-// UDPConn
+// UDP Packet
 type Packet struct {
 	Addr *net.UDPAddr
 	Byte []byte
 }
 
+// UDPConn
 type UDPConn struct {
 	deadlineTimer
 

@@ -47,10 +47,10 @@ func determineGUID(name string) *windows.GUID {
 }
 
 type Device struct {
-	Device *tun.NativeTun
-	Name   string
-	MTU    int
-	Conf4  struct {
+	*tun.NativeTun
+	Name  string
+	MTU   int
+	Conf4 struct {
 		Addr    [4]byte
 		Mask    [4]byte
 		Gateway [4]byte
@@ -68,11 +68,11 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	if err != nil {
 		return
 	}
-	dev.Device = device.(*tun.NativeTun)
-	if dev.Name, err = dev.Device.Name(); err != nil {
+	dev.NativeTun = device.(*tun.NativeTun)
+	if dev.Name, err = dev.NativeTun.Name(); err != nil {
 		return
 	}
-	if dev.MTU, err = dev.Device.MTU(); err != nil {
+	if dev.MTU, err = dev.NativeTun.MTU(); err != nil {
 		return
 	}
 	return
@@ -81,7 +81,7 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	b := make([]byte, d.MTU)
 	for {
-		nr, er := d.Device.Read(b, 0)
+		nr, er := d.NativeTun.Read(b, 0)
 		if nr > 0 {
 			nw, ew := w.Write(b[:nr])
 			if nw > 0 {
@@ -110,7 +110,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 func (d *Device) Write(b []byte) (int, error) {
-	return d.Device.Write(b, 0)
+	return d.NativeTun.Write(b, 0)
 }
 
 //https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L22-L58
@@ -153,7 +153,7 @@ func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, add
 
 //https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L60-L168
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
-	luid := winipcfg.LUID(d.Device.LUID())
+	luid := winipcfg.LUID(d.NativeTun.LUID())
 
 	addresses := append([]net.IPNet{}, net.IPNet{
 		IP:   net.ParseIP(addr).To4(),
@@ -174,7 +174,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 }
 
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
-	luid := winipcfg.LUID(d.Device.LUID())
+	luid := winipcfg.LUID(d.NativeTun.LUID())
 
 	addresses := append([]net.IPNet{}, net.IPNet{
 		IP:   net.ParseIP(addr).To16(),
@@ -199,7 +199,7 @@ func (d *Device) Activate() error {
 }
 
 func (d *Device) addRouteEntry4(cidr []string) error {
-	luid := winipcfg.LUID(d.Device.LUID())
+	luid := winipcfg.LUID(d.NativeTun.LUID())
 
 	routes := make([]winipcfg.RouteData, 0, len(cidr))
 	for _, item := range cidr {
@@ -235,7 +235,7 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 }
 
 func (d *Device) addRouteEntry6(cidr []string) error {
-	luid := winipcfg.LUID(d.Device.LUID())
+	luid := winipcfg.LUID(d.NativeTun.LUID())
 
 	routes := make([]winipcfg.RouteData, 0, len(cidr))
 	for _, item := range cidr {

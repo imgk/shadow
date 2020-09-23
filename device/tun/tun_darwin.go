@@ -9,7 +9,24 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"golang.zx2c4.com/wireguard/tun"
 )
+
+func NewDeviceFromFile(file *os.File, mtu int) (dev *Device, err error) {
+	dev = &Device{}
+	device, err := tun.CreateTUNFromFile(file, mtu)
+	if err != nil {
+		return
+	}
+	dev.NativeTun = device.(*tun.NativeTun)
+	if dev.Name, err = dev.NativeTun.Name(); err != nil {
+		return
+	}
+	dev.MTU = mtu
+	dev.buff = make([]byte, 4+dev.MTU)
+	return
+}
 
 const (
 	RTM_ADD     = 1

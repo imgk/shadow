@@ -1,4 +1,4 @@
-package shadowsocks
+package core
 
 import (
 	"bytes"

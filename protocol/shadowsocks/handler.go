@@ -7,14 +7,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
-	"github.com/imgk/shadow/utils"
+	"github.com/imgk/shadow/protocol/shadowsocks/core"
+	"github.com/imgk/shadow/common"
 )
 
-const MaxBufferSize = 4096 // Max 65536
-
 type Handler struct {
-	Cipher
+	core.Cipher
 	server  string
 	timeout time.Duration
 }
@@ -29,7 +27,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	ciph, err := NewCipher(cipher, password)
+	ciph, err := core.NewCipher(cipher, password)
 	if err != nil {
 		return nil, err
 	}
@@ -41,12 +39,16 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	}, nil
 }
 
+func (*Handler) Close() error {
+	return nil
+}
+
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	defer conn.Close()
 
-	addr, ok := tgt.(utils.Addr)
+	addr, ok := tgt.(common.Addr)
 	if !ok {
-		addr, err = utils.ResolveAddrBuffer(tgt, make([]byte, utils.MaxAddrLen))
+		addr, err = common.ResolveAddrBuffer(tgt, make([]byte, common.MaxAddrLen))
 		if err != nil {
 			return fmt.Errorf("resolve addr error: %v", err)
 		}
@@ -57,15 +59,15 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 		return fmt.Errorf("dial server %v error: %v", h.server, err)
 	}
 	rc.(*net.TCPConn).SetKeepAlive(true)
-	rc = NewConn(rc, h.Cipher)
+	rc = core.NewConn(rc, h.Cipher)
 	defer rc.Close()
 
 	if _, err := rc.Write(addr); err != nil {
 		return fmt.Errorf("write to server %v error: %v", h.server, err)
 	}
 
-	if err := netstack.Relay(conn, rc); err != nil {
-		if ne, ok := err.(net.Error); ok {
+	if err := common.Relay(conn, rc); err != nil {
+		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
 			}
@@ -80,7 +82,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	return nil
 }
 
-func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	defer conn.Close()
 
 	raddr, err := net.ResolveUDPAddr("udp", h.server)
@@ -93,17 +95,17 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 		conn.Close()
 		return err
 	}
-	rc = NewPacketConn(rc, h.Cipher)
+	rc = core.NewPacketConn(rc, h.Cipher)
 
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := make([]byte, 32+utils.MaxAddrLen+MaxBufferSize)
+	b := make([]byte, 32+common.MaxAddrLen+core.MaxBufferSize)
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		n, _, er := rc.ReadFrom(b)
 		if er != nil {
-			if ne, ok := er.(net.Error); ok {
+			if ne := net.Error(nil); errors.As(err, &ne) {
 				if ne.Timeout() {
 					break
 				}
@@ -112,7 +114,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 			break
 		}
 
-		raddr, er := utils.ParseAddr(b[:n])
+		raddr, er := common.ParseAddr(b[:n])
 		if er != nil {
 			err = fmt.Errorf("parse addr error: %v", er)
 			break
@@ -136,11 +138,11 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	return <-errCh
 }
 
-func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := make([]byte, 32+utils.MaxAddrLen+MaxBufferSize)
-	buf := make([]byte, utils.MaxAddrLen)
+func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
+	b := make([]byte, 32+common.MaxAddrLen+core.MaxBufferSize)
+	buf := make([]byte, common.MaxAddrLen)
 	for {
-		n, tgt, err := conn.ReadTo(b[utils.MaxAddrLen:])
+		n, tgt, err := conn.ReadTo(b[common.MaxAddrLen:])
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
@@ -150,19 +152,19 @@ func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.D
 			break
 		}
 
-		addr, ok := tgt.(utils.Addr)
+		addr, ok := tgt.(common.Addr)
 		if !ok {
-			addr, err = utils.ResolveAddrBuffer(tgt, buf)
+			addr, err = common.ResolveAddrBuffer(tgt, buf)
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %v", err)
 				break
 			}
 		}
 
-		copy(b[utils.MaxAddrLen-len(addr):], addr)
+		copy(b[common.MaxAddrLen-len(addr):], addr)
 
 		rc.SetWriteDeadline(time.Now().Add(timeout))
-		_, err = rc.WriteTo(b[utils.MaxAddrLen-len(addr):utils.MaxAddrLen+n], raddr)
+		_, err = rc.WriteTo(b[common.MaxAddrLen-len(addr):common.MaxAddrLen+n], raddr)
 		if err != nil {
 			errCh <- err
 			break

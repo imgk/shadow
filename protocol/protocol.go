@@ -5,45 +5,42 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
-	"github.com/imgk/shadow/protocol/balancer"
+	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol/shadowsocks"
 	"github.com/imgk/shadow/protocol/socks"
 	"github.com/imgk/shadow/protocol/trojan"
 )
 
-func NewHandler(s []string, timeout time.Duration) (netstack.Handler, error) {
-	if len(s) == 1 {
-		return PickHandler(s[0], timeout)
-	}
+var errNotProtocol = errors.New("not a supported scheme")
 
-	handler := make([]netstack.Handler, len(s))
-	for i, server := range s {
-		h, err := PickHandler(server, timeout)
-		if err != nil {
-			return nil, err
-		}
+var handler = map[string](func(string, time.Duration) (common.Handler, error)){}
 
-		handler[i] = h
-	}
-
-	return balancer.NewHandler(handler), nil
+func init() {
+	RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (common.Handler, error) {
+		return shadowsocks.NewHandler(s, timeout)
+	})
+	RegisterHandler("socks", func(s string, timeout time.Duration) (common.Handler, error) {
+		return socks.NewHandler(s, timeout)
+	})
+	RegisterHandler("trojan", func(s string, timeout time.Duration) (common.Handler, error) {
+		return trojan.NewHandler(s, timeout)
+	})
 }
 
-func PickHandler(s string, timeout time.Duration) (netstack.Handler, error) {
+func RegisterHandler(p string, fn func(string, time.Duration) (common.Handler, error)) {
+	handler[p] = fn
+}
+
+func NewHandler(s string, timeout time.Duration) (common.Handler, error) {
 	u, err := url.Parse(s)
 	if err != nil {
 		return nil, err
 	}
 
-	switch u.Scheme {
-	case "ss":
-		return shadowsocks.NewHandler(s, timeout)
-	case "trojan":
-		return trojan.NewHandler(s, timeout)
-	case "socks":
-		return socks.NewHandler(s, timeout)
-	default:
-		return nil, errors.New("not a supported scheme")
+	fn, ok := handler[u.Scheme]
+	if ok {
+		return fn(s, timeout)
 	}
+
+	return nil, errNotProtocol
 }

@@ -1,10 +1,10 @@
-package utils
+package common
 
 import (
 	"net"
 	"sync"
 
-	"github.com/imgk/shadow/utils/iptree"
+	"github.com/imgk/shadow/common/iptree"
 )
 
 type IPFilter struct {

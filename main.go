@@ -2,10 +2,8 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
@@ -19,32 +17,17 @@ func main() {
 	file := flag.String("c", "config.json", "config file")
 	flag.Parse()
 
-	b, err := ioutil.ReadFile(*file)
+	app, err := app.NewApp(*file, time.Minute)
 	if err != nil {
 		panic(err)
 	}
+	if *mode {
+		app.SetWriter(os.Stdout)
+	}
 
-	conf := &app.Conf{}
-	if err := conf.Unmarshal(b); err != nil {
+	if err := app.Run(); err != nil {
 		panic(err)
 	}
-	b = nil
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-
-	opt := app.Option{
-		Conf:    conf,
-		Writer:  writer{},
-		Ctx:     ctx,
-		Reload:  make(chan struct{}),
-		Done:    done,
-		Timeout: time.Minute,
-	}
-	if *mode {
-		opt.Writer = os.Stdout
-	}
-	go Run(opt)
 
 	fmt.Println("shadow - a transparent proxy for Windows, Linux and macOS")
 	fmt.Println("shadow is running...")
@@ -53,7 +36,8 @@ func main() {
 	<-sigCh
 	fmt.Println("shadow is closing...")
 
-	cancel()
+	app.Close()
+
 	select {
 	case <-time.After(time.Second * 10):
 		buf := make([]byte, 1024)
@@ -73,17 +57,6 @@ func main() {
 			}
 		}
 		os.Exit(777)
-	case <-done:
+	case <-app.Done():
 	}
 }
-
-func Run(option app.Option) {
-	if err := app.Run(option); err != nil {
-		panic(err)
-	}
-}
-
-type writer struct{}
-
-func (w writer) Write(b []byte) (int, error) { return len(b), nil }
-func (w writer) Sync() error                 { return nil }
