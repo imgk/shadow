@@ -1,6 +1,6 @@
 module github.com/imgk/shadow
 
-go 1.14
+go 1.15
 
 require (
 	github.com/eycorsican/go-tun2socks v1.16.11
@@ -10,7 +10,7 @@ require (
 	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73
-	golang.org/x/sys v0.0.0-20200922070232-aee5d888a860
+	golang.org/x/sys v0.0.0-20200602225109-6fdc65e7d980
 	golang.zx2c4.com/wireguard v0.0.20200321-0.20200607075020-f28a6d244b51
 	golang.zx2c4.com/wireguard/windows v0.1.1
 )

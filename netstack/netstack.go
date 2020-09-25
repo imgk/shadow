@@ -87,11 +87,15 @@ func NewStack(handler common.Handler, dev common.Device, resolver common.Resolve
 		handler:    handler,
 		resolver:   resolver,
 		tree:       common.NewDomainTree("."),
-		buffer:     sync.Pool{New: func() interface{} { return make([]byte, 1024*2) }},
+		buffer:     sync.Pool{New: newMessage},
 		counter:    uint16(time.Now().Unix()),
 	}
 	s.Stack.Init(dev.(core.Device), s, w)
 	return s
+}
+
+func newMessage() interface{} {
+	return make([]byte, 1024*2)
 }
 
 func (s *Stack) DomainTree() *common.DomainTree {
