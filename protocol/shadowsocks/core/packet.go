@@ -7,39 +7,29 @@ import (
 	"net"
 )
 
-const MaxBufferSize = 4096 // Max 65536
-
 var ErrShortPacket = errors.New("short packet")
-var _zerononce [128]byte
+var _zerononce = [128]byte{}
 
 type PacketConn struct {
 	net.PacketConn
-	Cipher
-	rBuff []byte
-	wBuff []byte
+	c Cipher
 }
 
 func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
-	if ciph == nil {
+	if _, ok := ciph.(dummy); ok {
 		return pc
 	}
-
-	return &PacketConn{
-		PacketConn: pc,
-		Cipher:     ciph,
-		rBuff:      make([]byte, MaxBufferSize),
-		wBuff:      make([]byte, MaxBufferSize),
-	}
+	return &PacketConn{PacketConn: pc, c: ciph}
 }
 
-func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
-	saltSize := ciph.SaltSize()
+func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
+	saltSize := cipher.SaltSize()
 	if len(pkt) < saltSize {
 		return nil, ErrShortPacket
 	}
 
 	salt := pkt[:saltSize]
-	aead, err := ciph.NewAead(salt)
+	aead, err := cipher.NewAead(salt)
 	if err != nil {
 		return nil, err
 	}
@@ -55,12 +45,15 @@ func Unpack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	n, addr, err := pc.PacketConn.ReadFrom(pc.rBuff)
+	buff := Get()
+	defer Put(buff)
+
+	n, addr, err := pc.PacketConn.ReadFrom(buff)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	bb, err := Unpack(b, pc.rBuff[:n], pc.Cipher)
+	bb, err := Unpack(b, buff[:n], pc.c)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -68,15 +61,15 @@ func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	return len(bb), addr, nil
 }
 
-func Pack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
-	saltSize := ciph.SaltSize()
+func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
+	saltSize := cipher.SaltSize()
 	salt := dst[:saltSize]
 	_, err := rand.Read(salt)
 	if err != nil {
 		return nil, err
 	}
 
-	aead, err := ciph.NewAead(salt)
+	aead, err := cipher.NewAead(salt)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +82,10 @@ func Pack(dst, pkt []byte, ciph Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	bb, err := Pack(pc.wBuff, b, pc.Cipher)
+	buff := Get()
+	defer Put(buff)
+
+	bb, err := Pack(buff, b, pc.c)
 	if err != nil {
 		return 0, err
 	}

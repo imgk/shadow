@@ -12,7 +12,6 @@ import (
 
 	"github.com/eycorsican/go-tun2socks/core"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -54,17 +53,6 @@ type PacketConn interface {
 	WriteFrom([]byte, net.Addr) (int, error)
 }
 
-type emptySyncer struct { io.Writer }
-
-func (emptySyncer) Sync() error { return nil }
-
-func newWriteSyncer(w io.Writer) zapcore.WriteSyncer {
-	if wt, ok := w.(zapcore.WriteSyncer); ok {
-		return wt
-	}
-	return emptySyncer{Writer: w}
-}
-
 type Stack struct {
 	*zap.Logger
 	Device  Device
@@ -76,12 +64,8 @@ type Stack struct {
 	conns map[core.UDPConn]*UDPConn
 }
 
-func (s *Stack) Init(device Device, handler Handler, w io.Writer) {
-	s.Logger = zap.New(zapcore.NewCore(
-		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
-		newWriteSyncer(w),
-		zap.NewAtomicLevelAt(zap.InfoLevel),
-	), zap.Development())
+func (s *Stack) Init(device Device, handler Handler, logger *zap.Logger) {
+	s.Logger = logger
 
 	s.Device = device
 	s.Handler = handler

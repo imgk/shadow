@@ -54,9 +54,21 @@ func (app *App) Run() (err error) {
 		return fmt.Errorf("turn up tun device error: %w", err)
 	}
 
-	stack := netstack.NewStack(handler, dev, resolver, app.writer)
+	stack := netstack.NewStack(handler, dev, resolver, app.logger)
 	app.loadDomainRules(stack.DomainTree())
 	app.attachCloser(stack)
+
+	if addr := app.conf.ProxyServer; addr != "" {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return err
+		}
+
+		app.server.Logger = app.logger
+		app.server.handler = handler
+		app.server.tree = stack.DomainTree()
+		go app.server.Serve(ln)
+	}
 
 	if err := dev.AddRouteEntry(app.conf.IPCIDRRules.Proxy); err != nil {
 		return fmt.Errorf("add route entry error: %w", err)

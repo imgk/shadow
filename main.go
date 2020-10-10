@@ -4,29 +4,42 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/signal"
 	"runtime"
 	"time"
 
+	//protocols
+	_ "github.com/imgk/shadow/protocol/http"
+	_ "github.com/imgk/shadow/protocol/shadowsocks"
+	_ "github.com/imgk/shadow/protocol/socks"
+	_ "github.com/imgk/shadow/protocol/trojan"
+
 	"github.com/imgk/shadow/app"
 )
 
 func main() {
-	mode := flag.Bool("v", false, "enable verbose mode")
-	file := flag.String("c", "config.json", "config file")
+	var conf struct {
+		Mode bool
+		File string
+	}
+	flag.BoolVar(&conf.Mode, "v", false, "enable verbose mode")
+	flag.StringVar(&conf.File, "c", "config.json", "config file")
 	flag.Parse()
 
-	app, err := app.NewApp(*file, time.Minute)
-	if err != nil {
-		panic(err)
+	w := io.Writer(nil)
+	if conf.Mode {
+		w = os.Stdout
 	}
-	if *mode {
-		app.SetWriter(os.Stdout)
+	app, err := app.NewApp(conf.File, time.Minute, w)
+	if err != nil {
+		log.Panic(err)
 	}
 
 	if err := app.Run(); err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 
 	fmt.Println("shadow - a transparent proxy for Windows, Linux and macOS")

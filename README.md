@@ -9,7 +9,7 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 go get -v -ldflags="-s -w" -trimpath github.com/imgk/shadow
 
 # windows,wintun
-go get -v -ldflags="-s -w" -trimpath -tags=wintun github.com/imgk/shadow
+go get -v -ldflags="-s -w" -trimpath github.com/imgk/shadow -tags="wintun"
 ```
 
 ## How to use it
@@ -66,16 +66,21 @@ sudo go/bin/shadow -c /etc/shadow.json -v
     // ss://ciphername:password@ip:port
 
     // Socks5
-    // socks://username:password@server:port
+    // socks://username:password@ip:port
+
+    // http
+    // http://ip:port
+    // http://username:password@ip:port
+    // https://username:password@ip:port#domain.name
 
     // Trojan-(GFW/GO)
-    // trojan://11223344@1.2.3.4:443#example.com
+    // trojan://password@ip:port#domain.name
     // Trojan-GO
     // trojan://password@ip:port/
     //   path?
     //   transport=(tls|websocket)
     //   &cipher=(dummy|chacha20-ietf-poly1305|aes-256-gcm)
-    //   &password=(11223344|22334455)
+    //   &password=(aead_password)
     //   &mux=(off|v1)
     //   #domain.name
 

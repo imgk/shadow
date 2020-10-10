@@ -61,8 +61,7 @@ func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 }
 
 func (s *Stack) HandleMessage(m *dns.Msg) {
-	option := s.tree.Load(m.Question[0].Name)
-	switch option.(type) {
+	switch option := s.tree.Load(m.Question[0].Name); option.(type) {
 	case string:
 		if ok := s.HandleMessageByRule(m, option.(string)); ok {
 			return

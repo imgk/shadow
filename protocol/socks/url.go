@@ -1,9 +1,15 @@
 package socks
 
 import (
-	"errors"
+	"fmt"
 	"net/url"
 )
+
+type UrlError string
+
+func (e UrlError) Error() string {
+	return fmt.Sprintf("socks url error: %v", string(e))
+}
 
 func ParseUrl(s string) (auth *Auth, server string, err error) {
 	u, er := url.Parse(s)
@@ -21,7 +27,7 @@ func ParseUrl(s string) (auth *Auth, server string, err error) {
 	password, ok := u.User.Password()
 
 	if !ok {
-		err = errors.New("incomplete socks url")
+		err = UrlError("no password")
 		return
 	}
 

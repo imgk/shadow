@@ -13,8 +13,12 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
+var errMethod = errors.New("not support method")
+
+var subkey = [...]byte{'s', 's', '-', 's', 'u', 'b', 'k', 'e', 'y'}
+
 func hkdfSHA1(secret, salt, outkey []byte) {
-	r := hkdf.New(sha1.New, secret, salt, []byte("ss-subkey"))
+	r := hkdf.New(sha1.New, secret, salt, subkey[:])
 	if _, err := io.ReadFull(r, outkey); err != nil {
 		panic(err)
 	}
@@ -30,11 +34,11 @@ type aes256gcm struct {
 	psk []byte
 }
 
-func (a aes256gcm) KeySize() int {
+func (aes256gcm) KeySize() int {
 	return 32
 }
 
-func (a aes256gcm) SaltSize() int {
+func (aes256gcm) SaltSize() int {
 	return 32
 }
 
@@ -53,11 +57,11 @@ type chacha20ietfpoly1305 struct {
 	psk []byte
 }
 
-func (c chacha20ietfpoly1305) KeySize() int {
+func (chacha20ietfpoly1305) KeySize() int {
 	return 32
 }
 
-func (c chacha20ietfpoly1305) SaltSize() int {
+func (chacha20ietfpoly1305) SaltSize() int {
 	return 32
 }
 
@@ -68,20 +72,22 @@ func (c chacha20ietfpoly1305) NewAead(salt []byte) (cipher.AEAD, error) {
 	return chacha20poly1305.New(subkey)
 }
 
+type dummy struct{}
+
+func (dummy) KeySize() int                          { return 0 }
+func (dummy) SaltSize() int                         { return 0 }
+func (dummy) NewAead(_ []byte) (cipher.AEAD, error) { return nil, nil }
+
 func NewCipher(method, password string) (Cipher, error) {
 	switch strings.ToUpper(method) {
-	case "AES-256-GCM":
-		c := aes256gcm{}
-		c.psk = kdf(password, c.KeySize())
-		return c, nil
-	case "CHACHA20-IETF-POLY1305":
-		c := chacha20ietfpoly1305{}
-		c.psk = kdf(password, c.KeySize())
-		return c, nil
+	case "AES-256-GCM", "AEAD_AES_256_GCM":
+		return aes256gcm{psk: kdf(password, 32)}, nil
+	case "CHACHA20-IETF-POLY1305", "AEAD_CHACHA20_POLY1305":
+		return chacha20ietfpoly1305{psk: kdf(password, 32)}, nil
 	case "DUMMY":
-		return nil, nil
+		return dummy{}, nil
 	default:
-		return nil, errors.New("not support method")
+		return nil, errMethod
 	}
 }
 

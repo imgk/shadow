@@ -168,7 +168,7 @@ func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 		if ip := a.IP.To4(); ip != nil {
 			b[0] = AddrTypeIPv4
 			copy(b[1:], ip)
-			b[1+net.IPv4len] = byte(a.Port>>8)
+			b[1+net.IPv4len] = byte(a.Port >> 8)
 			b[1+net.IPv4len+1] = byte(a.Port)
 
 			return b[:1+net.IPv4len+2], nil
@@ -177,7 +177,7 @@ func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 
 			b[0] = AddrTypeIPv6
 			copy(b[1:], ip)
-			b[1+net.IPv6len] = byte(a.Port>>8)
+			b[1+net.IPv6len] = byte(a.Port >> 8)
 			b[1+net.IPv6len+1] = byte(a.Port)
 
 			return b[:1+net.IPv6len+2], nil
@@ -188,7 +188,7 @@ func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 		if ip := a.IP.To4(); ip != nil {
 			b[0] = AddrTypeIPv4
 			copy(b[1:], ip)
-			b[1+net.IPv4len] = byte(a.Port>>8)
+			b[1+net.IPv4len] = byte(a.Port >> 8)
 			b[1+net.IPv4len+1] = byte(a.Port)
 
 			return b[:1+net.IPv4len+2], nil
@@ -197,7 +197,7 @@ func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 
 			b[0] = AddrTypeIPv6
 			copy(b[1:], ip)
-			b[1+net.IPv6len] = byte(a.Port>>8)
+			b[1+net.IPv6len] = byte(a.Port >> 8)
 			b[1+net.IPv6len+1] = byte(a.Port)
 
 			return b[:1+net.IPv6len+2], nil

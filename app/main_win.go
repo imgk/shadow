@@ -26,7 +26,7 @@ func (app *App) Run() (err error) {
 	if err != nil {
 		return fmt.Errorf("create mutex error: %w", err)
 	}
-	app.attachCloser(winMutex(mutex))
+	app.attachCloser(mutexHandle(mutex))
 	defer func() {
 		if err != nil {
 			for _, closer := range app.closers {
@@ -68,9 +68,21 @@ func (app *App) Run() (err error) {
 	app.loadAppRules(dev.AppFilter)
 	app.loadIPCIDRRules(dev.IPFilter)
 
-	stack := netstack.NewStack(handler, dev, resolver, app.writer)
+	stack := netstack.NewStack(handler, dev, resolver, app.logger)
 	app.loadDomainRules(stack.DomainTree())
 	app.attachCloser(stack)
+
+	if addr := app.conf.ProxyServer; addr != "" {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return err
+		}
+
+		app.server.Logger = app.logger
+		app.server.handler = handler
+		app.server.tree = stack.DomainTree()
+		go app.server.Serve(ln)
+	}
 
 	return nil
 }
@@ -93,9 +105,9 @@ func (app *App) loadAppRules(filter *common.AppFilter) {
 	filter.Unlock()
 }
 
-type winMutex windows.Handle
+type mutexHandle windows.Handle
 
-func (mu winMutex) Close() error {
+func (mu mutexHandle) Close() error {
 	windows.ReleaseMutex(windows.Handle(mu))
 	windows.CloseHandle(windows.Handle(mu))
 	return nil

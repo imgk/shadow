@@ -1,9 +1,15 @@
 package shadowsocks
 
 import (
-	"errors"
+	"fmt"
 	"net/url"
 )
+
+type UrlError string
+
+func (e UrlError) Error() string {
+	return fmt.Sprintf("shadowsocks url error: %v", string(e))
+}
 
 func ParseUrl(s string) (server, cipher, password string, err error) {
 	u, er := url.Parse(s)
@@ -14,7 +20,7 @@ func ParseUrl(s string) (server, cipher, password string, err error) {
 
 	server = u.Host
 	if u.User == nil {
-		err = errors.New("incomplete shadowsocks url: no user info")
+		err = UrlError("no user info")
 		return
 	}
 
@@ -23,7 +29,7 @@ func ParseUrl(s string) (server, cipher, password string, err error) {
 	if s, ok := u.User.Password(); ok {
 		password = s
 	} else {
-		err = errors.New("incomplete shadowsocks url: no password")
+		err = UrlError("no password")
 	}
 
 	return

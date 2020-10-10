@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/protocol"
 )
 
-const (
-	MaxBufferSize = 4096 // Max 65536
-)
+func init() {
+	protocol.RegisterHandler("socks", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+}
 
 type Handler struct {
 	*Auth
@@ -75,13 +78,13 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 			return nil
 		}
 
-		return fmt.Errorf("relay error: %v", err)
+		return fmt.Errorf("relay error: %w", err)
 	}
 
 	return nil
 }
 
-func CloseFromRemote(conn net.Conn, rc net.PacketConn) {
+func closeFromRemote(conn net.Conn, rc net.PacketConn) {
 	b := [8]byte{}
 
 	for {
@@ -119,12 +122,14 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	}
 	defer rc.Close()
 
-	go CloseFromRemote(c, rc)
+	go closeFromRemote(c, rc)
 
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := make([]byte, 3+common.MaxAddrLen+MaxBufferSize)
+	b := common.Get()
+	defer common.Put(b)
+
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		n, _, er := rc.ReadFrom(b)
@@ -164,8 +169,10 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 }
 
 func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := make([]byte, 3+common.MaxAddrLen+MaxBufferSize)
-	buf := make([]byte, common.MaxAddrLen)
+	b := common.Get()
+	defer common.Put(b)
+
+	buf := [common.MaxAddrLen]byte{}
 	for {
 		n, tgt, err := conn.ReadTo(b[3+common.MaxAddrLen:])
 		if err != nil {
@@ -179,7 +186,7 @@ func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Dur
 
 		addr, ok := tgt.(common.Addr)
 		if !ok {
-			addr, err = common.ResolveAddrBuffer(tgt, buf)
+			addr, err = common.ResolveAddrBuffer(tgt, buf[:])
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %v", err)
 				break
@@ -198,6 +205,4 @@ func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Dur
 			break
 		}
 	}
-
-	return
 }

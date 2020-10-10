@@ -7,9 +7,16 @@ import (
 	"net"
 	"time"
 
+	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
 	"github.com/imgk/shadow/common"
 )
+
+func init() {
+	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+}
 
 type Handler struct {
 	core.Cipher
@@ -100,7 +107,9 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := make([]byte, 32+common.MaxAddrLen+core.MaxBufferSize)
+	b := common.Get()
+	defer common.Put(b)
+
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		n, _, er := rc.ReadFrom(b)
@@ -139,8 +148,10 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 }
 
 func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := make([]byte, 32+common.MaxAddrLen+core.MaxBufferSize)
-	buf := make([]byte, common.MaxAddrLen)
+	b := common.Get()
+	defer common.Put(b)
+
+	buf := [common.MaxAddrLen]byte{}
 	for {
 		n, tgt, err := conn.ReadTo(b[common.MaxAddrLen:])
 		if err != nil {
@@ -154,9 +165,9 @@ func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Dur
 
 		addr, ok := tgt.(common.Addr)
 		if !ok {
-			addr, err = common.ResolveAddrBuffer(tgt, buf)
+			addr, err = common.ResolveAddrBuffer(tgt, buf[:])
 			if err != nil {
-				errCh <- fmt.Errorf("resolve addr error: %v", err)
+				errCh <- fmt.Errorf("resolve addr error: %w", err)
 				break
 			}
 		}
@@ -170,6 +181,4 @@ func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Dur
 			break
 		}
 	}
-
-	return
 }

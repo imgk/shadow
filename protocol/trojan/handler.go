@@ -17,12 +17,18 @@ import (
 	"github.com/xtaci/smux"
 
 	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
 )
 
+func init() {
+	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+}
+
 const (
-	HexLen        = 56
-	MaxBufferSize = 4096 // Max 65536
+	HeaderLen = 56
 )
 
 const (
@@ -97,7 +103,7 @@ type Handler struct {
 	cipher    core.Cipher
 	mux       Mux
 
-	header  [HexLen + 2 + 8 + 2]byte
+	header  [HeaderLen + 2 + 8 + 2]byte
 	timeout time.Duration
 	server  string
 	dial    func(net.Addr, byte) (net.Conn, error)
@@ -131,8 +137,8 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	}
 
 	hash := sha256.Sum224([]byte(opt.Password))
-	hex.Encode(hd.header[:HexLen], hash[:])
-	hd.header[HexLen], hd.header[HexLen+1] = 0x0d, 0x0a
+	hex.Encode(hd.header[:HeaderLen], hash[:])
+	hd.header[HeaderLen], hd.header[HeaderLen+1] = 0x0d, 0x0a
 
 	switch opt.Transport {
 	case "websocket":
@@ -176,7 +182,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			conns: make(map[*smux.Session]struct{}),
 		}
 
-		copy(hd.header[HexLen+2:], []byte{0x7f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
+		copy(hd.header[HeaderLen+2:], []byte{0x7f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
 		hd.dial = hd.DialMux
 		hd.ticker = time.NewTicker(time.Minute * 3)
@@ -196,7 +202,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			conns: make(map[*smux.Session]struct{}),
 		}
 
-		copy(hd.header[HexLen+2:], []byte{0x8f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
+		copy(hd.header[HeaderLen+2:], []byte{0x8f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
 		hd.dial = hd.DialMux
 		hd.ticker = time.NewTicker(time.Minute * 3)
@@ -309,7 +315,7 @@ func (h *Handler) ConnectMuxNew() (conn net.Conn, err error) {
 }
 
 func (h *Handler) DialConn(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
-	target := [HexLen + 2 + 1 + common.MaxAddrLen + 2]byte{}
+	target := [HeaderLen + 2 + 1 + common.MaxAddrLen + 2]byte{}
 
 	conn, err = h.Connect()
 	if err != nil {
@@ -321,20 +327,20 @@ func (h *Handler) DialConn(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 		}
 	}()
 
-	n := copy(target[0:], h.header[:HexLen+2])
-	target[HexLen+2] = cmd
+	n := copy(target[0:], h.header[:HeaderLen+2])
+	target[HeaderLen+2] = cmd
 
 	addr, ok := tgt.(common.Addr)
 	if ok {
-		copy(target[HexLen+2+1:], addr)
-		n = HexLen + 2 + 1 + len(addr) + 2
+		copy(target[HeaderLen+2+1:], addr)
+		n = HeaderLen + 2 + 1 + len(addr) + 2
 	} else {
-		addr, er := common.ResolveAddrBuffer(tgt, target[HexLen+2+1:])
+		addr, er := common.ResolveAddrBuffer(tgt, target[HeaderLen+2+1:])
 		if er != nil {
 			err = fmt.Errorf("resolve addr error: %w", er)
 			return
 		}
-		n = HexLen + 2 + 1 + len(addr) + 2
+		n = HeaderLen + 2 + 1 + len(addr) + 2
 	}
 	target[n-2], target[n-1] = 0x0d, 0x0a
 
@@ -347,7 +353,7 @@ func (h *Handler) DialConn(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 }
 
 func (h *Handler) DialMux(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
-	target := [HexLen + 2 + 1 + common.MaxAddrLen + 2]byte{}
+	target := [HeaderLen + 2 + 1 + common.MaxAddrLen + 2]byte{}
 
 	conn, err = h.ConnectMux()
 	if err != nil {
@@ -418,7 +424,9 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, errCh)
 
-	b := make([]byte, MaxBufferSize)
+	b := common.Get()
+	defer common.Put(b)
+
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		raddr, er := common.ReadAddrBuffer(rc, b)
@@ -488,10 +496,12 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 }
 
 func copyWithChannel(conn common.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
-	b := make([]byte, MaxBufferSize)
+	b := common.Get()
+	defer common.Put(b)
+
 	b[common.MaxAddrLen+2], b[common.MaxAddrLen+3] = 0x0d, 0x0a
 
-	buf := make([]byte, common.MaxAddrLen)
+	buf := [common.MaxAddrLen]byte{}
 	for {
 		n, tgt, err := conn.ReadTo(b[common.MaxAddrLen+4:])
 		if err != nil {
@@ -506,7 +516,7 @@ func copyWithChannel(conn common.PacketConn, rc net.Conn, timeout time.Duration,
 
 		addr, ok := tgt.(common.Addr)
 		if !ok {
-			addr, err = common.ResolveAddrBuffer(tgt, buf)
+			addr, err = common.ResolveAddrBuffer(tgt, buf[:])
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %w", err)
 				break
@@ -522,8 +532,6 @@ func copyWithChannel(conn common.PacketConn, rc net.Conn, timeout time.Duration,
 			break
 		}
 	}
-
-	return
 }
 
 type emptyReader struct{}

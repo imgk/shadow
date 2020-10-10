@@ -4,14 +4,37 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/binary"
+	"errors"
 	"io"
 	"net"
+	"sync"
 )
 
 const MaxPacketSize = 16384
 
-type reader struct {
+var byteBuffer = sync.Pool{New: newBuffer}
+
+func newBuffer() interface{} {
+	return make([]byte, 1024+MaxPacketSize)
+}
+
+func Get() []byte {
+	return byteBuffer.Get().([]byte)
+}
+
+func Put(b []byte) {
+	byteBuffer.Put(b)
+}
+
+type CloseReader interface {
+	CloseRead() error
+}
+
+type CloseWriter interface {
+	CloseWrite() error
+}
+
+type Reader struct {
 	io.Reader
 	cipher.AEAD
 	nonce []byte
@@ -19,42 +42,58 @@ type reader struct {
 	left  []byte
 }
 
-func newReader(c net.Conn, aead cipher.AEAD) *reader {
-	return &reader{
-		Reader: c,
-		AEAD:   aead,
-		nonce:  make([]byte, aead.NonceSize()),
-		buff:   make([]byte, MaxPacketSize+aead.Overhead()),
-	}
+func NewReader(reader io.Reader, ciph Cipher) (r *Reader, err error) {
+	r = &Reader{}
+	err = r.init(reader, ciph)
+	return
 }
 
-func (r *reader) read() (int, error) {
+func (r *Reader) init(reader io.Reader, cipher Cipher) (err error) {
+	r.Reader = reader
+
+	salt := make([]byte, cipher.SaltSize())
+	if _, err := io.ReadFull(r.Reader, salt); err != nil {
+		return err
+	}
+
+	r.AEAD, err = cipher.NewAead(salt)
+	if err != nil {
+		return
+	}
+
+	r.nonce = make([]byte, r.AEAD.NonceSize())
+	r.buff = Get()
+	return
+}
+
+func (r *Reader) Close() error {
+	Put(r.buff)
+	return nil
+}
+
+func (r *Reader) read() (int, error) {
 	buf := r.buff[:2+r.Overhead()]
-	_, err := io.ReadFull(r.Reader, buf)
-	if err != nil {
+	if _, err := io.ReadFull(r.Reader, buf); err != nil {
 		return 0, err
 	}
-	_, err = r.Open(buf[:0], r.nonce, buf, nil)
-	if err != nil {
-		return 0, err
-	}
-	increment(r.nonce)
-
-	buf = r.buff[:int(binary.BigEndian.Uint16(buf[0:]))+r.Overhead()]
-	n, err := io.ReadFull(r.Reader, buf)
-	if err != nil {
-		return 0, err
-	}
-	_, err = r.Open(buf[:0], r.nonce, buf, nil)
-	if err != nil {
+	if _, err := r.Open(buf[:0], r.nonce, buf, nil); err != nil {
 		return 0, err
 	}
 	increment(r.nonce)
 
-	return n - r.Overhead(), nil
+	buf = r.buff[:(int(buf[0])<<8|int(buf[1]))+r.Overhead()]
+	if _, err := io.ReadFull(r.Reader, buf); err != nil {
+		return 0, err
+	}
+	if _, err := r.Open(buf[:0], r.nonce, buf, nil); err != nil {
+		return 0, err
+	}
+	increment(r.nonce)
+
+	return len(buf) - r.Overhead(), nil
 }
 
-func (r *reader) Read(b []byte) (int, error) {
+func (r *Reader) Read(b []byte) (int, error) {
 	if len(r.left) > 0 {
 		n := copy(b, r.left)
 		r.left = r.left[n:]
@@ -62,15 +101,15 @@ func (r *reader) Read(b []byte) (int, error) {
 	}
 
 	n, err := r.read()
-	m := copy(b, r.buff[:n])
-	if m < n {
-		r.left = r.buff[m:n]
+	nr := copy(b, r.buff[:n])
+	if nr < n {
+		r.left = r.buff[nr:n]
 	}
 
-	return m, err
+	return nr, err
 }
 
-func (r *reader) WriteTo(w io.Writer) (n int64, err error) {
+func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	for len(r.left) > 0 {
 		nw, ew := w.Write(r.left)
 		r.left = r.left[nw:]
@@ -85,17 +124,20 @@ func (r *reader) WriteTo(w io.Writer) (n int64, err error) {
 		if nr > 0 {
 			nw, ew := w.Write(r.buff[:nr])
 			n += int64(nw)
-
 			if ew != nil {
 				err = ew
 				break
 			}
-		}
-
-		if er != nil {
-			if er != io.EOF {
-				err = er
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
 			}
+		}
+		if er != nil {
+			if errors.Is(er, io.EOF) {
+				break
+			}
+			err = er
 			break
 		}
 	}
@@ -103,55 +145,79 @@ func (r *reader) WriteTo(w io.Writer) (n int64, err error) {
 	return n, err
 }
 
-type writer struct {
+type Writer struct {
 	io.Writer
 	cipher.AEAD
-	*bytes.Reader
-	nonce []byte
-	buff  []byte
+	reader *bytes.Reader
+	nonce  []byte
+	buff   []byte
+	buf    []byte
 }
 
-func newWriter(c net.Conn, aead cipher.AEAD) *writer {
-	return &writer{
-		Writer: c,
-		AEAD:   aead,
-		Reader: bytes.NewReader(nil),
-		nonce:  make([]byte, aead.NonceSize()),
-		buff:   make([]byte, 2+aead.Overhead()+MaxPacketSize+aead.Overhead()),
+func NewWriter(writer io.Writer, ciph Cipher) (w *Writer, err error) {
+	w = &Writer{reader: bytes.NewReader(nil)}
+	err = w.init(w, ciph)
+	return w, err
+}
+
+func (w *Writer) init(writer io.Writer, ciph Cipher) error {
+	w.Writer = writer
+	salt := make([]byte, ciph.SaltSize())
+
+	_, err := rand.Read(salt)
+	if err != nil {
+		return err
 	}
+
+	w.AEAD, err = ciph.NewAead(salt)
+	if err != nil {
+		return err
+	}
+
+	w.nonce = make([]byte, w.AEAD.NonceSize())
+	w.buff = Get()
+	w.buf = w.buff[2+w.Overhead() : 2+w.Overhead()+MaxPacketSize]
+
+	_, err = w.Writer.Write(salt)
+	return err
 }
 
-func (w *writer) Write(b []byte) (int, error) {
-	w.Reader.Reset(b)
-	n, err := w.ReadFrom(w.Reader)
+func (w *Writer) Close() error {
+	Put(w.buff)
+	return nil
+}
+
+func (w *Writer) Write(b []byte) (int, error) {
+	w.reader.Reset(b)
+	n, err := w.ReadFrom(w.reader)
 	return int(n), err
 }
 
-func (w *writer) ReadFrom(r io.Reader) (n int64, err error) {
-	buf := w.buff[2+w.Overhead() : 2+w.Overhead()+MaxPacketSize]
+func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	for {
-		nr, er := r.Read(buf)
+		nr, er := r.Read(w.buf)
 		if nr > 0 {
 			n += int64(nr)
-			binary.BigEndian.PutUint16(w.buff[0:], uint16(nr))
+
+			w.buff[0] = byte(nr>>8)
+			w.buff[1] = byte(nr)
 
 			w.Seal(w.buff[:0], w.nonce, w.buff[:2], nil)
 			increment(w.nonce)
 
-			w.Seal(buf[:0], w.nonce, buf[:nr], nil)
+			w.Seal(w.buf[:0], w.nonce, w.buf[:nr], nil)
 			increment(w.nonce)
 
-			_, ew := w.Writer.Write(w.buff[:2+w.Overhead()+nr+w.Overhead()])
-			if ew != nil {
+			if _, ew := w.Writer.Write(w.buff[:2+w.Overhead()+nr+w.Overhead()]); ew != nil {
 				err = ew
 				break
 			}
 		}
-
 		if er != nil {
-			if er != io.EOF {
-				err = er
+			if errors.Is(er, io.EOF) {
+				break
 			}
+			err = er
 			break
 		}
 	}
@@ -170,109 +236,64 @@ func increment(b []byte) {
 
 type Conn struct {
 	net.Conn
-	Cipher
-	r *reader
-	w *writer
+	c Cipher
+	r Reader
+	w Writer
 }
 
-func NewConn(conn net.Conn, ciph Cipher) net.Conn {
-	if ciph == nil {
+func NewConn(conn net.Conn, cipher Cipher) net.Conn {
+	if _, ok := cipher.(dummy); ok {
 		return conn
 	}
-
-	return &Conn{Conn: conn, Cipher: ciph}
+	return &Conn{Conn: conn, c: cipher, r: Reader{Reader: conn}, w: Writer{Writer: conn}}
 }
 
-func (c *Conn) initReader() error {
-	salt := make([]byte, c.SaltSize())
-	_, err := io.ReadFull(c.Conn, salt)
-	if err != nil {
-		return err
-	}
-
-	aead, err := c.NewAead(salt)
-	if err != nil {
-		return err
-	}
-
-	c.r = newReader(c.Conn, aead)
-	return nil
-}
-
-func (c *Conn) initWriter() error {
-	salt := make([]byte, c.SaltSize())
-	_, err := rand.Read(salt)
-	if err != nil {
-		return err
-	}
-
-	aead, err := c.NewAead(salt)
-	if err != nil {
-		return err
-	}
-
-	_, err = c.Conn.Write(salt)
-	if err != nil {
-		return err
-	}
-
-	c.w = newWriter(c.Conn, aead)
-	return nil
+func (c *Conn) Close() error {
+	c.r.Close()
+	c.w.Close()
+	return c.Conn.Close()
 }
 
 func (c *Conn) Read(b []byte) (int, error) {
-	if c.r == nil {
-		if err := c.initReader(); err != nil {
+	if c.r.AEAD == nil {
+		if err := c.r.init(c.Conn, c.c); err != nil {
 			return 0, err
 		}
 	}
-
 	return c.r.Read(b)
 }
 
 func (c *Conn) WriteTo(w io.Writer) (int64, error) {
-	if c.r == nil {
-		if err := c.initReader(); err != nil {
+	if c.r.AEAD == nil {
+		if err := c.r.init(c.Conn, c.c); err != nil {
 			return 0, err
 		}
 	}
-
 	return c.r.WriteTo(w)
 }
 
 func (c *Conn) Write(b []byte) (int, error) {
-	if c.w == nil {
-		if err := c.initWriter(); err != nil {
+	if c.w.AEAD == nil {
+		if err := c.w.init(c.Conn, c.c); err != nil {
 			return 0, err
 		}
 	}
-
 	return c.w.Write(b)
 }
 
 func (c *Conn) ReadFrom(r io.Reader) (int64, error) {
-	if c.w == nil {
-		if err := c.initWriter(); err != nil {
+	if c.w.AEAD == nil {
+		if err := c.w.init(c.Conn, c.c); err != nil {
 			return 0, err
 		}
 	}
-
 	return c.w.ReadFrom(r)
-}
-
-type CloseReader interface {
-	CloseRead() error
-}
-
-type CloseWriter interface {
-	CloseWrite() error
 }
 
 func (c *Conn) CloseRead() error {
 	if close, ok := c.Conn.(CloseReader); ok {
 		return close.CloseRead()
 	}
-
 	return c.Conn.Close()
 }
 
@@ -280,6 +301,5 @@ func (c *Conn) CloseWrite() error {
 	if close, ok := c.Conn.(CloseWriter); ok {
 		return close.CloseWrite()
 	}
-
 	return c.Conn.Close()
 }

@@ -1,13 +1,27 @@
 package common
 
 import (
-	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
-const MaxBufferSize = 4096
+const MaxBufferSize = 16384
+
+var byteBuffer = sync.Pool{New: newBuffer}
+
+func newBuffer() interface{} {
+	return make([]byte, MaxBufferSize)
+}
+
+func Get() []byte {
+	return byteBuffer.Get().([]byte)
+}
+
+func Put(b []byte) {
+	byteBuffer.Put(b)
+}
 
 type Device interface {
 	io.Closer
@@ -77,7 +91,7 @@ func (c duplexConn) CloseWrite() error {
 func Relay(c, rc net.Conn) error {
 	l, ok := c.(DuplexConn)
 	if !ok {
-		return fmt.Errorf("relay error")
+		l = duplexConn{Conn: c}
 	}
 
 	r, ok := rc.(DuplexConn)
@@ -127,10 +141,14 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 		return wt.WriteTo(w)
 	}
 	if rt, ok := w.(io.ReaderFrom); ok {
-		return rt.ReadFrom(r)
+		if _, ok := rt.(*net.TCPConn); !ok {
+			return rt.ReadFrom(r)
+		}
 	}
 
-	b := make([]byte, MaxBufferSize)
+	b := byteBuffer.Get().([]byte)
+	defer byteBuffer.Put(b)
+
 	for {
 		nr, er := r.Read(b)
 		if nr > 0 {
@@ -154,6 +172,5 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 			break
 		}
 	}
-
 	return n, err
 }

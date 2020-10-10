@@ -3,12 +3,12 @@ package netstack
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/miekg/dns"
+	"go.uber.org/zap"
 
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack/core"
@@ -16,33 +16,33 @@ import (
 
 func NewPacketConn(conn core.PacketConn, target net.Addr, addr net.Addr, stack *Stack) common.PacketConn {
 	if target == nil && addr == nil {
-		return UDPConn{PacketConn: conn, Stack: stack}
+		return udpConn{PacketConn: conn, Stack: stack}
 	}
 
-	return FakeConn{PacketConn: conn, target: target, addr: addr}
+	return fakeConn{PacketConn: conn, fake: target, real: addr}
 }
 
-type FakeConn struct {
+type fakeConn struct {
 	core.PacketConn
-	target net.Addr
-	addr   net.Addr
+	fake net.Addr
+	real net.Addr
 }
 
-func (conn FakeConn) ReadTo(b []byte) (int, net.Addr, error) {
+func (conn fakeConn) ReadTo(b []byte) (int, net.Addr, error) {
 	n, _, err := conn.PacketConn.ReadTo(b)
-	return n, conn.addr, err
+	return n, conn.real, err
 }
 
-func (conn FakeConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
-	return conn.PacketConn.WriteFrom(b, conn.target)
+func (conn fakeConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+	return conn.PacketConn.WriteFrom(b, conn.fake)
 }
 
-type UDPConn struct {
+type udpConn struct {
 	core.PacketConn
 	Stack *Stack
 }
 
-func (conn UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
+func (conn udpConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	for {
 		n, addr, err = conn.PacketConn.ReadTo(b)
 		if err != nil {
@@ -59,7 +59,7 @@ func (conn UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
-func (conn UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+func (conn udpConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	if saddr, ok := addr.(common.Addr); ok {
 		target, err := common.ResolveUDPAddr(saddr)
 		if err != nil {
@@ -73,24 +73,24 @@ func (conn UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 
 type Stack struct {
 	core.Stack
-	handler    common.Handler
+	handler common.Handler
 
-	resolver   common.Resolver
-	tree       *common.DomainTree
+	resolver common.Resolver
+	tree     *common.DomainTree
 
 	buffer  sync.Pool
 	counter uint16
 }
 
-func NewStack(handler common.Handler, dev common.Device, resolver common.Resolver, w io.Writer) *Stack {
+func NewStack(handler common.Handler, dev common.Device, resolver common.Resolver, logger *zap.Logger) *Stack {
 	s := &Stack{
-		handler:    handler,
-		resolver:   resolver,
-		tree:       common.NewDomainTree("."),
-		buffer:     sync.Pool{New: newMessage},
-		counter:    uint16(time.Now().Unix()),
+		handler:  handler,
+		resolver: resolver,
+		tree:     common.NewDomainTree("."),
+		buffer:   sync.Pool{New: newMessage},
+		counter:  uint16(time.Now().Unix()),
 	}
-	s.Stack.Init(dev.(core.Device), s, w)
+	s.Stack.Init(dev.(core.Device), s, logger)
 	return s
 }
 
@@ -113,7 +113,14 @@ func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
 				(ip[0] == 192 && ip[1] == 168) ||
 				(ip[0] == 169 && ip[1] == 254) {
-				s.Info(fmt.Sprintf("ignore packets to %v", target))
+				s.Info(fmt.Sprintf("ignore conns to %v", target))
+				conn.Close()
+				return
+			}
+		} else {
+			ip := target.IP.To16()
+			if ip[0] == 0xfe && ip[1] == 0x80 {
+				s.Info(fmt.Sprintf("ignore conns to %v", target))
 				conn.Close()
 				return
 			}
@@ -170,6 +177,13 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 				conn.Close()
 				return
 			}
+		} else {
+			ip := target.IP.To16()
+			if ip[0] == 0xfe && ip[1] == 0x80 {
+				s.Info(fmt.Sprintf("ignore packets to %v", target))
+				conn.Close()
+				return
+			}
 		}
 
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target))
@@ -190,7 +204,7 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 	defer conn.Close()
 
 	b := s.buffer.Get().([]byte)
-	m := new(dns.Msg)
+	m := dns.Msg{}
 	defer s.buffer.Put(b)
 
 	for {
@@ -217,7 +231,7 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 		}
 		s.Info(fmt.Sprintf("queryd %v ask for %v", conn.RemoteAddr(), m.Question[0].Name))
 
-		s.HandleMessage(m)
+		s.HandleMessage(&m)
 		if m.MsgHdr.Response {
 			bb, err := m.PackBuffer(b[2:])
 			if err != nil {
