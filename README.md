@@ -9,7 +9,7 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 go get -v -ldflags="-s -w" -trimpath github.com/imgk/shadow
 
 # windows,wintun
-go get -v -ldflags="-s -w" -trimpath github.com/imgk/shadow -tags="wintun"
+go get -v -ldflags="-s -w" -trimpath -tags=wintun github.com/imgk/shadow
 ```
 
 ## How to use it
