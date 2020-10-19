@@ -61,16 +61,24 @@ func QueryName(pid uint32) (string, error) {
 
 type AppFilter struct {
 	sync.RWMutex
+	pids map[uint32]struct{}
 	apps map[string]struct{}
 }
 
 func NewAppFilter() *AppFilter {
 	f := &AppFilter{
 		RWMutex: sync.RWMutex{},
+		pids:    make(map[uint32]struct{}),
 		apps:    make(map[string]struct{}),
 	}
 
 	return f
+}
+
+func (f *AppFilter) SetPIDs(pids []uint32) {
+	for _, v := range pids {
+		f.pids[v] = struct{}{}
+	}
 }
 
 func (f *AppFilter) Reset() {
@@ -96,6 +104,10 @@ func (f *AppFilter) UnsafeAdd(s string) {
 func (f *AppFilter) Lookup(pid uint32) bool {
 	f.RLock()
 	defer f.RUnlock()
+
+	if _, ok := f.pids[pid]; ok {
+		return true
+	}
 
 	file, _ := QueryName(pid)
 	if _, ok := f.apps[file]; ok {

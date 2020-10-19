@@ -5,6 +5,9 @@ package app
 import (
 	"fmt"
 	"net"
+	"os"
+	"strconv"
+	"strings"
 
 	"golang.org/x/sys/windows"
 
@@ -65,8 +68,12 @@ func (app *App) Run() (err error) {
 		return fmt.Errorf("windivert error: %w", err)
 	}
 	app.attachCloser(dev)
-	app.loadAppRules(dev.AppFilter)
-	app.loadIPCIDRRules(dev.IPFilter)
+	if err := app.loadAppRules(dev.AppFilter); err != nil {
+		return err
+	}
+	if err := app.loadIPCIDRRules(dev.IPFilter); err != nil {
+		return err
+	}
 
 	stack := netstack.NewStack(handler, dev, resolver, app.logger)
 	app.loadDomainRules(stack.DomainTree())
@@ -87,22 +94,54 @@ func (app *App) Run() (err error) {
 	return nil
 }
 
-func (app *App) loadIPCIDRRules(filter *common.IPFilter) {
+func (app *App) loadIPCIDRRules(filter *common.IPFilter) error {
 	filter.Lock()
 	filter.UnsafeReset()
 	for _, item := range app.conf.IPCIDRRules.Proxy {
 		filter.UnsafeAdd(item)
 	}
 	filter.Unlock()
+
+	filter.Proxy = app.conf.GeoIP.Proxy
+	filter.Bypass = app.conf.GeoIP.Bypass
+	filter.Final = (strings.ToLower(app.conf.GeoIP.Final) == "proxy")
+	if len(filter.Proxy) == 0 && len(filter.Bypass) == 0 {
+		return nil
+	}
+	return filter.SetGeoIP(app.conf.GeoIP.File)
 }
 
-func (app *App) loadAppRules(filter *common.AppFilter) {
+type PidError struct {
+	v string
+}
+
+func (e PidError) Error() string {
+	return fmt.Sprintf("Pid strconv error: %v", e.v)
+}
+
+func (app *App) loadAppRules(filter *common.AppFilter) error {
 	filter.Lock()
 	filter.UnsafeReset()
 	for _, item := range app.conf.AppRules.Proxy {
 		filter.UnsafeAdd(item)
 	}
 	filter.Unlock()
+
+	if env := os.Getenv("SHADOW_PIDS"); env != "" {
+		ss := strings.Split(env, ",")
+		pids := make([]uint32, 0, len(ss))
+		for _, v := range ss {
+			i, err := strconv.Atoi(v)
+			if err != nil {
+				if v != "" {
+					return PidError{v}
+				}
+			}
+			pids = append(pids, uint32(i))
+		}
+		filter.SetPIDs(pids)
+	}
+	return nil
 }
 
 type mutexHandle windows.Handle

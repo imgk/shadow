@@ -66,12 +66,12 @@ func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *Auth) (common.Addr, 
 		b[0], b[1], b[2] = 5, 1, AuthNone
 		if _, err := conn.Write(b[:3]); err != nil {
 			return nil, err
-		}	
+		}
 	} else {
 		b[0], b[1], b[2], b[3] = 5, 2, AuthNone, AuthUserPass
 		if _, err := conn.Write(b[:4]); err != nil {
 			return nil, err
-		}	
+		}
 	}
 
 	if _, err := io.ReadFull(conn, b[:2]); err != nil {

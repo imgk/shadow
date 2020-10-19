@@ -99,7 +99,7 @@ func closeFromRemote(conn net.Conn, rc net.PacketConn) {
 		}
 	}
 
-	rc.Close()	
+	rc.Close()
 }
 
 func (h *Handler) HandlePacket(conn common.PacketConn) error {

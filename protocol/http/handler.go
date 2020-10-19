@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucas-clemente/quic-go"
+
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol"
 )
@@ -23,9 +25,15 @@ func init() {
 	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
+	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
 }
 
-var errNotSupport = errors.New("http proxy does not support UDP")
+var (
+	errNotSupport = errors.New("http proxy does not support UDP")
+	errNetwork    = errors.New("not a supported network protocol")
+)
 
 type CodeError int
 
@@ -33,15 +41,15 @@ func (e CodeError) Error() string {
 	return fmt.Sprintf("http response code error: %v", int(e))
 }
 
-type Dialer interface {
-	Dial() (net.Conn, error)
+type Newer interface {
+	New() (net.Conn, error)
 }
 
-type rawDialer struct {
+type rawNewer struct {
 	addr string
 }
 
-func (d rawDialer) Dial() (net.Conn, error) {
+func (d rawNewer) New() (net.Conn, error) {
 	conn, err := net.Dial("tcp", d.addr)
 	if err != nil {
 		return nil, err
@@ -52,12 +60,12 @@ func (d rawDialer) Dial() (net.Conn, error) {
 	return conn, nil
 }
 
-type tlsDialer struct {
+type tlsNewer struct {
 	addr   string
 	config tls.Config
 }
 
-func (d tlsDialer) Dial() (net.Conn, error) {
+func (d *tlsNewer) New() (net.Conn, error) {
 	conn, err := net.Dial("tcp", d.addr)
 	if err != nil {
 		return nil, err
@@ -74,14 +82,33 @@ func (d tlsDialer) Dial() (net.Conn, error) {
 	return conn, nil
 }
 
+type quicConn struct {
+	quic.Session
+	quic.Stream
+}
+
+type quicNewer struct {
+	addr    string
+	config  tls.Config
+	session quic.Session
+}
+
+func (d *quicNewer) New() (net.Conn, error) {
+	stream, err := d.session.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+	return quicConn{Session: d.session, Stream: stream}, nil
+}
+
 type Handler struct {
+	Newer
 	readers sync.Pool
-	dialer  Dialer
 	auth    string
 }
 
 func NewHandler(s string, timeout time.Duration) (*Handler, error) {
-	auth, addr, domain, https, err := ParseUrl(s)
+	auth, addr, domain, scheme, err := ParseUrl(s)
 	if err != nil {
 		return nil, err
 	}
@@ -89,14 +116,17 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		auth = fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(auth)))
 	}
 
-	handler := &Handler{auth: auth}
-	handler.readers = sync.Pool{
-		New: func() interface{} {
-			return bufio.NewReader(nil)
+	handler := &Handler{
+		readers: sync.Pool{
+			New: func() interface{} {
+				return bufio.NewReader(nil)
+			},
 		},
+		auth: auth,
 	}
-	if https {
-		handler.dialer = tlsDialer{
+	switch scheme {
+	case "https":
+		newer := &tlsNewer{
 			addr: addr,
 			config: tls.Config{
 				ServerName:         domain,
@@ -104,15 +134,32 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				InsecureSkipVerify: false,
 			},
 		}
-	} else {
-		handler.dialer = rawDialer{addr: addr}
+		handler.Newer = newer
+	case "http":
+		newer := rawNewer{addr: addr}
+		handler.Newer = newer
+	case "http3":
+		newer := &quicNewer{
+			addr: addr,
+			config: tls.Config{
+				ServerName:         domain,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+				InsecureSkipVerify: false,
+			},
+		}
+		session, err := quic.DialAddr(domain, &newer.config, &quic.Config{})
+		if err != nil {
+			return nil, err
+		}
+		newer.session = session
+		handler.Newer = newer
 	}
 
 	return handler, nil
 }
 
-func (h *Handler) Dial(addr string) (conn net.Conn, err error) {
-	conn, err = h.dialer.Dial()
+func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
+	conn, err = h.New()
 	if err != nil {
 		return
 	}
@@ -130,9 +177,8 @@ func (h *Handler) Dial(addr string) (conn net.Conn, err error) {
 	if h.auth != "" {
 		req.Header.Add("Proxy-Authorization", h.auth)
 	}
-	if er := req.Write(conn); er != nil {
-		err = er
-		return
+	if err := req.Write(conn); err != nil {
+		return nil, err
 	}
 
 	reader := h.readers.Get().(*bufio.Reader)
@@ -158,7 +204,7 @@ func (*Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	rc, err := h.Dial(tgt.String())
+	rc, err := h.Dial("tcp", tgt.String())
 	if err != nil {
 		return err
 	}
@@ -179,6 +225,6 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	return nil
 }
 
-func (*Handler) HandlePacket(conn common.PacketConn) error {
+func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	return errNotSupport
 }

@@ -31,6 +31,12 @@ type Conf struct {
 	IPCIDRRules  struct {
 		Proxy []string `json:"proxy"`
 	} `json:"ip_cidr_rules"`
+	GeoIP struct {
+		File   string   `json:"file"`
+		Proxy  []string `json:"proxy,omitempty"`
+		Bypass []string `json:"bypass,omitempty"`
+		Final  string   `json:"final,omitempty"`
+	} `json:"geo_ip,omitempty"`
 	AppRules struct {
 		Proxy []string `json:"proxy"`
 	} `json:"app_rules,omitempty"`
@@ -74,7 +80,7 @@ func NewApp(file string, timeout time.Duration, w io.Writer) (app *App, err erro
 		config:  file,
 		timeout: timeout,
 	}
-	if enabled := os.Getenv("PPROF_ENABLED"); enabled == "1" {
+	if env := os.Getenv("PPROF_ENABLED"); env == "1" {
 		app.router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 		app.router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		app.router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)

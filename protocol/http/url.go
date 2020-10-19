@@ -12,7 +12,7 @@ func (e UrlError) Error() string {
 	return fmt.Sprintf("http/https url error: %v", string(e))
 }
 
-func ParseUrl(s string) (auth, addr, domain string, https bool, err error) {
+func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 	u, err := url.Parse(s)
 	if err != nil {
 		return
@@ -42,7 +42,7 @@ func ParseUrl(s string) (auth, addr, domain string, https bool, err error) {
 			domain = host
 		}
 
-		https = true
+		scheme = "https"
 	case "http":
 		host := u.Hostname()
 		port := u.Port()
@@ -56,7 +56,21 @@ func ParseUrl(s string) (auth, addr, domain string, https bool, err error) {
 			domain = host
 		}
 
-		https = false
+		scheme = "http"
+	case "http3":
+		host := u.Hostname()
+		port := u.Port()
+		if port == "" {
+			port = "443"
+		}
+		addr = net.JoinHostPort(host, port)
+
+		domain = u.Fragment
+		if domain == "" {
+			domain = host
+		}
+
+		scheme = "http3"
 	default:
 		err = UrlError("scheme error: " + u.Scheme)
 		return

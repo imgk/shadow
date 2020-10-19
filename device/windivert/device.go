@@ -112,6 +112,7 @@ func (d *Device) Close() error {
 	}
 	defer d.Handle.Close()
 
+	d.IPFilter.Close()
 	d.r.Close()
 	d.w.Close()
 

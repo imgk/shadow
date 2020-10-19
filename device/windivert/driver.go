@@ -16,7 +16,7 @@ func InstallDriver() error {
 	if err != nil {
 		return err
 	}
-	defer func (mu windows.Handle) {
+	defer func(mu windows.Handle) {
 		windows.ReleaseMutex(mu)
 		windows.CloseHandle(mu)
 	}(mutex)

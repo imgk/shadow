@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/ipv6"
 
 	"github.com/eycorsican/go-tun2socks/core"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
 
@@ -113,8 +114,7 @@ func (s *Stack) readLoop(rt io.WriterTo) {
 }
 
 func (s *Stack) Close() error {
-	s.Logger.Sync()
-	return s.Stack.Close()
+	return multierr.Combine(s.Logger.Sync(), s.Stack.Close())
 }
 
 func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) error {

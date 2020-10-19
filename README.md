@@ -127,6 +127,18 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 
 
     // windivert only
+    // maxmind geoip file
+    // proxy/bypass = iso code of country
+    // final = proxy/bypass
+    "geo_ip": {
+        "file": "",
+        "proxy": [],
+        "bypass": [],
+        "final": "",
+    },
+
+
+    // windivert only
     // programs in this list will be proxied
     "app_rules": {
         "proxy":[

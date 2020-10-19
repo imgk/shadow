@@ -31,14 +31,6 @@ func (e CmdError) Error() string {
 	return fmt.Sprintf("socks cmd error: %v", byte(e))
 }
 
-type CloseReader interface {
-	CloseRead() error
-}
-
-type CloseWriter interface {
-	CloseWrite() error
-}
-
 type fakeListener struct {
 	closed chan struct{}
 	conn   chan net.Conn
@@ -81,14 +73,14 @@ type fakeConn struct {
 }
 
 func (conn fakeConn) CloseRead() error {
-	if close, ok := conn.Conn.(CloseReader); ok {
+	if close, ok := conn.Conn.(common.CloseReader); ok {
 		return close.CloseRead()
 	}
 	return conn.Conn.Close()
 }
 
 func (conn fakeConn) CloseWrite() error {
-	if close, ok := conn.Conn.(CloseWriter); ok {
+	if close, ok := conn.Conn.(common.CloseWriter); ok {
 		return close.CloseWrite()
 	}
 	return conn.Conn.Close()
@@ -96,31 +88,6 @@ func (conn fakeConn) CloseWrite() error {
 
 func (conn fakeConn) Read(b []byte) (int, error) {
 	return conn.reader.Read(b)
-}
-
-type flushConn struct {
-	net.Conn
-	flusher http.Flusher
-}
-
-func (conn flushConn) CloseRead() error {
-	if close, ok := conn.Conn.(CloseReader); ok {
-		return close.CloseRead()
-	}
-	return conn.Conn.Close()
-}
-
-func (conn flushConn) CloseWrite() error {
-	if close, ok := conn.Conn.(CloseWriter); ok {
-		return close.CloseWrite()
-	}
-	return conn.Conn.Close()
-}
-
-func (conn flushConn) Write(b []byte) (n int, err error) {
-	n, err = conn.Conn.Write(b)
-	conn.flusher.Flush()
-	return
 }
 
 type fakePacketConn struct {
@@ -154,12 +121,12 @@ func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	if err != nil {
 		return
 	}
-	tgt, err := common.ParseAddr(b[3:])
+	tgt, err := common.ParseAddr(pc.rBuf[3:])
 	if err != nil {
 		return
 	}
 	addr = tgt
-	n = copy(b, b[3+len(tgt):n])
+	n = copy(b, pc.rBuf[3+len(tgt):n])
 	return
 }
 
@@ -168,8 +135,8 @@ func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) 
 	if err != nil {
 		return
 	}
-	n = copy(b[3+len(src):], b)
-	_, err = pc.PacketConn.WriteTo(b[:3+len(src)+n], pc.addr)
+	n = copy(pc.wBuf[3+len(src):], b)
+	_, err = pc.PacketConn.WriteTo(pc.wBuf[:3+len(src)+n], pc.addr)
 	return
 }
 
@@ -428,9 +395,6 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.Write(success[:])
-	if flusher, ok := conn.(http.Flusher); ok {
-		conn = flushConn{Conn: conn, flusher: flusher}
-	}
 
 	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr))
 	if err := s.handler.Handle(conn, addr); err != nil {

@@ -176,7 +176,7 @@ func (w *Writer) init(writer io.Writer, ciph Cipher) error {
 
 	w.nonce = make([]byte, w.AEAD.NonceSize())
 	w.buff = Get()
-	w.buf = w.buff[2+w.Overhead() : 2+w.Overhead()+MaxPacketSize]
+	w.buf = w.buff[2+w.Overhead() : 2+w.Overhead()+MaxPacketSize+w.Overhead()]
 
 	_, err = w.Writer.Write(salt)
 	return err
@@ -199,7 +199,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		if nr > 0 {
 			n += int64(nr)
 
-			w.buff[0] = byte(nr>>8)
+			w.buff[0] = byte(nr >> 8)
 			w.buff[1] = byte(nr)
 
 			w.Seal(w.buff[:0], w.nonce, w.buff[:2], nil)
