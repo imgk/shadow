@@ -36,7 +36,7 @@ type Conf struct {
 		Proxy  []string `json:"proxy,omitempty"`
 		Bypass []string `json:"bypass,omitempty"`
 		Final  string   `json:"final,omitempty"`
-	} `json:"geo_ip,omitempty"`
+	} `json:"geo_ip_rules,omitempty"`
 	AppRules struct {
 		Proxy []string `json:"proxy"`
 	} `json:"app_rules,omitempty"`

@@ -130,7 +130,7 @@ sudo go/bin/shadow -c /etc/shadow.json -v
     // maxmind geoip file
     // proxy/bypass = iso code of country
     // final = proxy/bypass
-    "geo_ip": {
+    "geo_ip_rules": {
         "file": "",
         "proxy": [],
         "bypass": [],
