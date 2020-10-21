@@ -137,6 +137,12 @@ func relay2(c, rc DuplexConn, errCh chan error) {
 }
 
 func Copy(w io.Writer, r io.Reader) (n int64, err error) {
+	if c, ok := r.(duplexConn); ok {
+		r = c.Conn
+	}
+	if c, ok := w.(duplexConn); ok {
+		w = c.Conn
+	}
 	if wt, ok := r.(io.WriterTo); ok {
 		return wt.WriteTo(w)
 	}

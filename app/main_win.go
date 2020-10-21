@@ -68,15 +68,15 @@ func (app *App) Run() (err error) {
 		return fmt.Errorf("windivert error: %w", err)
 	}
 	app.attachCloser(dev)
-	if err := app.loadAppRules(dev.AppFilter); err != nil {
+	if err := app.loadAppRules(dev.GetAppFilter()); err != nil {
 		return err
 	}
-	if err := app.loadIPCIDRRules(dev.IPFilter); err != nil {
+	if err := app.loadIPCIDRRules(dev.GetIPFilter()); err != nil {
 		return err
 	}
 
 	stack := netstack.NewStack(handler, dev, resolver, app.logger)
-	app.loadDomainRules(stack.DomainTree())
+	app.loadDomainRules(stack.GetDomainTree())
 	app.attachCloser(stack)
 
 	if addr := app.conf.ProxyServer; addr != "" {
@@ -87,7 +87,7 @@ func (app *App) Run() (err error) {
 
 		app.server.Logger = app.logger
 		app.server.handler = handler
-		app.server.tree = stack.DomainTree()
+		app.server.tree = stack.GetDomainTree()
 		go app.server.Serve(ln)
 	}
 
@@ -102,13 +102,10 @@ func (app *App) loadIPCIDRRules(filter *common.IPFilter) error {
 	}
 	filter.Unlock()
 
-	filter.Proxy = app.conf.GeoIP.Proxy
-	filter.Bypass = app.conf.GeoIP.Bypass
-	filter.Final = (strings.ToLower(app.conf.GeoIP.Final) == "proxy")
-	if len(filter.Proxy) == 0 && len(filter.Bypass) == 0 {
+	if len(app.conf.GeoIP.Proxy) == 0 && len(app.conf.GeoIP.Bypass) == 0 {
 		return nil
 	}
-	return filter.SetGeoIP(app.conf.GeoIP.File)
+	return filter.SetGeoIP(app.conf.GeoIP.File, app.conf.GeoIP.Proxy, app.conf.GeoIP.Bypass, strings.ToLower(app.conf.GeoIP.Final) == "proxy")
 }
 
 type PidError struct {

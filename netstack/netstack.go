@@ -98,7 +98,7 @@ func newMessage() interface{} {
 	return make([]byte, 1024*2)
 }
 
-func (s *Stack) DomainTree() *common.DomainTree {
+func (s *Stack) GetDomainTree() *common.DomainTree {
 	return s.tree
 }
 

@@ -14,9 +14,8 @@ type IPFilter struct {
 	Tree *iptree.Tree
 
 	useGeo bool
-	Proxy  []string
-	Bypass []string
-	Final  bool
+	rules  map[string]bool
+	final  bool
 
 	reader *maxminddb.Reader
 }
@@ -26,6 +25,7 @@ func NewIPFilter() *IPFilter {
 		RWMutex: sync.RWMutex{},
 		Tree:    iptree.NewTree(),
 		useGeo:  false,
+		rules:   make(map[string]bool),
 	}
 
 	return f
@@ -38,9 +38,16 @@ func (f *IPFilter) Close() error {
 	return nil
 }
 
-func (f *IPFilter) SetGeoIP(s string) (err error) {
+func (f *IPFilter) SetGeoIP(s string, proxy, bypass []string, final bool) (err error) {
 	f.useGeo = true
 	f.reader, err = maxminddb.Open(s)
+	for _, v := range proxy {
+		f.rules[v] = true
+	}
+	for _, v := range bypass {
+		f.rules[v] = false
+	}
+	f.final = final
 	return
 }
 
@@ -96,27 +103,17 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 	f.RLock()
 	defer f.RUnlock()
 
-	_, ok := f.Tree.GetByIP(ip)
-	if !ok && f.useGeo {
+	if _, ok := f.Tree.GetByIP(ip); !ok && f.useGeo {
 		record := Record{}
+		if err := f.reader.Lookup(ip, &record); err != nil {
+			return f.final
+		}
 
-		err := f.reader.Lookup(ip, &record)
-		if err != nil {
-			return false
+		b, ok := f.rules[record.Country.ISOCode]
+		if ok {
+			return b
 		}
-		code := record.Country.ISOCode
-
-		for _, v := range f.Proxy {
-			if v == code {
-				return true
-			}
-		}
-		for _, v := range f.Bypass {
-			if v == code {
-				return false
-			}
-		}
-		return f.Final
+		return f.final
 	}
 	return true
 }

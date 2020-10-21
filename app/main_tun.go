@@ -55,7 +55,7 @@ func (app *App) Run() (err error) {
 	}
 
 	stack := netstack.NewStack(handler, dev, resolver, app.logger)
-	app.loadDomainRules(stack.DomainTree())
+	app.loadDomainRules(stack.GetDomainTree())
 	app.attachCloser(stack)
 
 	if addr := app.conf.ProxyServer; addr != "" {
@@ -66,7 +66,7 @@ func (app *App) Run() (err error) {
 
 		app.server.Logger = app.logger
 		app.server.handler = handler
-		app.server.tree = stack.DomainTree()
+		app.server.tree = stack.GetDomainTree()
 		go app.server.Serve(ln)
 	}
 

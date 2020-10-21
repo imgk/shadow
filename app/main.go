@@ -47,6 +47,23 @@ type Conf struct {
 	} `json:"domain_rules"`
 }
 
+func (c *Conf) readConfig(file string) error {
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(b, c); err != nil {
+		return err
+	}
+	for i, v := range c.GeoIP.Proxy {
+		c.GeoIP.Proxy[i] = strings.ToUpper(v)
+	}
+	for i, v := range c.GeoIP.Bypass {
+		c.GeoIP.Bypass[i] = strings.ToUpper(v)
+	}
+	return nil
+}
+
 type App struct {
 	conf   Conf
 	router *mux.Router
@@ -94,19 +111,8 @@ func NewApp(file string, timeout time.Duration, w io.Writer) (app *App, err erro
 	} else {
 		app.setWriter(w)
 	}
-	err = app.readConfig()
+	err = app.conf.readConfig(app.config)
 	return
-}
-
-func (app *App) readConfig() error {
-	b, err := ioutil.ReadFile(app.config)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(b, &app.conf); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (app *App) setWriter(w io.Writer) {

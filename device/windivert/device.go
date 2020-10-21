@@ -103,6 +103,14 @@ func NewDevice(filter string) (dev *Device, err error) {
 	return
 }
 
+func (d *Device) GetAppFilter() *common.AppFilter {
+	return d.AppFilter
+}
+
+func (d *Device) GetIPFilter() *common.IPFilter {
+	return d.IPFilter
+}
+
 func (d *Device) Close() error {
 	select {
 	case <-d.active:
