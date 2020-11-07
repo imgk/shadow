@@ -12,6 +12,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
+	"github.com/imgk/divert-go"
+
 	"github.com/imgk/shadow/common"
 )
 
@@ -36,10 +38,10 @@ func (b *AtomicBool) Set(v AtomicBool) bool {
 }
 
 type Device struct {
-	*Address
+	*divert.Address
 	*common.AppFilter
 	*common.IPFilter
-	*Handle
+	*divert.Handle
 	r      *io.PipeReader
 	w      *io.PipeWriter
 	TCP    [65536]uint8
@@ -58,33 +60,33 @@ func NewDevice(filter string) (dev *Device, err error) {
 	}
 
 	filter = fmt.Sprintf("ifIdx = %d and ", ifIdx) + filter
-	hd, er := Open(filter, LayerNetwork, PriorityDefault, FlagDefault)
+	hd, er := divert.Open(filter, divert.LayerNetwork, divert.PriorityDefault, divert.FlagDefault)
 	if er != nil {
 		err = fmt.Errorf("open handle error: %w", er)
 		return
 	}
-	defer func(hd *Handle) {
+	defer func(hd *divert.Handle) {
 		if err != nil {
 			hd.Close()
 		}
 	}(hd)
 
-	if er := hd.SetParam(QueueLength, QueueLengthMax); er != nil {
+	if er := hd.SetParam(divert.QueueLength, divert.QueueLengthMax); er != nil {
 		err = fmt.Errorf("set handle parameter queue length error: %w", er)
 		return
 	}
-	if er := hd.SetParam(QueueTime, QueueTimeMax); er != nil {
+	if er := hd.SetParam(divert.QueueTime, divert.QueueTimeMax); er != nil {
 		err = fmt.Errorf("set handle parameter queue time error: %w", er)
 		return
 	}
-	if er := hd.SetParam(QueueSize, QueueSizeMax); er != nil {
+	if er := hd.SetParam(divert.QueueSize, divert.QueueSizeMax); er != nil {
 		err = fmt.Errorf("set handle parameter queue size error: %w", er)
 		return
 	}
 
 	r, w := io.Pipe()
 	dev = &Device{
-		Address:   new(Address),
+		Address:   new(divert.Address),
 		r:         r,
 		w:         w,
 		AppFilter: common.NewAppFilter(),
@@ -124,7 +126,7 @@ func (d *Device) Close() error {
 	d.r.Close()
 	d.w.Close()
 
-	if err := d.Handle.Shutdown(ShutdownBoth); err != nil {
+	if err := d.Handle.Shutdown(divert.ShutdownBoth); err != nil {
 		return fmt.Errorf("shutdown handle error: %w", err)
 	}
 
@@ -136,18 +138,18 @@ func (d *Device) Close() error {
 }
 
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
-	a := make([]Address, BatchMax)
-	b := make([]byte, 1500*BatchMax)
+	a := make([]divert.Address, divert.BatchMax)
+	b := make([]byte, 1500*divert.BatchMax)
 
 	const f = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5) | uint8(0x01<<3)
 
 	for {
-		nr, nx, er := d.Handle.RecvEx(b, a, nil)
+		nr, nx, er := d.Handle.RecvEx(b, a)
 		if er != nil {
 			select {
 			case <-d.active:
 			default:
-				if er != ErrNoData {
+				if er != divert.ErrNoData {
 					err = fmt.Errorf("RecvEx in WriteTo error: %v", er)
 				}
 			}
@@ -212,9 +214,9 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 		}
 
 		d.Handle.Lock()
-		_, er = d.Handle.SendEx(b[:nr], a[:nx], nil)
+		_, er = d.Handle.SendEx(b[:nr], a[:nx])
 		d.Handle.Unlock()
-		if er != nil && er != ErrHostUnreachable {
+		if er != nil && er != divert.ErrHostUnreachable {
 			select {
 			case <-d.active:
 			default:
@@ -470,8 +472,8 @@ func (d *Device) writeLoop() {
 
 	const f = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5)
 
-	a := make([]Address, BatchMax)
-	b := make([]byte, 1500*BatchMax)
+	a := make([]divert.Address, divert.BatchMax)
+	b := make([]byte, 1500*divert.BatchMax)
 
 	for i := range a {
 		a[i] = *d.Address
@@ -484,7 +486,7 @@ func (d *Device) writeLoop() {
 		case <-t.C:
 			if m > 0 {
 				d.Handle.Lock()
-				_, err := d.Handle.SendEx(b[:n], a[:m], nil)
+				_, err := d.Handle.SendEx(b[:n], a[:m])
 				d.Handle.Unlock()
 				if err != nil {
 					select {
@@ -513,9 +515,9 @@ func (d *Device) writeLoop() {
 			n += nr
 			m++
 
-			if m == BatchMax {
+			if m == divert.BatchMax {
 				d.Handle.Lock()
-				_, err := d.Handle.SendEx(b[:n], a[:m], nil)
+				_, err := d.Handle.SendEx(b[:n], a[:m])
 				d.Handle.Unlock()
 				if err != nil {
 					select {

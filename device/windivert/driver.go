@@ -3,13 +3,33 @@ package windivert
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
+	"strconv"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
+var winDivertSYS = ""
+var winDivertDLL = ""
+var DeviceName = windows.StringToUTF16Ptr("WinDivert")
+
 const types = 7
+
+func init() {
+	system32, err := windows.GetSystemDirectory()
+	if err != nil {
+		log.Panic(err)
+	}
+	winDivertSYS = filepath.Join(system32, "WinDivert"+strconv.Itoa(32<<(^uint(0)>>63))+".sys")
+	winDivertDLL = filepath.Join(system32, "WinDivert.dll")
+
+	if err := InstallDriver(); err != nil {
+		log.Panic(err)
+	}
+}
 
 func InstallDriver() error {
 	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("WinDivertDriverInstallMutex"))

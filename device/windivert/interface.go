@@ -5,6 +5,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/imgk/divert-go"
 )
 
 func DialIPv4(wg *sync.WaitGroup) {
@@ -31,7 +33,7 @@ func DialIPv6(wg *sync.WaitGroup) {
 
 func GetInterfaceIndex() (uint32, uint32, error) {
 	const filter = "not loopback and outbound and (ip.DstAddr = 8.8.8.8 or ipv6.DstAddr = 2001:4860:4860::8888) and tcp.DstPort = 53"
-	hd, err := Open(filter, LayerNetwork, PriorityDefault, FlagSniff)
+	hd, err := divert.Open(filter, divert.LayerNetwork, divert.PriorityDefault, divert.FlagSniff)
 	if err != nil {
 		return 0, 0, fmt.Errorf("open interface handle error: %w", err)
 	}
@@ -45,14 +47,14 @@ func GetInterfaceIndex() (uint32, uint32, error) {
 	wg.Add(1)
 	go DialIPv6(wg)
 
-	a := new(Address)
+	a := new(divert.Address)
 	b := make([]byte, 1500)
 
 	if _, err := hd.Recv(b, a); err != nil {
 		return 0, 0, err
 	}
 
-	if err := hd.Shutdown(ShutdownBoth); err != nil {
+	if err := hd.Shutdown(divert.ShutdownBoth); err != nil {
 		return 0, 0, fmt.Errorf("shutdown interface handle error: %w", err)
 	}
 
