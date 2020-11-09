@@ -93,17 +93,22 @@ func (f *IPFilter) addCIDR(ip *net.IPNet) error {
 	return nil
 }
 
-type Record struct {
-	Country struct {
-		ISOCode string `maxminddb:"iso_code"`
-	} `maxminddb:"country"`
-}
-
 func (f *IPFilter) Lookup(ip net.IP) bool {
 	f.RLock()
 	defer f.RUnlock()
 
-	if _, ok := f.Tree.GetByIP(ip); !ok && f.useGeo {
+	_, ok := f.Tree.GetByIP(ip)
+	if ok {
+		return true
+	}
+
+	type Record struct {
+		Country struct {
+			ISOCode string `maxminddb:"iso_code"`
+		} `maxminddb:"country"`
+	}
+	
+	if f.useGeo {
 		record := Record{}
 		if err := f.reader.Lookup(ip, &record); err != nil {
 			return f.final
@@ -115,5 +120,6 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 		}
 		return f.final
 	}
-	return true
+
+	return false
 }
