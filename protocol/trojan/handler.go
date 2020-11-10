@@ -213,7 +213,9 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 }
 
 func (h *Handler) Close() error {
-	h.ticker.Stop()
+	if h.ticker != nil {
+		h.ticker.Stop()
+	}
 	return nil
 }
 
