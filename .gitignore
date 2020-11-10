@@ -2,6 +2,7 @@
 .DS_Store
 .AppleDouble
 .LSOverride
+.idea/
 
 # Icon must end with two \r
 # Icon
@@ -25,3 +26,8 @@
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Project related
+*.exe
+*.json
+*.mmdb

@@ -96,11 +96,11 @@ func NewDevice(filter string) (dev *Device, err error) {
 		event:     make(chan struct{}, 1),
 	}
 
-	go dev.writeLoop()
-
 	nw := dev.Address.Network()
 	nw.InterfaceIndex = ifIdx
 	nw.SubInterfaceIndex = subIfIdx
+
+	go dev.writeLoop()
 
 	return
 }

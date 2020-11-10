@@ -58,7 +58,9 @@ func (s *fakeListener) Close() error {
 	case <-s.closed:
 		return nil
 	default:
-		close(s.closed)
+		if s.closed != nil {
+			close(s.closed)
+		}
 	}
 	return nil
 }
