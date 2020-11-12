@@ -45,7 +45,7 @@ func main() {
 	fmt.Println("shadow - a transparent proxy for Windows, Linux and macOS")
 	fmt.Println("shadow is running...")
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, os.Kill)
+	signal.Notify(sigCh, os.Interrupt)
 	<-sigCh
 	fmt.Println("shadow is closing...")
 
