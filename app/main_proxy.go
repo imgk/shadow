@@ -248,7 +248,7 @@ func (s *proxyServer) LookupIP(ip net.IP, b []byte) (common.Addr, error) {
 		n := copy(b[2:], rr.Ptr[:])
 		return b[:2+n+2], nil
 	}
-	return nil, errors.New("not found")
+	return nil, errors.New("fake ip address not found")
 }
 
 // handshake
