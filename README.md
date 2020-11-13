@@ -53,4 +53,4 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 
 ## Config
 
-Please read CONFIG.md
+Please read [CONFIG.md](https://github.com/imgk/shadow/blob/master/CONFIG.md)
