@@ -107,7 +107,6 @@ type Handler struct {
 	header  [HeaderLen + 2 + 8 + 2]byte
 	timeout time.Duration
 	server  string
-	dial    func(net.Addr, byte) (net.Conn, error)
 	ticker  *time.Ticker
 }
 
