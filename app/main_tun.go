@@ -13,7 +13,8 @@ import (
 )
 
 func (app *App) Run() (err error) {
-	resolver, err := common.NewResolver(app.conf.NameServer)
+	// new dns resolver
+	resolver, err := common.NewResolver(app.Conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -22,7 +23,8 @@ func (app *App) Run() (err error) {
 		Dial:     resolver.DialContext,
 	}
 
-	handler, err := protocol.NewHandler(app.conf.Server, app.timeout)
+	// new connection handler
+	handler, err := protocol.NewHandler(app.Conf.Server, app.timeout)
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
@@ -35,8 +37,9 @@ func (app *App) Run() (err error) {
 		}
 	}()
 
+	// new tun device
 	name := "utun"
-	if tunName := app.conf.TunName; tunName != "" {
+	if tunName := app.Conf.TunName; tunName != "" {
 		name = tunName
 	}
 	dev, err := tun.NewDevice(name)
@@ -44,7 +47,8 @@ func (app *App) Run() (err error) {
 		return fmt.Errorf("tun device from name error: %w", err)
 	}
 	app.attachCloser(dev)
-	for _, address := range app.conf.TunAddr {
+	// set tun address
+	for _, address := range app.Conf.TunAddr {
 		err := dev.SetInterfaceAddress(address)
 		if err != nil {
 			return err
@@ -54,25 +58,35 @@ func (app *App) Run() (err error) {
 		return fmt.Errorf("turn up tun device error: %w", err)
 	}
 
-	stack := netstack.NewStack(handler, dev, resolver, app.logger)
-	app.loadDomainRules(stack.GetDomainTree())
+	// new fake ip tree
+	tree, err := app.newDomainTree()
+	if err != nil {
+		return
+	}
+	// new netstack
+	stack := netstack.NewStack(handler, dev, resolver, app.Logger, tree, true)
 	app.attachCloser(stack)
 
-	if addr := app.conf.ProxyServer; addr != "" {
+	// enable socks5/http proxy
+	if addr := app.Conf.ProxyServer; addr != "" {
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			return err
 		}
 
-		app.server.Logger = app.logger
-		app.server.handler = handler
-		app.server.tree = stack.GetDomainTree()
-		go app.server.Serve(ln)
+		server := newProxyServer(ln, app.Logger, handler, tree)
+		app.attachCloser(server)
+		go server.Serve()
 	}
 
-	if err := dev.AddRouteEntry(app.conf.IPCIDRRules.Proxy); err != nil {
+	// add route table entry
+	if err := dev.AddRouteEntry(app.Conf.IPCIDRRules.Proxy); err != nil {
 		return fmt.Errorf("add route entry error: %w", err)
 	}
 
+	return nil
+}
+
+func RunWithDevice(device *tun.Device) (err error) {
 	return nil
 }

@@ -99,9 +99,10 @@ type Mux struct {
 }
 
 type Handler struct {
-	connector Connector
-	cipher    core.Cipher
-	mux       Mux
+	connector  Connector
+	cipher     core.Cipher
+	mux        Mux
+	muxEnabled bool
 
 	header  [HeaderLen + 2 + 8 + 2]byte
 	timeout time.Duration
@@ -166,7 +167,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 
 	switch opt.Mux {
 	case "off":
-		hd.dial = hd.DialConn
+		hd.muxEnabled = false
 	case "v1":
 		hd.mux = Mux{
 			Mutex: sync.Mutex{},
@@ -184,7 +185,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 
 		copy(hd.header[HeaderLen+2:], []byte{0x7f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
-		hd.dial = hd.DialMux
+		hd.muxEnabled = true
 		hd.ticker = time.NewTicker(time.Minute * 3)
 		go hd.closeIdleSession()
 	case "v2":
@@ -204,7 +205,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 
 		copy(hd.header[HeaderLen+2:], []byte{0x8f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
-		hd.dial = hd.DialMux
+		hd.muxEnabled = true
 		hd.ticker = time.NewTicker(time.Minute * 3)
 		go hd.closeIdleSession()
 	}
@@ -390,10 +391,17 @@ func (h *Handler) DialMux(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 	return
 }
 
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, error) {
+	if h.muxEnabled {
+		return h.DialMux(tgt, cmd)
+	}
+	return h.DialConn(tgt, cmd)
+}
+
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	rc, err := h.dial(tgt, cmdConnect)
+	rc, err := h.Dial(tgt, cmdConnect)
 	if err != nil {
 		return err
 	}
@@ -417,7 +425,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	defer conn.Close()
 
-	rc, err := h.dial(conn.LocalAddr(), cmdAssocaite)
+	rc, err := h.Dial(conn.LocalAddr(), cmdAssocaite)
 	if err != nil {
 		return err
 	}

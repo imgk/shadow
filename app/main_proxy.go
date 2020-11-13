@@ -7,49 +7,52 @@ import (
 	"io"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/miekg/dns"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/imgk/shadow/common"
 )
 
-var (
-	errClosed    = errors.New("closed")
-	errNotFound  = errors.New("not found")
-	errEmptyAddr = errors.New("address error")
-)
+type cmdError byte
 
-var success = [...]byte{'H', 'T', 'T', 'P', '/', '1', '.', '1', ' ', '2', '0', '0', ' ', 'C', 'o', 'n', 'n', 'e', 'c', 't', 'i', 'o', 'n', ' ', 'E', 's', 't', 'a', 'b', 'l', 'i', 's', 'h', 'e', 'd', '\r', '\n', '\r', '\n'}
-
-var errAuth = errors.New("no authentication supported")
-
-type CmdError byte
-
-func (e CmdError) Error() string {
+func (e cmdError) Error() string {
 	return fmt.Sprintf("socks cmd error: %v", byte(e))
 }
 
+// fake net.Listener
 type fakeListener struct {
 	closed chan struct{}
-	conn   chan net.Conn
+	conns  chan net.Conn
 	addr   net.Addr
+}
+
+func newFakeListener(addr net.Addr) *fakeListener {
+	return &fakeListener{
+		closed: make(chan struct{}),
+		conns:  make(chan net.Conn, 5),
+		addr:   addr,
+	}
 }
 
 func (s *fakeListener) Accept() (net.Conn, error) {
 	select {
 	case <-s.closed:
-	case conn := <-s.conn:
+	case conn := <-s.conns:
 		return conn, nil
 	}
-	return nil, errClosed
+	return nil, os.ErrClosed
 }
 
-func (s *fakeListener) receive(conn net.Conn) {
+func (s *fakeListener) Receive(conn net.Conn) {
 	select {
 	case <-s.closed:
-	case s.conn <- conn:
+	case s.conns <- conn:
 	}
 }
 
@@ -58,20 +61,26 @@ func (s *fakeListener) Close() error {
 	case <-s.closed:
 		return nil
 	default:
-		if s.closed != nil {
-			close(s.closed)
-		}
+		close(s.closed)
 	}
 	return nil
 }
 
-func (s fakeListener) Addr() net.Addr {
+func (s *fakeListener) Addr() net.Addr {
 	return s.addr
 }
 
+// fake net.Conn
 type fakeConn struct {
 	net.Conn
 	reader io.Reader
+}
+
+func newFakeConn(conn net.Conn, reader io.Reader) fakeConn {
+	return fakeConn{
+		Conn:   conn,
+		reader: reader,
+	}
 }
 
 func (conn fakeConn) CloseRead() error {
@@ -92,101 +101,135 @@ func (conn fakeConn) Read(b []byte) (int, error) {
 	return conn.reader.Read(b)
 }
 
+// fake common.PacketConn
 type fakePacketConn struct {
-	rBuf []byte
-	wBuf []byte
 	addr net.Addr
 	net.PacketConn
 }
 
-func newPacketConn(src net.Addr, pc net.PacketConn) *fakePacketConn {
-	return &fakePacketConn{
-		rBuf:       common.Get(),
-		wBuf:       common.Get(),
+func newPacketConn(src net.Addr, pc net.PacketConn) fakePacketConn {
+	return fakePacketConn{
 		addr:       src,
 		PacketConn: pc,
 	}
 }
 
-func (pc *fakePacketConn) Close() error {
-	common.Put(pc.rBuf)
-	common.Put(pc.wBuf)
+func (pc fakePacketConn) Close() error {
 	return pc.PacketConn.Close()
 }
 
-func (pc *fakePacketConn) RemoteAddr() net.Addr {
+func (pc fakePacketConn) RemoteAddr() net.Addr {
 	return pc.addr
 }
 
-func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
-	n, _, err = pc.PacketConn.ReadFrom(pc.rBuf)
+func (pc fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
+	buf := common.Get()
+	defer common.Put(buf)
+
+	n, _, err = pc.PacketConn.ReadFrom(buf)
 	if err != nil {
 		return
 	}
-	tgt, err := common.ParseAddr(pc.rBuf[3:])
+	tgt, err := common.ParseAddr(buf[3:])
 	if err != nil {
 		return
 	}
 	addr = tgt
-	n = copy(b, pc.rBuf[3+len(tgt):n])
+	n = copy(b, buf[3+len(tgt):n])
 	return
 }
 
-func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
+func (pc fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
+	buf := common.Get()
+	defer common.Put(buf)
+
 	src, err := common.ResolveAddrBuffer(addr, b[3:])
 	if err != nil {
 		return
 	}
-	n = copy(pc.wBuf[3+len(src):], b)
-	_, err = pc.PacketConn.WriteTo(pc.wBuf[:3+len(src)+n], pc.addr)
+	n = copy(buf[3+len(src):], b)
+	_, err = pc.PacketConn.WriteTo(buf[:3+len(src)+n], pc.addr)
 	return
 }
 
+// a combined socks5/http proxy server
 type proxyServer struct {
 	*zap.Logger
-	router   http.Handler
-	handler  common.Handler
-	listener fakeListener
-	server   http.Server
-	tree     *common.DomainTree
-	closed   bool
+
+	// Convert fake IP and handle connections
+	tree    *common.DomainTree
+	handler common.Handler
+
+	// Listen
+	http.Server
+	netLisener net.Listener
+	listener   *fakeListener
+
+	closed chan struct{}
 }
 
-func (s *proxyServer) Serve(ln net.Listener) {
-	s.listener.closed = make(chan struct{})
-	s.listener.conn = make(chan net.Conn, 5)
-	s.listener.addr = ln.Addr()
-	s.server.Handler = s.router
-	s.closed = false
+func newProxyServer(ln net.Listener, logger *zap.Logger, handler common.Handler, tree *common.DomainTree) *proxyServer {
+	s := &proxyServer{
+		Logger:     logger,
+		tree:       tree,
+		handler:    handler,
+		netLisener: ln,
+		listener:   newFakeListener(ln.Addr()),
+		closed:     make(chan struct{}),
+	}
+	s.Server.Handler = http.Handler(s)
+	return s
+}
 
-	go s.server.Serve(&s.listener)
+// accpet net.Conn
+func (s *proxyServer) Serve() {
+	go s.Server.Serve(s.listener)
 
 	for {
-		conn, err := ln.Accept()
+		conn, err := s.netLisener.Accept()
 		if err != nil {
-			if s.closed {
-				return
-			}
-			s.Error(fmt.Sprintf("accept conns error: %v", err))
 			return
 		}
 		go s.handle(conn)
 	}
 }
 
-func (s *proxyServer) Close() error {
-	if s.closed {
-		return nil
+// serve as a http server and http proxy server
+// support GET and CONNECT method
+func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/debug/pprof/") || r.URL.Host == "" || r.Header.Get("Host") == "" {
+		http.DefaultServeMux.ServeHTTP(w, r)
+		return
 	}
-	s.closed = true
-	s.listener.Close()
-	s.server.Close()
-	return nil
+
+	switch r.Method {
+	case http.MethodGet:
+		s.proxyGet(w, r)
+	case http.MethodConnect:
+		s.proxyConnect(w, r)
+	default:
+		http.DefaultServeMux.ServeHTTP(w, r)
+	}
+}
+
+func (s *proxyServer) Close() (err error) {
+	select {
+	case <-s.closed:
+		return
+	default:
+		close(s.closed)
+	}
+
+	err = multierr.Combine(s.netLisener.Close(), s.listener.Close(), s.Server.Close())
+	return
 }
 
 func (s *proxyServer) handle(conn net.Conn) {
 	pc, b, ok, err := s.handshake(conn)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return
+		}
 		s.Error(fmt.Sprintf("handshake error: %v", err))
 		return
 	}
@@ -194,11 +237,7 @@ func (s *proxyServer) handle(conn net.Conn) {
 		s.proxySocks(conn, pc, b)
 		return
 	}
-	conn = fakeConn{
-		Conn:   conn,
-		reader: io.MultiReader(bytes.NewReader(b), conn),
-	}
-	s.listener.receive(conn)
+	s.listener.Receive(newFakeConn(conn, io.MultiReader(bytes.NewReader(b), conn)))
 }
 
 func (s *proxyServer) LookupIP(ip net.IP, b []byte) (common.Addr, error) {
@@ -209,11 +248,13 @@ func (s *proxyServer) LookupIP(ip net.IP, b []byte) (common.Addr, error) {
 		n := copy(b[2:], rr.Ptr[:])
 		return b[:2+n+2], nil
 	}
-	return nil, errNotFound
+	return nil, errors.New("not found")
 }
 
+// handshake
 func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, ok bool, err error) {
 	b := [3 + common.MaxAddrLen]byte{}
+	// read socks5 header
 	if _, err = io.ReadFull(conn, b[:2]); err != nil {
 		return
 	}
@@ -224,10 +265,11 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		return
 	}
 	ok = true
+	// verify authentication
 	if _, err = io.ReadFull(conn, b[2:2+b[1]]); err != nil {
 		return
 	}
-	err = errAuth
+	err = errors.New("no authentication supported")
 	for _, v := range b[2 : 2+b[1]] {
 		if v == 0 {
 			err = nil
@@ -238,10 +280,12 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		return
 	}
 
+	// write back auth method
 	if _, err = conn.Write([]byte{0x05, 0x00}); err != nil {
 		return
 	}
 
+	// read address
 	if _, err = io.ReadFull(conn, b[:3]); err != nil {
 		return
 	}
@@ -252,8 +296,13 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		if err != nil {
 			return
 		}
+		defer func(conn net.PacketConn) {
+			if err != nil {
+				conn.Close()
+			}
+		}(pc)
 	default:
-		err = CmdError(b[1])
+		err = cmdError(b[1])
 		return
 	}
 
@@ -275,6 +324,7 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		}
 	}
 
+	// write back address
 	addr := common.Addr{}
 	switch b[1] {
 	case 0x01:
@@ -290,6 +340,7 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 	return
 }
 
+// handle socks5 proxy
 func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.Addr) {
 	defer conn.Close()
 
@@ -301,6 +352,19 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 			s.Error(fmt.Sprintf("resolve udp addr error: %v", err))
 			return
 		}
+
+		go func(conn net.Conn, pc net.PacketConn) {
+			b := make([]byte, 1)
+			for {
+				_, err := conn.Read(b)
+				if ne := net.Error(nil); errors.As(err, &ne) {
+					if ne.Timeout() {
+						continue
+					}
+				}
+				pc.Close()
+			}
+		}(conn, pc)
 
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> all", addr))
 		if err := s.handler.HandlePacket(newPacketConn(src, pc)); err != nil {
@@ -315,22 +379,12 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 	}
 }
 
-func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.proxyGet(w, r)
-	case http.MethodConnect:
-		s.proxyConnect(w, r)
-	default:
-		w.WriteHeader(http.StatusForbidden)
-	}
-}
-
+// handle http proxy GET
 func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	b := [common.MaxAddrLen]byte{}
 	addr, err := s.ParseAddr(r.URL.Host, "80", b[:])
 	if err != nil {
-		if errors.Is(err, errEmptyAddr) {
+		if errors.Is(err, errors.New("address error")) {
 			return
 		}
 		s.Error(fmt.Sprintf("parse url host error: %v", err))
@@ -375,6 +429,7 @@ func (s *proxyServer) Handle(conn net.Conn, addr net.Addr) {
 	}
 }
 
+// handle http proxy CONNECT
 func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 	host, port, _ := net.SplitHostPort(r.URL.Host)
 
@@ -387,7 +442,7 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 
 	rw, ok := w.(http.Hijacker)
 	if !ok {
-		s.Error("not a http.Hijack")
+		s.Error("not a http.Hijacker")
 		return
 	}
 	conn, _, err := rw.Hijack()
@@ -396,7 +451,7 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	conn.Write(success[:])
+	conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
 	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr))
 	if err := s.handler.Handle(conn, addr); err != nil {
@@ -411,7 +466,7 @@ func (s *proxyServer) ParseAddr(host, port string, b []byte) (common.Addr, error
 	}
 	if ip := net.ParseIP(host); ip == nil {
 		if host == "" {
-			return nil, errEmptyAddr
+			return nil, errors.New("nil address error")
 		}
 		b[0] = common.AddrTypeDomain
 		b[1] = byte(len(host))
@@ -429,7 +484,7 @@ func (s *proxyServer) ParseAddr(host, port string, b []byte) (common.Addr, error
 			b[1+net.IPv6len+1] = byte(p)
 			return b[:1+net.IPv6len+2], nil
 		} else {
-			if ip[0] == 198 && ip[1] == 18 {
+			if ipv4[0] == 198 && ipv4[1] == 18 {
 				addr, err := s.LookupIP(ipv4, b[:])
 				addr[len(addr)-2] = byte(p >> 8)
 				addr[len(addr)-1] = byte(p)

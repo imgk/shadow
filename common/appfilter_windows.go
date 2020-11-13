@@ -5,6 +5,7 @@ package common
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"unsafe"
 
@@ -17,7 +18,14 @@ var (
 )
 
 func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, err error) {
-	b := [windows.MAX_PATH]uint16{}
+	bb := byteBuffer.Get().([]byte)
+	defer byteBuffer.Put(bb)
+
+	b := *(*[]uint16)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(&bb[0])),
+		Len:  MaxBufferSize / 2,
+		Cap:  MaxBufferSize / 2,
+	}))
 	n := uint32(windows.MAX_PATH)
 
 	// BOOL QueryFullProcessImageNameA(
@@ -42,7 +50,7 @@ func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, 
 	return
 }
 
-func QueryName(pid uint32) (string, error) {
+func QueryNameByPID(pid uint32) (string, error) {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
 		return "", fmt.Errorf("open process error: %w", err)
@@ -55,7 +63,6 @@ func QueryName(pid uint32) (string, error) {
 	}
 
 	_, file := filepath.Split(path)
-
 	return file, nil
 }
 
@@ -71,24 +78,15 @@ func NewAppFilter() *AppFilter {
 		pids:    make(map[uint32]struct{}),
 		apps:    make(map[string]struct{}),
 	}
-
 	return f
 }
 
 func (f *AppFilter) SetPIDs(pids []uint32) {
+	f.Lock()
 	for _, v := range pids {
 		f.pids[v] = struct{}{}
 	}
-}
-
-func (f *AppFilter) Reset() {
-	f.Lock()
-	f.UnsafeReset()
 	f.Unlock()
-}
-
-func (f *AppFilter) UnsafeReset() {
-	f.apps = make(map[string]struct{})
 }
 
 func (f *AppFilter) Add(s string) {
@@ -109,7 +107,7 @@ func (f *AppFilter) Lookup(pid uint32) bool {
 		return true
 	}
 
-	file, _ := QueryName(pid)
+	file, _ := QueryNameByPID(pid)
 	if _, ok := f.apps[file]; ok {
 		return true
 	}

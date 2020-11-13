@@ -48,7 +48,8 @@ func (app *App) Run() (err error) {
 		return fmt.Errorf("wait for mutex event id error: %w", event)
 	}
 
-	resolver, err := common.NewResolver(app.conf.NameServer)
+	// new dns resolver
+	resolver, err := common.NewResolver(app.Conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -57,88 +58,105 @@ func (app *App) Run() (err error) {
 		Dial:     resolver.DialContext,
 	}
 
-	handler, err := protocol.NewHandler(app.conf.Server, app.timeout)
+	// new connection handler
+	handler, err := protocol.NewHandler(app.Conf.Server, app.timeout)
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
 	app.attachCloser(handler)
 
-	dev, err := windivert.NewDevice(app.conf.FilterString)
+	// new application filter
+	appFilter, err := app.newAppFilter()
+	if err != nil {
+		return
+	}
+	// new ip filter
+	ipFilter, err := app.newIPFilter()
+	if err != nil {
+		return
+	}
+	// new windivert device
+	dev, err := windivert.NewDevice(app.Conf.FilterString, appFilter, ipFilter, true)
 	if err != nil {
 		return fmt.Errorf("windivert error: %w", err)
 	}
 	app.attachCloser(dev)
-	if err := app.loadAppRules(dev.GetAppFilter()); err != nil {
-		return err
-	}
-	if err := app.loadIPCIDRRules(dev.GetIPFilter()); err != nil {
-		return err
-	}
 
-	stack := netstack.NewStack(handler, dev, resolver, app.logger)
-	app.loadDomainRules(stack.GetDomainTree())
+	// new fake ip tree
+	tree, err := app.newDomainTree()
+	if err != nil {
+		return
+	}
+	// new netstack
+	stack := netstack.NewStack(handler, dev, resolver, app.Logger, tree, true)
 	app.attachCloser(stack)
 
-	if addr := app.conf.ProxyServer; addr != "" {
+	// new socks5/http proxy
+	if addr := app.Conf.ProxyServer; addr != "" {
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			return err
 		}
 
-		app.server.Logger = app.logger
-		app.server.handler = handler
-		app.server.tree = stack.GetDomainTree()
-		go app.server.Serve(ln)
+		server := newProxyServer(ln, app.Logger, handler, tree)
+		app.attachCloser(server)
+		go server.Serve()
 	}
 
 	return nil
 }
 
-func (app *App) loadIPCIDRRules(filter *common.IPFilter) error {
+func (app *App) newIPFilter() (*common.IPFilter, error) {
+	filter := common.NewIPFilter()
+
 	filter.Lock()
-	filter.UnsafeReset()
-	for _, item := range app.conf.IPCIDRRules.Proxy {
+	for _, item := range app.Conf.IPCIDRRules.Proxy {
 		filter.UnsafeAdd(item)
 	}
 	filter.Unlock()
 
-	if len(app.conf.GeoIP.Proxy) == 0 && len(app.conf.GeoIP.Bypass) == 0 {
-		return nil
+	if len(app.Conf.GeoIP.Proxy) == 0 && len(app.Conf.GeoIP.Bypass) == 0 {
+		return filter, nil
 	}
-	return filter.SetGeoIP(app.conf.GeoIP.File, app.conf.GeoIP.Proxy, app.conf.GeoIP.Bypass, strings.ToLower(app.conf.GeoIP.Final) == "proxy")
+	err := filter.SetGeoIP(app.Conf.GeoIP.File, app.Conf.GeoIP.Proxy, app.Conf.GeoIP.Bypass, app.Conf.GeoIP.Final == "proxy")
+	return filter, err
 }
 
-type PidError struct {
-	v string
+type pidError string
+
+func (e pidError) Error() string {
+	return fmt.Sprintf("Pid strconv error: %v", string(e))
 }
 
-func (e PidError) Error() string {
-	return fmt.Sprintf("Pid strconv error: %v", e.v)
-}
+func (app *App) newAppFilter() (*common.AppFilter, error) {
+	env := os.Getenv("SHADOW_PIDS")
+	if env == "" && len(app.Conf.AppRules.Proxy) == 0 {
+		return nil, nil
+	}
 
-func (app *App) loadAppRules(filter *common.AppFilter) error {
+	filter := common.NewAppFilter()
+
 	filter.Lock()
-	filter.UnsafeReset()
-	for _, item := range app.conf.AppRules.Proxy {
+	for _, item := range app.Conf.AppRules.Proxy {
 		filter.UnsafeAdd(item)
 	}
 	filter.Unlock()
 
-	if env := os.Getenv("SHADOW_PIDS"); env != "" {
+	if env != "" {
 		ss := strings.Split(env, ",")
 		pids := make([]uint32, 0, len(ss))
 		for _, v := range ss {
 			i, err := strconv.Atoi(v)
 			if err != nil {
 				if v != "" {
-					return PidError{v}
+					return nil, pidError(v)
 				}
 			}
 			pids = append(pids, uint32(i))
 		}
 		filter.SetPIDs(pids)
 	}
-	return nil
+	return filter, nil
 }
 
 type mutexHandle windows.Handle

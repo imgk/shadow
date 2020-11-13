@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -19,24 +18,6 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
-
-func init() {
-	if err := checkForWow64(); err != nil {
-		panic(err)
-	}
-}
-
-func checkForWow64() error {
-	var b bool
-	err := windows.IsWow64Process(windows.CurrentProcess(), &b)
-	if err != nil {
-		return fmt.Errorf("Unable to determine whether the process is running under WOW64: %v", err)
-	}
-	if b {
-		return fmt.Errorf("You must use the 64-bit version of WireGuard on this computer.")
-	}
-	return nil
-}
 
 func determineGUID(name string) *windows.GUID {
 	b := make([]byte, unsafe.Sizeof(windows.GUID{}))

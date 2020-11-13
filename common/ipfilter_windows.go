@@ -1,3 +1,5 @@
+// +build windows
+
 package common
 
 import (
@@ -39,6 +41,7 @@ func (f *IPFilter) Close() error {
 }
 
 func (f *IPFilter) SetGeoIP(s string, proxy, bypass []string, final bool) (err error) {
+	f.Lock()
 	f.useGeo = true
 	f.reader, err = maxminddb.Open(s)
 	for _, v := range proxy {
@@ -48,17 +51,8 @@ func (f *IPFilter) SetGeoIP(s string, proxy, bypass []string, final bool) (err e
 		f.rules[v] = false
 	}
 	f.final = final
-	return
-}
-
-func (f *IPFilter) Reset() {
-	f.Lock()
-	f.UnsafeReset()
 	f.Unlock()
-}
-
-func (f *IPFilter) UnsafeReset() {
-	f.Tree = iptree.NewTree()
+	return
 }
 
 func (f *IPFilter) Add(s string) error {
@@ -107,7 +101,7 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 			ISOCode string `maxminddb:"iso_code"`
 		} `maxminddb:"country"`
 	}
-	
+
 	if f.useGeo {
 		record := Record{}
 		if err := f.reader.Lookup(ip, &record); err != nil {

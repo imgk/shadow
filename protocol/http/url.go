@@ -29,20 +29,6 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 	}
 
 	switch u.Scheme {
-	case "https":
-		host := u.Hostname()
-		port := u.Port()
-		if port == "" {
-			port = "443"
-		}
-		addr = net.JoinHostPort(host, port)
-
-		domain = u.Fragment
-		if domain == "" {
-			domain = host
-		}
-
-		scheme = "https"
 	case "http":
 		host := u.Hostname()
 		port := u.Port()
@@ -57,7 +43,7 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 		}
 
 		scheme = "http"
-	case "http3":
+	case "https":
 		host := u.Hostname()
 		port := u.Port()
 		if port == "" {
@@ -70,7 +56,7 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 			domain = host
 		}
 
-		scheme = "http3"
+		scheme = "https"
 	default:
 		err = UrlError("scheme error: " + u.Scheme)
 		return

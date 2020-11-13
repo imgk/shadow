@@ -10,15 +10,15 @@ import (
 )
 
 const (
-	TCP_TABLE_OWNER_PID_LISTENER       = 3
-	TCP_TABLE_OWNER_PID_CONNECTIONS    = 4
-	TCP_TABLE_OWNER_PID_ALL            = 5
-	TCP_TABLE_OWNER_MODULE_LISTENER    = 6
-	TCP_TABLE_OWNER_MODULE_CONNECTIONS = 7
-	TCP_TABLE_OWNER_MODULE_ALL         = 8
+	_TCP_TABLE_OWNER_PID_LISTENER       = 3
+	_TCP_TABLE_OWNER_PID_CONNECTIONS    = 4
+	_TCP_TABLE_OWNER_PID_ALL            = 5
+	_TCP_TABLE_OWNER_MODULE_LISTENER    = 6
+	_TCP_TABLE_OWNER_MODULE_CONNECTIONS = 7
+	_TCP_TABLE_OWNER_MODULE_ALL         = 8
 
-	UDP_TABLE_OWNER_PID    = 1
-	UDP_TABLE_OWNER_MODULE = 2
+	_UDP_TABLE_OWNER_PID    = 1
+	_UDP_TABLE_OWNER_MODULE = 2
 )
 
 var (
@@ -28,7 +28,7 @@ var (
 )
 
 func GetTCPTable() ([]TCPRow, error) {
-	b, err := GetExtendedTcpTable(0, windows.AF_INET, TCP_TABLE_OWNER_PID_CONNECTIONS)
+	b, err := GetExtendedTcpTable(0, windows.AF_INET, _TCP_TABLE_OWNER_PID_CONNECTIONS)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ type TCPRow struct {
 }
 
 func GetTCP6Table() ([]TCP6Row, error) {
-	b, err := GetExtendedTcpTable(0, windows.AF_INET6, TCP_TABLE_OWNER_PID_CONNECTIONS)
+	b, err := GetExtendedTcpTable(0, windows.AF_INET6, _TCP_TABLE_OWNER_PID_CONNECTIONS)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func GetExtendedTcpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, 
 }
 
 func GetUDPTable() ([]UDPRow, error) {
-	b, err := GetExtendedUdpTable(0, windows.AF_INET, UDP_TABLE_OWNER_PID)
+	b, err := GetExtendedUdpTable(0, windows.AF_INET, _UDP_TABLE_OWNER_PID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ type UDPRow struct {
 }
 
 func GetUDP6Table() ([]UDP6Row, error) {
-	b, err := GetExtendedUdpTable(0, windows.AF_INET6, UDP_TABLE_OWNER_PID)
+	b, err := GetExtendedUdpTable(0, windows.AF_INET6, _UDP_TABLE_OWNER_PID)
 	if err != nil {
 		return nil, err
 	}

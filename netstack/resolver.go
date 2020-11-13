@@ -11,8 +11,6 @@ import (
 	"github.com/imgk/shadow/common"
 )
 
-var errAddrType = errors.New("not support")
-
 func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 	switch addr.(type) {
 	case *net.TCPAddr:
@@ -32,7 +30,7 @@ func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 	case common.Addr:
 		return addr, nil
 	default:
-		return addr, errAddrType
+		return addr, errors.New("address not support")
 	}
 }
 

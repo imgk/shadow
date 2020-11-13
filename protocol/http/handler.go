@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol"
 )
@@ -25,19 +23,11 @@ func init() {
 	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (common.Handler, error) {
-		return NewHandler(s, timeout)
-	})
 }
 
-var (
-	errNotSupport = errors.New("http proxy does not support UDP")
-	errNetwork    = errors.New("not a supported network protocol")
-)
+type codeError int
 
-type CodeError int
-
-func (e CodeError) Error() string {
+func (e codeError) Error() string {
 	return fmt.Sprintf("http response code error: %v", int(e))
 }
 
@@ -82,25 +72,6 @@ func (d *tlsNewer) New() (net.Conn, error) {
 	return conn, nil
 }
 
-type quicConn struct {
-	quic.Session
-	quic.Stream
-}
-
-type quicNewer struct {
-	addr    string
-	config  tls.Config
-	session quic.Session
-}
-
-func (d *quicNewer) New() (net.Conn, error) {
-	stream, err := d.session.OpenStream()
-	if err != nil {
-		return nil, err
-	}
-	return quicConn{Session: d.session, Stream: stream}, nil
-}
-
 type Handler struct {
 	Newer
 	readers sync.Pool
@@ -125,6 +96,9 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		auth: auth,
 	}
 	switch scheme {
+	case "http":
+		newer := rawNewer{addr: addr}
+		handler.Newer = newer
 	case "https":
 		newer := &tlsNewer{
 			addr: addr,
@@ -135,31 +109,13 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			},
 		}
 		handler.Newer = newer
-	case "http":
-		newer := rawNewer{addr: addr}
-		handler.Newer = newer
-	case "http3":
-		newer := &quicNewer{
-			addr: addr,
-			config: tls.Config{
-				ServerName:         domain,
-				ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				InsecureSkipVerify: false,
-			},
-		}
-		session, err := quic.DialAddr(domain, &newer.config, &quic.Config{})
-		if err != nil {
-			return nil, err
-		}
-		newer.session = session
-		handler.Newer = newer
 	}
 
 	return handler, nil
 }
 
 func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
-	conn, err = h.New()
+	conn, err = h.Newer.New()
 	if err != nil {
 		return
 	}
@@ -190,7 +146,7 @@ func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		err = CodeError(res.StatusCode)
+		err = codeError(res.StatusCode)
 		return
 	}
 
@@ -226,5 +182,5 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 }
 
 func (h *Handler) HandlePacket(conn common.PacketConn) error {
-	return errNotSupport
+	return errors.New("http proxy does not support UDP")
 }

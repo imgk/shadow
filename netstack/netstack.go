@@ -77,29 +77,27 @@ type Stack struct {
 
 	resolver common.Resolver
 	tree     *common.DomainTree
+	hijack   bool
 
 	buffer  sync.Pool
 	counter uint16
 }
 
-func NewStack(handler common.Handler, dev common.Device, resolver common.Resolver, logger *zap.Logger) *Stack {
+func NewStack(handler common.Handler, dev common.Device, resolver common.Resolver, logger *zap.Logger, tree *common.DomainTree, hijack bool) *Stack {
 	s := &Stack{
 		handler:  handler,
 		resolver: resolver,
-		tree:     common.NewDomainTree("."),
-		buffer:   sync.Pool{New: newMessage},
+		tree:     tree,
+		hijack:   hijack,
+		buffer:   sync.Pool{New: newBuffer},
 		counter:  uint16(time.Now().Unix()),
 	}
-	s.Stack.Init(dev.(core.Device), s, logger)
+	s.Stack.Start(dev.(core.Device), s, logger)
 	return s
 }
 
-func newMessage() interface{} {
+func newBuffer() interface{} {
 	return make([]byte, 1024*2)
-}
-
-func (s *Stack) GetDomainTree() *common.DomainTree {
-	return s.tree
 }
 
 func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
@@ -160,7 +158,7 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 		return
 	}
 	if err == ErrNotFake {
-		if target.Port == 53 {
+		if target.Port == 53 && s.hijack {
 			s.Info(fmt.Sprintf("hijack %v <-UDP-> %v", conn.RemoteAddr(), target))
 			s.HandleQuery(conn)
 			return
@@ -200,6 +198,7 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 	return
 }
 
+// handle dns queries
 func (s *Stack) HandleQuery(conn core.PacketConn) {
 	defer conn.Close()
 

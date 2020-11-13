@@ -18,14 +18,6 @@ func newBuffer() interface{} {
 	return make([]byte, 1024+MaxPacketSize)
 }
 
-func Get() []byte {
-	return byteBuffer.Get().([]byte)
-}
-
-func Put(b []byte) {
-	byteBuffer.Put(b)
-}
-
 type CloseReader interface {
 	CloseRead() error
 }
@@ -42,12 +34,6 @@ type Reader struct {
 	left  []byte
 }
 
-func NewReader(reader io.Reader, ciph Cipher) (r *Reader, err error) {
-	r = &Reader{}
-	err = r.init(reader, ciph)
-	return
-}
-
 func (r *Reader) init(reader io.Reader, cipher Cipher) (err error) {
 	r.Reader = reader
 
@@ -62,12 +48,12 @@ func (r *Reader) init(reader io.Reader, cipher Cipher) (err error) {
 	}
 
 	r.nonce = make([]byte, r.AEAD.NonceSize())
-	r.buff = Get()
+	r.buff = byteBuffer.Get().([]byte)
 	return
 }
 
 func (r *Reader) Close() error {
-	Put(r.buff)
+	byteBuffer.Put(r.buff)
 	return nil
 }
 
@@ -154,12 +140,6 @@ type Writer struct {
 	buf    []byte
 }
 
-func NewWriter(writer io.Writer, ciph Cipher) (w *Writer, err error) {
-	w = &Writer{reader: bytes.NewReader(nil)}
-	err = w.init(w, ciph)
-	return w, err
-}
-
 func (w *Writer) init(writer io.Writer, ciph Cipher) error {
 	w.Writer = writer
 	salt := make([]byte, ciph.SaltSize())
@@ -175,7 +155,7 @@ func (w *Writer) init(writer io.Writer, ciph Cipher) error {
 	}
 
 	w.nonce = make([]byte, w.AEAD.NonceSize())
-	w.buff = Get()
+	w.buff = byteBuffer.Get().([]byte)
 	w.buf = w.buff[2+w.Overhead() : 2+w.Overhead()+MaxPacketSize+w.Overhead()]
 
 	_, err = w.Writer.Write(salt)
@@ -183,7 +163,7 @@ func (w *Writer) init(writer io.Writer, ciph Cipher) error {
 }
 
 func (w *Writer) Close() error {
-	Put(w.buff)
+	byteBuffer.Put(w.buff)
 	return nil
 }
 

@@ -45,8 +45,8 @@ func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	buff := Get()
-	defer Put(buff)
+	buff := byteBuffer.Get().([]byte)
+	defer byteBuffer.Put(buff)
 
 	n, addr, err := pc.PacketConn.ReadFrom(buff)
 	if err != nil {
@@ -82,8 +82,8 @@ func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	buff := Get()
-	defer Put(buff)
+	buff := byteBuffer.Get().([]byte)
+	defer byteBuffer.Put(buff)
 
 	bb, err := Pack(buff, b, pc.c)
 	if err != nil {
