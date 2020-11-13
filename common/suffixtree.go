@@ -128,19 +128,3 @@ func (n *node) load(ks []string) interface{} {
 		return struct{}{}
 	}
 }
-
-func (t *DomainTree) Reset() {
-	t.Lock()
-	t.reset()
-	t.Unlock()
-}
-func (t *DomainTree) UnsafeReset() {
-	t.reset()
-}
-func (n *node) reset() {
-	n.value = nil
-	for k, v := range n.branch {
-		v.reset()
-		delete(n.branch, k)
-	}
-}
