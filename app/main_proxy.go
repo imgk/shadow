@@ -197,7 +197,7 @@ func (s *proxyServer) Serve() {
 // serve as a http server and http proxy server
 // support GET and CONNECT method
 func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/debug/pprof/") || r.URL.Host == "" || r.Header.Get("Host") == "" {
+	if strings.HasPrefix(r.URL.Path, "/debug/pprof/") || r.URL.Host == "" {
 		http.DefaultServeMux.ServeHTTP(w, r)
 		return
 	}
