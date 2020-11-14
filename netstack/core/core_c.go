@@ -4,8 +4,8 @@ package core
 
 import (
 	"fmt"
-	"net"
 	"io"
+	"net"
 	"sync"
 
 	"github.com/eycorsican/go-tun2socks/core"
