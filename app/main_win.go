@@ -75,6 +75,11 @@ func (app *App) Run() (err error) {
 	if err != nil {
 		return
 	}
+	defer func() {
+		if err != nil l{
+			ipFilter.Close()
+		}
+	}()
 	// new windivert device
 	dev, err := windivert.NewDevice(app.Conf.FilterString, appFilter, ipFilter, true)
 	if err != nil {
