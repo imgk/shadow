@@ -59,6 +59,10 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	return
 }
 
+func (d *Device) Read(b []byte) (int, error) {
+	return d.NativeTun.Read(b, 0)
+}
+
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	b := make([]byte, d.MTU)
 	for {
