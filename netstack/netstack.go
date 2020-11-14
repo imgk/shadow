@@ -83,8 +83,8 @@ type Stack struct {
 	counter uint16
 }
 
-func NewStack(handler common.Handler, dev common.Device, resolver common.Resolver, logger *zap.Logger, tree *common.DomainTree, hijack bool) *Stack {
-	s := &Stack{
+func NewStack(handler common.Handler, resolver common.Resolver, tree *common.DomainTree, hijack bool) *Stack {
+	return &Stack{
 		handler:  handler,
 		resolver: resolver,
 		tree:     tree,
@@ -92,8 +92,10 @@ func NewStack(handler common.Handler, dev common.Device, resolver common.Resolve
 		buffer:   sync.Pool{New: newBuffer},
 		counter:  uint16(time.Now().Unix()),
 	}
-	s.Stack.Start(dev.(core.Device), s, logger)
-	return s
+}
+
+func (s *Stack) Start(dev common.Device, logger *zap.Logger) error {
+	return s.Stack.Start(dev.(core.Device), s, logger)
 }
 
 func newBuffer() interface{} {

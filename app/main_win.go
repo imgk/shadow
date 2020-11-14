@@ -93,8 +93,12 @@ func (app *App) Run() (err error) {
 		return
 	}
 	// new netstack
-	stack := netstack.NewStack(handler, dev, resolver, app.Logger, tree, true)
+	stack := netstack.NewStack(handler, resolver, tree, true)
 	app.attachCloser(stack)
+	err = stack.Start(dev, app.Logger)
+	if err != nil {
+		return
+	}
 
 	// new socks5/http proxy
 	if addr := app.Conf.ProxyServer; addr != "" {

@@ -24,7 +24,7 @@ type Stack struct {
 	conns map[core.UDPConn]*UDPConn
 }
 
-func (s *Stack) Start(device Device, handler Handler, logger *zap.Logger) {
+func (s *Stack) Start(device Device, handler Handler, logger *zap.Logger) error {
 	s.Logger = logger
 
 	s.Device = device
@@ -37,6 +37,7 @@ func (s *Stack) Start(device Device, handler Handler, logger *zap.Logger) {
 	core.RegisterUDPConnHandler(s)
 
 	go s.readLoop(device)
+	return nil
 }
 
 func (s *Stack) Write(b []byte) (int, error) {
