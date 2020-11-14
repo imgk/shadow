@@ -76,7 +76,7 @@ func (app *App) Run() (err error) {
 		return
 	}
 	defer func() {
-		if err != nil l{
+		if err != nil {
 			ipFilter.Close()
 		}
 	}()
