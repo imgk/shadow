@@ -168,7 +168,10 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	case packet := <-conn.stream:
 		n = copy(b, packet.Byte)
 		addr = packet.Addr
-		conn.read <- struct{}{}
+		select {
+		case <- conn.closed:
+		case conn.read <- struct{}{}:
+		}
 	}
 
 	return
@@ -182,6 +185,9 @@ func (conn *UDPConn) HandlePacket(b []byte, addr *net.UDPAddr) {
 	select {
 	case <-conn.closed:
 	case conn.stream <- Packet{Addr: addr, Byte: b}:
-		<-conn.read
+		select {
+		case <-conn.closed:
+		case <-conn.read:
+		}
 	}
 }
