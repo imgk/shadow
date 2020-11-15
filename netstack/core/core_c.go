@@ -51,6 +51,9 @@ func (s *Stack) readLoop(rt io.WriterTo) {
 }
 
 func (s *Stack) Close() error {
+	for _, conn := range s.conns {
+		conn.Close()
+	}
 	return multierr.Combine(s.Logger.Sync(), s.Stack.Close())
 }
 
@@ -169,7 +172,7 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 		n = copy(b, packet.Byte)
 		addr = packet.Addr
 		select {
-		case <- conn.closed:
+		case <-conn.closed:
 		case conn.read <- struct{}{}:
 		}
 	}
