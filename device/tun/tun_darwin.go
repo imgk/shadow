@@ -24,29 +24,30 @@ func NewDeviceFromFile(file *os.File, mtu int) (dev *Device, err error) {
 		return
 	}
 	dev.MTU = mtu
+	dev.buf = make([]byte, 4+dev.MTU)
 	dev.buff = make([]byte, 4+dev.MTU)
 	return
 }
 
 const (
-	RTM_ADD     = 1
-	RTM_DELETE  = 2
-	RTM_VERSION = 5
+	_RTM_ADD     = 1
+	_RTM_DELETE  = 2
+	_RTM_VERSION = 5
 
-	IOC_OUT   = 0x40000000
-	IOC_IN    = 0x80000000
-	IOC_INOUT = IOC_IN | IOC_OUT
+	_IOC_OUT   = 0x40000000
+	_IOC_IN    = 0x80000000
+	_IOC_INOUT = _IOC_IN | _IOC_OUT
 
 	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/in6_var.h
 	// #define SIOCAIFADDR_IN6	   _IOW('i', 26, struct in6_aliasreq)
 	// #define SIOCPROTOATTACH_IN6 _IOWR('i', 110, struct in6_aliasreq_64)
 	// #define SIOCLL_START        _IOWR('i', 130, struct in6_aliasreq)
-	SIOCAIFADDR_IN6     = IOC_IN | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 26
-	SIOCPROTOATTACH_IN6 = IOC_INOUT | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 110
-	SIOCLL_START        = IOC_INOUT | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 130
+	_SIOCAIFADDR_IN6     = _IOC_IN | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 26
+	_SIOCPROTOATTACH_IN6 = _IOC_INOUT | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 110
+	_SIOCLL_START        = _IOC_INOUT | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 130
 
 	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/nd6.h#L469
-	ND6_INFINITE_LIFETIME = 0xffffffff
+	_ND6_INFINITE_LIFETIME = 0xffffffff
 )
 
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
@@ -143,15 +144,15 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 			Addr:   d.Conf6.Mask,
 		},
 		ifra_lifetime: in6_addrlifetime{
-			ia6t_expire:    ND6_INFINITE_LIFETIME,
-			ia6t_preferred: ND6_INFINITE_LIFETIME,
-			ia6t_vltime:    ND6_INFINITE_LIFETIME,
-			ia6t_pltime:    ND6_INFINITE_LIFETIME,
+			ia6t_expire:    _ND6_INFINITE_LIFETIME,
+			ia6t_preferred: _ND6_INFINITE_LIFETIME,
+			ia6t_vltime:    _ND6_INFINITE_LIFETIME,
+			ia6t_pltime:    _ND6_INFINITE_LIFETIME,
 		},
 	}
 	copy(in6_ifra.ifra_name[:], []byte(d.Name))
 
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCAIFADDR_IN6), uintptr(unsafe.Pointer(&in6_ifra))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(_SIOCAIFADDR_IN6), uintptr(unsafe.Pointer(&in6_ifra))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCAIFADDR_IN6", errno)
 	}
 
@@ -165,11 +166,11 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 	copy(in6_ifr.ifra_name[:], []byte(d.Name))
 
 	// Attach link-local address
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCPROTOATTACH_IN6), uintptr(unsafe.Pointer(&in6_ifr))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(_SIOCPROTOATTACH_IN6), uintptr(unsafe.Pointer(&in6_ifr))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCPROTOATTACH_IN6", errno)
 	}
 
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(SIOCLL_START), uintptr(unsafe.Pointer(&in6_ifr))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(_SIOCLL_START), uintptr(unsafe.Pointer(&in6_ifr))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCLL_START", errno)
 	}
 
@@ -269,8 +270,8 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
 	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + l + l)
-	msg.hdr.rtm_version = RTM_VERSION
-	msg.hdr.rtm_type = RTM_ADD
+	msg.hdr.rtm_version = _RTM_VERSION
+	msg.hdr.rtm_type = _RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
 	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
 	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
@@ -338,8 +339,8 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
 	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + n + l)
-	msg.hdr.rtm_version = RTM_VERSION
-	msg.hdr.rtm_type = RTM_ADD
+	msg.hdr.rtm_version = _RTM_VERSION
+	msg.hdr.rtm_type = _RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
 	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
 	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
