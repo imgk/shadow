@@ -63,7 +63,7 @@ func (d *Device) ReadOffset(b []byte, offset int) (int, error) {
 }
 
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
-	b := make([]byte, 4+d.MTU)
+	b := d.buf
 	for {
 		nr, er := d.NativeTun.Read(b, 4)
 		if nr > 0 {
