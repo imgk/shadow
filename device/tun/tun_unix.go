@@ -46,16 +46,14 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	return
 }
 
-func (d *Device) Read(b []byte) (int, error) {
-	n, err := d.NativeTun.Read(d.buf, 4)
-	if err != nil {
-		return 0, err
+func (d *Device) Read(b []byte) (n int, err error) {
+	n, err = d.NativeTun.Read(d.buf, 4)
+	if len(b) < n {
+		err = io.ErrShortBuffer
+		return
 	}
-	if len(b) < n - 4 {
-		return 0, io.ErrShortBuffer
-	}
-	n = copy(b, d.buf[4:n])
-	return n, err
+	copy(b, d.buf[4:4+n])
+	return
 }
 
 func (d *Device) ReadOffset(b []byte, offset int) (int, error) {
@@ -93,9 +91,10 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (d *Device) Write(b []byte) (int, error) {
-	n := copy(d.buff[4:], b)
-	return d.NativeTun.Write(d.buff[:4+n], 4)
+func (d *Device) Write(b []byte) (n int, err error) {
+	n = copy(d.buff[4:], b)
+	_, err = d.NativeTun.Write(d.buff[:4+n], 4)
+	return 
 }
 
 func (d *Device) WriteOffset(b []byte, offset int) (int, error) {
@@ -107,15 +106,15 @@ func (d *Device) ReadFrom(r io.Reader) (n int64, err error) {
 	for {
 		nr, er := r.Read(b[4:])
 		if nr > 0 {
-			nw, ew := d.NativeTun.Write(b[:4+n], 4)
+			nw, ew := d.NativeTun.Write(b[:4+nr], 4)
 			if nw > 0 {
-				n += int64(nw)
+				n += int64(nw-4)
 			}
 			if ew != nil {
 				err = ew
 				break
 			}
-			if nr != nw {
+			if nr != nw-4 {
 				err = io.ErrShortWrite
 				break
 			}
