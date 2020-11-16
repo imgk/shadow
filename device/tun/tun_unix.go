@@ -94,7 +94,7 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 func (d *Device) Write(b []byte) (n int, err error) {
 	n = copy(d.buff[4:], b)
 	_, err = d.NativeTun.Write(d.buff[:4+n], 4)
-	return 
+	return
 }
 
 func (d *Device) WriteOffset(b []byte, offset int) (int, error) {
@@ -108,7 +108,7 @@ func (d *Device) ReadFrom(r io.Reader) (n int64, err error) {
 		if nr > 0 {
 			nw, ew := d.NativeTun.Write(b[:4+nr], 4)
 			if nw > 0 {
-				n += int64(nw-4)
+				n += int64(nw - 4)
 			}
 			if ew != nil {
 				err = ew
