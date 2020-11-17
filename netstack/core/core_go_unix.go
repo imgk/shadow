@@ -39,9 +39,9 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	if !ok {
 		return
 	}
-	go func(r ReaderOffset, mtu int, ep *channel.Endpoint) {
+	go func(r ReaderOffset, size int, ep *channel.Endpoint) {
 		for {
-			buf := make([]byte, 4+mtu)
+			buf := make([]byte, size)
 			n, err := r.ReadOffset(buf, 4)
 			if err != nil {
 				break
@@ -59,7 +59,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 				})
 			}
 		}
-	}(r, e.mtu, e.Endpoint)
+	}(r, 4+e.mtu, e.Endpoint)
 }
 
 func (e *Endpoint) WriteNotify() {

@@ -45,9 +45,9 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 		}(e, e.dev)
 		return
 	}
-	go func(r io.Reader, mtu int, ep *channel.Endpoint) {
+	go func(r io.Reader, size int, ep *channel.Endpoint) {
 		for {
-			buf := make([]byte, mtu)
+			buf := make([]byte, size)
 			n, err := r.Read(buf)
 			if err != nil {
 				break

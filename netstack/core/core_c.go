@@ -162,9 +162,9 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 		err = timeoutError{}
 	case <-conn.closed:
 		err = io.EOF
-	case packet := <-conn.stream:
-		n = copy(b, packet.Byte)
-		addr = packet.Addr
+	case pkt := <-conn.stream:
+		n = copy(b, pkt.Byte)
+		addr = pkt.Addr
 		select {
 		case <-conn.closed:
 		case conn.read <- struct{}{}:
