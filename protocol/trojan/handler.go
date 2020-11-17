@@ -41,7 +41,7 @@ type Dialer struct {
 	addr   string
 }
 
-func (d Dialer) Dial(network, addr string) (net.Conn, error) {
+func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
 	conn, err := d.dialer.Dial(network, d.addr)
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
@@ -49,7 +49,7 @@ func (d Dialer) Dial(network, addr string) (net.Conn, error) {
 	return conn, err
 }
 
-func (d Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	conn, err := d.dialer.DialContext(ctx, network, d.addr)
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
@@ -91,7 +91,7 @@ func (h *WebSocket) Connect() (conn net.Conn, err error) {
 	return
 }
 
-type Mux struct {
+type MuxConfig struct {
 	sync.Mutex
 	config smux.Config
 	max    int
@@ -101,7 +101,7 @@ type Mux struct {
 type Handler struct {
 	connector  Connector
 	cipher     core.Cipher
-	mux        Mux
+	mux        MuxConfig
 	muxEnabled bool
 
 	header  [HeaderLen + 2 + 8 + 2]byte
@@ -168,7 +168,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	case "off":
 		hd.muxEnabled = false
 	case "v1":
-		hd.mux = Mux{
+		hd.mux = MuxConfig{
 			Mutex: sync.Mutex{},
 			config: smux.Config{
 				Version:           1,
@@ -188,7 +188,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		hd.ticker = time.NewTicker(time.Minute * 3)
 		go hd.closeIdleSession()
 	case "v2":
-		hd.mux = Mux{
+		hd.mux = MuxConfig{
 			Mutex: sync.Mutex{},
 			config: smux.Config{
 				Version:           2,
