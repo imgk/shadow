@@ -36,18 +36,12 @@ func (s *Stack) Start(device Device, handler Handler, logger *zap.Logger) error 
 	core.RegisterTCPConnHandler(s)
 	core.RegisterUDPConnHandler(s)
 
-	go s.readLoop(device)
+	go func(s *Stack, wt io.WriterTo) {
+		if _, err := wt.WriteTo(s.Stack); err != nil {
+			s.Error(fmt.Sprintf("netstack exit error: %v", err))
+		}
+	}(s, device)
 	return nil
-}
-
-func (s *Stack) Write(b []byte) (int, error) {
-	return s.Stack.Write(b)
-}
-
-func (s *Stack) readLoop(rt io.WriterTo) {
-	if _, err := rt.WriteTo(s); err != nil {
-		s.Error(fmt.Sprintf("netstack exit error: %v", err))
-	}
 }
 
 func (s *Stack) Close() error {
