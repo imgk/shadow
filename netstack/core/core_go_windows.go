@@ -3,7 +3,6 @@
 package core
 
 import (
-	"C" // avoiding error: "too many .rsrc sections"
 	"io"
 	"sync"
 
