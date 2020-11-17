@@ -3,6 +3,7 @@ package netstack
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -119,7 +120,8 @@ func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 			}
 		} else {
 			ip := target.IP.To16()
-			if ip[0] == 0xfe && ip[1] == 0x80 {
+			if ip[0] == 0xfe && ip[1] == 0x80 ||
+				(ip[0] == 0xff && ip[1] == 0x02) {
 				s.Info(fmt.Sprintf("ignore conns to %v", target))
 				conn.Close()
 				return
@@ -179,7 +181,8 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 			}
 		} else {
 			ip := target.IP.To16()
-			if ip[0] == 0xfe && ip[1] == 0x80 {
+			if ip[0] == 0xfe && ip[1] == 0x80 ||
+				(ip[0] == 0xff && ip[1] == 0x02) {
 				s.Info(fmt.Sprintf("ignore packets to %v", target))
 				conn.Close()
 				return
@@ -216,6 +219,9 @@ func (s *Stack) HandleQuery(conn core.PacketConn) {
 				if ne.Timeout() {
 					break
 				}
+			}
+			if err == io.EOF {
+				break
 			}
 			s.Error(fmt.Sprintf("read dns error: %v", err))
 			break
