@@ -20,21 +20,21 @@ func NewPacketConn(conn core.PacketConn, target net.Addr, addr net.Addr, stack *
 		return udpConn{PacketConn: conn, Stack: stack}
 	}
 
-	return fakeConn{PacketConn: conn, fake: target, real: addr}
+	return fakeUDPConn{PacketConn: conn, fake: target, real: addr}
 }
 
-type fakeConn struct {
+type fakeUDPConn struct {
 	core.PacketConn
 	fake net.Addr
 	real net.Addr
 }
 
-func (conn fakeConn) ReadTo(b []byte) (int, net.Addr, error) {
+func (conn fakeUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
 	n, _, err := conn.PacketConn.ReadTo(b)
 	return n, conn.real, err
 }
 
-func (conn fakeConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+func (conn fakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.PacketConn.WriteFrom(b, conn.fake)
 }
 
