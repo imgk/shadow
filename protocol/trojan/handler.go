@@ -108,6 +108,7 @@ type Handler struct {
 	timeout time.Duration
 	server  string
 	ticker  *time.Ticker
+	closed  chan struct{}
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
@@ -186,6 +187,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 
 		hd.muxEnabled = true
 		hd.ticker = time.NewTicker(time.Minute * 3)
+		hd.closed = make(chan struct{})
 		go hd.closeIdleSession()
 	case "v2":
 		hd.mux = MuxConfig{
@@ -206,6 +208,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 
 		hd.muxEnabled = true
 		hd.ticker = time.NewTicker(time.Minute * 3)
+		hd.closed = make(chan struct{})
 		go hd.closeIdleSession()
 	}
 
@@ -215,12 +218,20 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 func (h *Handler) Close() error {
 	if h.ticker != nil {
 		h.ticker.Stop()
+		close(h.closed)
 	}
 	return nil
 }
 
 func (h *Handler) closeIdleSession() {
-	for range h.ticker.C {
+LOOP:
+	for {
+		select {
+		case <- h.ticker.C:
+		case <- h.closed:
+			break LOOP
+		}
+
 		h.mux.Lock()
 		for sess, _ := range h.mux.conns {
 			if sess.IsClosed() {
