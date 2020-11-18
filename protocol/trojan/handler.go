@@ -269,7 +269,7 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 					go func(sess *smux.Session) {
 						t := time.NewTicker(time.Minute)
 						for range t.C {
-							if sess.NumStreams() == 0 {
+							if sess.IsClosed() || sess.NumStreams() == 0 {
 								sess.Close()
 								t.Stop()
 								return
@@ -279,7 +279,10 @@ func (h *Handler) ConnectMux() (conn net.Conn, err error) {
 					delete(h.mux.conns, sess)
 					continue
 				}
-				continue
+				if sess.IsClosed() || sess.NumStreams() == 0 {
+					delete(h.mux.conns, sess)
+					continue
+				}
 			}
 
 			h.mux.Unlock()
