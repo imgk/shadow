@@ -1,4 +1,4 @@
-// +build !shadow_gvisor
+// +build shadow_cgo
 
 package core
 

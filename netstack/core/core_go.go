@@ -1,5 +1,3 @@
-// +build shadow_gvisor
-
 package core
 
 import (
@@ -236,9 +234,7 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 
 	// set keepalive
 	if err := func(ep tcpip.Endpoint) error {
-		if tcperr := ep.SetSockOptBool(tcpip.KeepaliveEnabledOption, true); tcperr != nil {
-			return fmt.Errorf("set keepalive: %s", tcperr)
-		}
+		ep.SocketOptions().SetKeepAlive(true)
 		idleOpt := tcpip.KeepaliveIdleOption(60 * time.Second)
 		if tcperr := ep.SetSockOpt(&idleOpt); tcperr != nil {
 			return fmt.Errorf("set keepalive idle: %s", tcperr)

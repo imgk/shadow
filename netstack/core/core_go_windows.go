@@ -1,4 +1,4 @@
-// +build shadow_gvisor,windows
+// +build windows
 
 package core
 

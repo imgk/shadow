@@ -20,4 +20,4 @@ require (
 	gvisor.dev/gvisor v0.0.0-20201119000631-7158095d687d
 )
 
-replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20201119001041-39603900af85
+replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20201119071348-817a3a5fa787

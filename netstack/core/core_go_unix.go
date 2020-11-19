@@ -1,4 +1,4 @@
-// +build shadow_gvisor,linux shadow_gvisor,darwin
+// +build linux darwin
 
 package core
 
