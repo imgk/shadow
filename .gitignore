@@ -31,3 +31,5 @@ Temporary Items
 *.exe
 *.json
 *.mmdb
+*.syso
+*.dll
