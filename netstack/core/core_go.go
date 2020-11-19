@@ -1,3 +1,5 @@
+// +build !shadow_cgo
+
 package core
 
 import (

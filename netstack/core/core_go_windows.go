@@ -1,3 +1,4 @@
+// +build !shadow_cgo
 // +build windows
 
 package core
