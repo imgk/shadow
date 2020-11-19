@@ -10,7 +10,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/miekg/dns"
 	"go.uber.org/multierr"
@@ -190,15 +189,29 @@ func (s *proxyServer) Serve() {
 		if err != nil {
 			return
 		}
-		go s.handle(conn)
+		go func(c net.Conn) {
+			pc, b, ok, err := s.handshake(c)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return
+				}
+				s.Error(fmt.Sprintf("handshake error: %v", err))
+				return
+			}
+			if ok {
+				s.proxySocks(c, pc, b)
+				return
+			}
+			s.listener.Receive(newFakeConn(c, io.MultiReader(bytes.NewReader(b), c)))
+		}(conn)
 	}
 }
 
 // serve as a http server and http proxy server
 // support GET and CONNECT method
 func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/debug/pprof/") || r.URL.Host == "" {
-		http.DefaultServeMux.ServeHTTP(w, r)
+	if handler, pattern := http.DefaultServeMux.Handler(r); pattern != "" {
+		handler.ServeHTTP(w, r)
 		return
 	}
 
@@ -208,7 +221,7 @@ func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodConnect:
 		s.proxyConnect(w, r)
 	default:
-		http.DefaultServeMux.ServeHTTP(w, r)
+		http.HandlerFunc(http.NotFound).ServeHTTP(w, r)
 	}
 }
 
@@ -224,23 +237,7 @@ func (s *proxyServer) Close() (err error) {
 	return
 }
 
-func (s *proxyServer) handle(conn net.Conn) {
-	pc, b, ok, err := s.handshake(conn)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return
-		}
-		s.Error(fmt.Sprintf("handshake error: %v", err))
-		return
-	}
-	if ok {
-		s.proxySocks(conn, pc, b)
-		return
-	}
-	s.listener.Receive(newFakeConn(conn, io.MultiReader(bytes.NewReader(b), conn)))
-}
-
-func (s *proxyServer) LookupIP(ip net.IP, b []byte) (common.Addr, error) {
+func (s *proxyServer) lookupIP(ip net.IP, b []byte) (common.Addr, error) {
 	option := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2]))
 	if rr, ok := option.(*dns.PTR); ok {
 		b[0] = common.AddrTypeDomain
@@ -315,7 +312,7 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		if bb[1] == 198 && bb[2] == 18 {
 			p1 := bb[1+net.IPv4len]
 			p2 := bb[1+net.IPv4len+1]
-			tgt, err = s.LookupIP(net.IP(bb[1:1+net.IPv4len]), bb)
+			tgt, err = s.lookupIP(net.IP(bb[1:1+net.IPv4len]), bb)
 			if err != nil {
 				return
 			}
@@ -382,7 +379,7 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 // handle http proxy GET
 func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	b := [common.MaxAddrLen]byte{}
-	addr, err := s.ParseAddr(r.URL.Host, "80", b[:])
+	addr, err := s.parseAddr(r.URL.Host, "80", b[:])
 	if err != nil {
 		if errors.Is(err, errors.New("address error")) {
 			return
@@ -400,7 +397,11 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	defer dst.Close()
 
 	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", r.RemoteAddr, addr))
-	go s.Handle(dst, addr)
+	go func(conn net.Conn, addr net.Addr) {
+		if err := s.handler.Handle(conn, addr); err != nil {
+			s.Error(fmt.Sprintf("handle http conn error: %v", err))
+		}
+	}(dst, addr)
 
 	resp, err := t.RoundTrip(r)
 	if err != nil {
@@ -423,18 +424,12 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *proxyServer) Handle(conn net.Conn, addr net.Addr) {
-	if err := s.handler.Handle(conn, addr); err != nil {
-		s.Error(fmt.Sprintf("handle http conn error: %v", err))
-	}
-}
-
 // handle http proxy CONNECT
 func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 	host, port, _ := net.SplitHostPort(r.URL.Host)
 
 	b := [common.MaxAddrLen]byte{}
-	addr, err := s.ParseAddr(host, port, b[:])
+	addr, err := s.parseAddr(host, port, b[:])
 	if err != nil {
 		s.Error(fmt.Sprintf("parse url host error: %v", err))
 		return
@@ -459,7 +454,7 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *proxyServer) ParseAddr(host, port string, b []byte) (common.Addr, error) {
+func (s *proxyServer) parseAddr(host, port string, b []byte) (common.Addr, error) {
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return nil, err
@@ -485,7 +480,7 @@ func (s *proxyServer) ParseAddr(host, port string, b []byte) (common.Addr, error
 			return b[:1+net.IPv6len+2], nil
 		} else {
 			if ipv4[0] == 198 && ipv4[1] == 18 {
-				addr, err := s.LookupIP(ipv4, b[:])
+				addr, err := s.lookupIP(ipv4, b[:])
 				addr[len(addr)-2] = byte(p >> 8)
 				addr[len(addr)-1] = byte(p)
 				return addr, err
