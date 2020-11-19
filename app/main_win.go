@@ -1,4 +1,4 @@
-// +build windows,!wintun
+// +build windows,shadow_divert
 
 package app
 

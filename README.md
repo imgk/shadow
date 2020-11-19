@@ -5,11 +5,11 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 ## How to build
 
 ```
-# linux darwin windivert
+# linux darwin windows,wintun
 go get -v -ldflags="-s -w" -trimpath github.com/imgk/shadow
 
-# wintun
-go get -v -ldflags="-s -w" -trimpath -tags=wintun github.com/imgk/shadow
+# windows,windivert
+go get -v -ldflags="-s -w" -trimpath -tags=shadow_divert github.com/imgk/shadow
 ```
 
 ## How to use it

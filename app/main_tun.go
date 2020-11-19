@@ -1,4 +1,4 @@
-// +build linux darwin windows,wintun
+// +build linux darwin windows,!shadow_divert
 
 package app
 
