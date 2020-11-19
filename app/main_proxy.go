@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/miekg/dns"
 	"go.uber.org/multierr"
@@ -133,7 +134,7 @@ func (pc fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	if err != nil {
 		return
 	}
-	addr = tgt
+	addr = common.Addr(append(make([]byte, 0, len(tgt)), tgt...))
 	n = copy(b, buf[3+len(tgt):n])
 	return
 }
@@ -358,12 +359,15 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 						continue
 					}
 				}
-				pc.Close()
+				pc.SetReadDeadline(time.Now())
 			}
 		}(conn, pc)
 
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> all", addr))
 		if err := s.handler.HandlePacket(newPacketConn(src, pc)); err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				return
+			}
 			s.Error(fmt.Sprintf("handle udp error: %v", err))
 		}
 		return
