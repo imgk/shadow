@@ -257,8 +257,7 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 	}
 	if b[0] != 0x05 {
 		ok = false
-		tgt = make([]byte, 2)
-		copy(tgt, b[:2])
+		tgt = append(make([]byte, 0, 2), b[:2]...)
 		return
 	}
 	ok = true
@@ -376,12 +375,14 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 	}
 }
 
+var errEmptyAddress = errors.New("nil address error")
+
 // handle http proxy GET
 func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	b := [common.MaxAddrLen]byte{}
-	addr, err := s.parseAddr(r.URL.Host, "80", b[:])
+	addr, err := s.parseAddr(r.Host, "80", b[:])
 	if err != nil {
-		if errors.Is(err, errors.New("address error")) {
+		if errors.Is(err, errEmptyAddress) {
 			return
 		}
 		s.Error(fmt.Sprintf("parse url host error: %v", err))
@@ -426,7 +427,10 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 
 // handle http proxy CONNECT
 func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
-	host, port, _ := net.SplitHostPort(r.URL.Host)
+	host, port, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		return
+	}
 
 	b := [common.MaxAddrLen]byte{}
 	addr, err := s.parseAddr(host, port, b[:])
@@ -461,7 +465,7 @@ func (s *proxyServer) parseAddr(host, port string, b []byte) (common.Addr, error
 	}
 	if ip := net.ParseIP(host); ip == nil {
 		if host == "" {
-			return nil, errors.New("nil address error")
+			return nil, errEmptyAddress
 		}
 		b[0] = common.AddrTypeDomain
 		b[1] = byte(len(host))
