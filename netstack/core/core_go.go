@@ -9,6 +9,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"unsafe"
 
 	"golang.org/x/time/rate"
 
@@ -463,77 +464,19 @@ func (conn *UDPConn) HandlePacket(b []byte, addr *net.UDPAddr) {
 	}
 }
 
+// use unsafe package
+var _ unsafe.Pointer = unsafe.Pointer(nil)
+
 // sendUDP sends a UDP segment via the provided network endpoint and under the
 // provided identity.
 //
-// sendUDP gvisor.dev/gvisor/pkg/tcpip/transport/udp.sendUDP
-func sendUDP(r *stack.Route, data buffer.VectorisedView, localPort, remotePort uint16, ttl uint8, useDefaultTTL bool, tos uint8, owner tcpip.PacketOwner, noChecksum bool) *tcpip.Error {
-	const ProtocolNumber = header.UDPProtocolNumber
-
-	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
-		ReserveHeaderBytes: header.UDPMinimumSize + int(r.MaxHeaderLength()),
-		Data:               data,
-	})
-	pkt.Owner = owner
-
-	// Initialize the UDP header.
-	udp := header.UDP(pkt.TransportHeader().Push(header.UDPMinimumSize))
-	pkt.TransportProtocolNumber = ProtocolNumber
-
-	length := uint16(pkt.Size())
-	udp.Encode(&header.UDPFields{
-		SrcPort: localPort,
-		DstPort: remotePort,
-		Length:  length,
-	})
-
-	// Set the checksum field unless TX checksum offload is enabled.
-	// On IPv4, UDP checksum is optional, and a zero value indicates the
-	// transmitter skipped the checksum generation (RFC768).
-	// On IPv6, UDP checksum is not optional (RFC2460 Section 8.1).
-	if r.RequiresTXTransportChecksum() &&
-		(!noChecksum || r.NetProto == header.IPv6ProtocolNumber) {
-		xsum := r.PseudoHeaderChecksum(ProtocolNumber, length)
-		for _, v := range data.Views() {
-			xsum = header.Checksum(v, xsum)
-		}
-		udp.SetChecksum(^udp.CalculateChecksum(xsum))
-	}
-
-	if useDefaultTTL {
-		ttl = r.DefaultTTL()
-	}
-	if err := r.WritePacket(nil /* gso */, stack.NetworkHeaderParams{
-		Protocol: ProtocolNumber,
-		TTL:      ttl,
-		TOS:      tos,
-	}, pkt); err != nil {
-		r.Stats().UDP.PacketSendErrors.Increment()
-		return err
-	}
-
-	// Track count of packets sent.
-	r.Stats().UDP.PacketsSent.Increment()
-	return nil
-}
+//go:linkname sendUDP gvisor.dev/gvisor/pkg/tcpip/transport/udp.sendUDP
+func sendUDP(r *stack.Route, data buffer.VectorisedView, localPort, remotePort uint16, ttl uint8, useDefaultTTL bool, tos uint8, owner tcpip.PacketOwner, noChecksum bool) *tcpip.Error
 
 // verifyChecksum verifies the checksum unless RX checksum offload is enabled.
 // On IPv4, UDP checksum is optional, and a zero value means the transmitter
 // omitted the checksum generation (RFC768).
 // On IPv6, UDP checksum is not optional (RFC2460 Section 8.1).
 //
-// verifyChecksum gvisor.dev/gvisor/pkg/tcpip/transport/udp.verifyChecksum
-func verifyChecksum(hdr header.UDP, pkt *stack.PacketBuffer) bool {
-	const ProtocolNumber = header.UDPProtocolNumber
-
-	if !pkt.RXTransportChecksumValidated &&
-		(hdr.Checksum() != 0 || pkt.NetworkProtocolNumber == header.IPv6ProtocolNumber) {
-		netHdr := pkt.Network()
-		xsum := header.PseudoHeaderChecksum(ProtocolNumber, netHdr.DestinationAddress(), netHdr.SourceAddress(), hdr.Length())
-		for _, v := range pkt.Data.Views() {
-			xsum = header.Checksum(v, xsum)
-		}
-		return hdr.CalculateChecksum(xsum) == 0xffff
-	}
-	return true
-}
+//go:linkname verifyChecksum gvisor.dev/gvisor/pkg/tcpip/transport/udp.verifyChecksum
+func verifyChecksum(hdr header.UDP, pkt *stack.PacketBuffer) bool
