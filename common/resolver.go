@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -99,9 +100,13 @@ func NewResolver(s string) (Resolver, error) {
 			return nil, err
 		}
 
+		domain := u.Host
+		if u.Fragment != "" {
+			domain = u.Fragment
+		}
 		resolver := &TLSResolver{
 			Conf: &tls.Config{
-				ServerName:         u.Host,
+				ServerName:         domain,
 				ClientSessionCache: tls.NewLRUClientSessionCache(32),
 				InsecureSkipVerify: false,
 			},
@@ -115,17 +120,21 @@ func NewResolver(s string) (Resolver, error) {
 			return nil, err
 		}
 
+		domain := u.Host
+		if u.Fragment != "" {
+			domain = u.Fragment
+		}
 		resolver := &HTTPSResolverPost{
 			Dialer: Dialer{
 				Dialer: net.Dialer{},
 				server: addr.String(),
 				config: &tls.Config{
-					ServerName:         u.Host,
+					ServerName:         domain,
 					ClientSessionCache: tls.NewLRUClientSessionCache(32),
 					InsecureSkipVerify: false,
 				},
 			},
-			BaseUrl: s,
+			BaseUrl: strings.TrimSuffix(s, "#"+domain),
 			Timeout: time.Second * 3,
 			Client: http.Client{
 				Timeout: time.Second * 3,

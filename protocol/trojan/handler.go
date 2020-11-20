@@ -227,8 +227,8 @@ func (h *Handler) closeIdleSession() {
 LOOP:
 	for {
 		select {
-		case <- h.ticker.C:
-		case <- h.closed:
+		case <-h.ticker.C:
+		case <-h.closed:
 			break LOOP
 		}
 
