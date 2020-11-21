@@ -1,3 +1,5 @@
+// Shadow: A Transparent Proxy for Windows, Linux and macOS
+
 package main
 
 import (
@@ -5,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -22,22 +25,26 @@ import (
 
 func main() {
 	var conf struct {
-		Mode bool
-		File string
+		Verbose  bool
+		FilePath string
+		Timeout  time.Duration
 	}
-	flag.BoolVar(&conf.Mode, "v", false, "enable verbose mode")
-	flag.StringVar(&conf.File, "c", "config.json", "config file")
+	flag.BoolVar(&conf.Verbose, "v", false, "enable verbose mode")
+	flag.StringVar(&conf.FilePath, "c", "config.json", "config file")
+	flag.DurationVar(&conf.Timeout, "t", time.Minute, "timeout")
 	flag.Parse()
 
-	w := io.Writer(nil)
-	if conf.Mode {
+	// if not verbose, discard all logs
+	w := io.Writer(ioutil.Discard)
+	if conf.Verbose {
 		w = os.Stdout
 	}
-	app, err := app.NewApp(conf.File, time.Minute, w)
+	app, err := app.NewApp(conf.FilePath, conf.Timeout, w)
 	if err != nil {
 		log.Panic(err)
 	}
 
+	// start app
 	if err := app.Run(); err != nil {
 		log.Panic(err)
 	}
@@ -49,6 +56,7 @@ func main() {
 	<-sigCh
 	fmt.Println("shadow is closing...")
 
+	// close app
 	app.Close()
 
 	select {
