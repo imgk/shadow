@@ -90,12 +90,42 @@ func (e *Endpoint) Write(b []byte) (int, error) {
 	case header.IPv4Version:
 		// WinDivert: need to calculate chekcsum
 		pkt := header.IPv4(buf)
+		pkt.SetChecksum(0)
 		pkt.SetChecksum(^pkt.CalculateChecksum())
+		switch ProtocolNumber := pkt.TransportProtocol(); ProtocolNumber {
+		case header.UDPProtocolNumber:
+			hdr := header.UDP(pkt.Payload())
+			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), hdr.Length())
+			sum = header.Checksum(hdr.Payload(), sum)
+			hdr.SetChecksum(0)
+			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
+		case header.TCPProtocolNumber:
+			hdr := header.TCP(pkt.Payload())
+			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), pkt.PayloadLength())
+			sum = header.Checksum(hdr.Payload(), sum)
+			hdr.SetChecksum(0)
+			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
+		}
 		e.Endpoint.InjectInbound(header.IPv4ProtocolNumber, &stack.PacketBuffer{
 			Data: buffer.View(buf).ToVectorisedView(),
 		})
 	case header.IPv6Version:
-		// no checksum for ipv6
+		// WinDivert: need to calculate chekcsum
+		pkt := header.IPv6(buf)
+		switch ProtocolNumber := pkt.TransportProtocol(); ProtocolNumber {
+		case header.UDPProtocolNumber:
+			hdr := header.UDP(pkt.Payload())
+			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), hdr.Length())
+			sum = header.Checksum(hdr.Payload(), sum)
+			hdr.SetChecksum(0)
+			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
+		case header.TCPProtocolNumber:
+			hdr := header.TCP(pkt.Payload())
+			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), pkt.PayloadLength())
+			sum = header.Checksum(hdr.Payload(), sum)
+			hdr.SetChecksum(0)
+			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
+		}
 		e.Endpoint.InjectInbound(header.IPv6ProtocolNumber, &stack.PacketBuffer{
 			Data: buffer.View(buf).ToVectorisedView(),
 		})
