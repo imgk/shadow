@@ -25,7 +25,7 @@ type CloseReader interface {
 }
 
 type Reader struct {
-	Reader io.ReadCloser
+	Reader io.Reader
 	Cipher Cipher
 	AEAD   cipher.AEAD
 
@@ -34,7 +34,7 @@ type Reader struct {
 	left  []byte
 }
 
-func NewReader(r io.ReadCloser, cipher Cipher) *Reader {
+func NewReader(r io.Reader, cipher Cipher) *Reader {
 	return &Reader{
 		Reader: r,
 		Cipher: cipher,
@@ -60,9 +60,8 @@ func (r *Reader) init() (err error) {
 func (r *Reader) Close() (err error) {
 	if closer, ok := r.Reader.(CloseReader); ok {
 		err = closer.CloseRead()
-		return
 	}
-	return r.Reader.Close()
+	return nil
 }
 
 func (r *Reader) read() (int, error) {
@@ -156,7 +155,7 @@ type CloseWriter interface {
 }
 
 type Writer struct {
-	Writer io.WriteCloser
+	Writer io.Writer
 	Cipher Cipher
 	AEAD   cipher.AEAD
 
@@ -167,7 +166,7 @@ type Writer struct {
 	payload []byte
 }
 
-func NewWriter(w io.WriteCloser, cipher Cipher) *Writer {
+func NewWriter(w io.Writer, cipher Cipher) *Writer {
 	return &Writer{
 		Writer: w,
 		Cipher: cipher,
@@ -200,9 +199,8 @@ func (w *Writer) init() error {
 func (w *Writer) Close() (err error) {
 	if closer, ok := w.Writer.(CloseWriter); ok {
 		err = closer.CloseWrite()
-		return
 	}
-	return w.Writer.Close()
+	return nil
 }
 
 func (w *Writer) Write(b []byte) (int, error) {
