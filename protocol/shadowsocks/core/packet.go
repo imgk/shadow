@@ -8,7 +8,7 @@ import (
 )
 
 var ErrShortPacket = errors.New("short packet")
-var _zerononce = [128]byte{}
+var zerononce = [128]byte{}
 
 type PacketConn struct {
 	net.PacketConn
@@ -41,7 +41,7 @@ func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 		return nil, io.ErrShortBuffer
 	}
 
-	return aead.Open(dst[:0], _zerononce[:aead.NonceSize()], pkt[saltSize:], nil)
+	return aead.Open(dst[:0], zerononce[:aead.NonceSize()], pkt[saltSize:], nil)
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
@@ -78,7 +78,7 @@ func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 		return nil, io.ErrShortBuffer
 	}
 
-	return aead.Seal(dst[:saltSize], _zerononce[:aead.NonceSize()], pkt, nil), nil
+	return aead.Seal(dst[:saltSize], zerononce[:aead.NonceSize()], pkt, nil), nil
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
