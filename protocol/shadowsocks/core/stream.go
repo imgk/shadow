@@ -154,6 +154,7 @@ func (w *Writer) init(writer io.Writer, ciph Cipher) error {
 		return err
 	}
 
+	w.reader = bytes.NewReader(nil)
 	w.nonce = make([]byte, w.AEAD.NonceSize())
 	w.buff = byteBuffer.Get().([]byte)
 	w.buf = w.buff[2+w.Overhead() : 2+w.Overhead()+MaxPacketSize+w.Overhead()]

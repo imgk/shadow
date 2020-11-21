@@ -13,6 +13,9 @@ import (
 )
 
 func init() {
+	protocol.RegisterHandler("ss", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
 	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})

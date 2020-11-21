@@ -6,6 +6,7 @@
 
     // Shadowsocks
     // ss://ciphername:password@ip:port
+    // shadowsocks://ciphername:password@ip:port
 
     // Trojan-(GFW/GO)
     // trojan://password@ip:port#domain.name
