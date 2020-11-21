@@ -15,6 +15,9 @@ func init() {
 	protocol.RegisterHandler("socks", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
+	protocol.RegisterHandler("socks5", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
 }
 
 type Handler struct {
