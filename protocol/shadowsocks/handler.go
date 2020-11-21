@@ -22,7 +22,7 @@ func init() {
 }
 
 type Handler struct {
-	core.Cipher
+	Cipher  core.Cipher
 	server  string
 	timeout time.Duration
 }
