@@ -12,7 +12,7 @@ import (
 	"github.com/imgk/shadow/protocol"
 )
 
-func (app *App) Run() (err error) {
+func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	// new dns resolver
 	resolver, err := common.NewResolver(app.Conf.NameServer)
 	if err != nil {
@@ -42,9 +42,11 @@ func (app *App) Run() (err error) {
 	if tunName := app.Conf.TunName; tunName != "" {
 		name = tunName
 	}
-	dev, err := tun.NewDevice(name)
-	if err != nil {
-		return fmt.Errorf("tun device from name error: %w", err)
+	if dev == nil {
+		dev, err = tun.NewDevice(name)
+		if err != nil {
+			return fmt.Errorf("tun device from name error: %w", err)
+		}
 	}
 	app.attachCloser(dev)
 	// set tun address
@@ -91,6 +93,6 @@ func (app *App) Run() (err error) {
 	return nil
 }
 
-func RunWithDevice(device *tun.Device) (err error) {
-	return nil
+func (app *App) Run() error {
+	return app.RunWithDevice(nil)
 }
