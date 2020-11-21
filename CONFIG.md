@@ -25,6 +25,8 @@
     // DNS Server
     // tls://1.1.1.1
     // https://1.1.1.1/dns-query
+    // tls://1.1.1.1#domain.name
+    // https://1.1.1.1/dns-query#domain.name
     "name_server": "https://1.1.1.1/dns-query",
 
 
