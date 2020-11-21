@@ -218,6 +218,10 @@ func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		if r.URL.Host == "" {
+			http.HandlerFunc(http.NotFound).ServeHTTP(w, r)
+			return
+		}
 		s.proxyGet(w, r)
 	case http.MethodConnect:
 		s.proxyConnect(w, r)
