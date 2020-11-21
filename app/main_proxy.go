@@ -114,10 +114,6 @@ func newPacketConn(src net.Addr, pc net.PacketConn) fakePacketConn {
 	}
 }
 
-func (pc fakePacketConn) Close() error {
-	return pc.PacketConn.Close()
-}
-
 func (pc fakePacketConn) RemoteAddr() net.Addr {
 	return pc.addr
 }
