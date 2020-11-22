@@ -6,7 +6,6 @@
 
     // Shadowsocks
     // ss://ciphername:password@ip:port
-    // shadowsocks://ciphername:password@ip:port
 
     // Trojan-(GFW/GO)
     // trojan://password@ip:port#domain.name
@@ -26,15 +25,12 @@
     // DNS Server
     // tls://1.1.1.1
     // https://1.1.1.1/dns-query
-    // tls://1.1.1.1#domain.name
-    // https://1.1.1.1/dns-query#domain.name
     "name_server": "https://1.1.1.1/dns-query",
 
 
     // windivert only
     // filter string passed to WinDivert
     // https://www.reqrypt.org/windivert-doc.html#filter_language
-
     // outbound and ip and ip.DstAddr != serverip and ip.DstAddr != dnsserverip
     // example: outbound and ip and ip.DstAddr != 1.2.3.4 and ip.DstAddr != 1.1.1.1
     "windivert_filter_string": "outbound and ip and ip.DstAddr != 1.2.3.4 and ip.DstAddr != 1.1.1.1",
@@ -45,7 +41,7 @@
     "tun_addr": ["192.168.0.11/24"],
 
 
-    // IPs in this list will be proxied
+    // Packets to IPs in this list will be diverted to shadow
     "ip_cidr_rules": {
         "proxy": [
             "198.18.0.0/16",
@@ -75,11 +71,11 @@
     },
 
 
-    // Only support fake IP mode
     // shadow will hijack all UDP dns queries
     // domains in proxy list will be given a fake ip: 198.18.X.Y
     // and drop all queries for domains in blocked
-    // and redirect queries to name_server for domains in direct
+    // and redirect queries to name_server for domains in direct.
+    // If not found, it is direct
     "domain_rules": {
         "proxy": [
             "**.google.com",
