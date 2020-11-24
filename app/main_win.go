@@ -63,6 +63,7 @@ func (app *App) Run() (err error) {
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
+	handler = NewHandler(handler)
 	app.attachCloser(handler)
 
 	// new application filter

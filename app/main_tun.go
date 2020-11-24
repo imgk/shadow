@@ -28,6 +28,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
+	handler = NewHandler(handler)
 	app.attachCloser(handler)
 	defer func() {
 		if err != nil {
