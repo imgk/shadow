@@ -52,7 +52,7 @@ func (s *Stack) Close() error {
 }
 
 func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) error {
-	go s.Handler.Handle(TCPConn{TCPConn: conn.(core.TCPConn)}, target)
+	go s.Handler.Handle(&TCPConn{TCPConn: conn.(core.TCPConn)}, target)
 	return nil
 }
 
@@ -96,11 +96,11 @@ type TCPConn struct {
 	core.TCPConn
 }
 
-func (conn TCPConn) RemoteAddr() net.Addr {
+func (conn *TCPConn) RemoteAddr() net.Addr {
 	return conn.TCPConn.LocalAddr()
 }
 
-func (conn TCPConn) LocalAddr() net.Addr {
+func (conn *TCPConn) LocalAddr() net.Addr {
 	return conn.TCPConn.RemoteAddr()
 }
 

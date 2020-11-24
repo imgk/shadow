@@ -17,10 +17,10 @@ import (
 
 func NewPacketConn(conn core.PacketConn, target net.Addr, addr net.Addr, stack *Stack) common.PacketConn {
 	if target == nil && addr == nil {
-		return udpConn{PacketConn: conn, Stack: stack}
+		return &udpConn{PacketConn: conn, Stack: stack}
 	}
 
-	return fakeUDPConn{PacketConn: conn, fake: target, real: addr}
+	return &fakeUDPConn{PacketConn: conn, fake: target, real: addr}
 }
 
 type fakeUDPConn struct {
@@ -29,16 +29,16 @@ type fakeUDPConn struct {
 	real net.Addr
 }
 
-func (conn fakeUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
+func (conn *fakeUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
 	n, _, err := conn.PacketConn.ReadTo(b)
 	return n, conn.real, err
 }
 
-func (conn fakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+func (conn *fakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.PacketConn.WriteFrom(b, conn.fake)
 }
 
-func (conn fakeUDPConn) LocalAddr() net.Addr {
+func (conn *fakeUDPConn) LocalAddr() net.Addr {
 	return conn.real
 }
 
@@ -47,7 +47,7 @@ type udpConn struct {
 	Stack *Stack
 }
 
-func (conn udpConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
+func (conn *udpConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	for {
 		n, addr, err = conn.PacketConn.ReadTo(b)
 		if err != nil {
@@ -64,7 +64,7 @@ func (conn udpConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
-func (conn udpConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+func (conn *udpConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	if saddr, ok := addr.(common.Addr); ok {
 		target, err := common.ResolveUDPAddr(saddr)
 		if err != nil {
