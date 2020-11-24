@@ -38,6 +38,10 @@ func (conn fakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.PacketConn.WriteFrom(b, conn.fake)
 }
 
+func (conn fakeUDPConn) LocalAddr() net.Addr {
+	return conn.real
+}
+
 type udpConn struct {
 	core.PacketConn
 	Stack *Stack
