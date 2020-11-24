@@ -14,7 +14,29 @@ var zerononce = [128]byte{}
 var byteBuffer = sync.Pool{New: newBuffer}
 
 func newBuffer() interface{} {
-	return make([]byte, MaxPacketSize)
+	b := make([]byte, MaxPacketSize)
+	// Return a *[]byte instead of []byte ensures that
+	// the []byte is not copied, which would cause a heap
+	// allocation on every call to sync.pool.Put
+	return &b
+}
+
+func Get() LazySlice {
+	p := byteBuffer.Get().(*[]byte)
+	return LazySlice{Pointer: p}
+}
+
+func Put(b LazySlice) {
+	byteBuffer.Put(b.Pointer)
+	b.Pointer = nil
+}
+
+type LazySlice struct {
+	Pointer *[]byte
+}
+
+func (s LazySlice) Get() []byte {
+	return *s.Pointer
 }
 
 type PacketConn struct {
@@ -52,8 +74,9 @@ func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	buff := byteBuffer.Get().([]byte)
-	defer byteBuffer.Put(buff)
+	slice := Get()
+	defer Put(slice)
+	buff := slice.Get()
 
 	n, addr, err := pc.PacketConn.ReadFrom(buff)
 	if err != nil {
@@ -89,8 +112,9 @@ func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	buff := byteBuffer.Get().([]byte)
-	defer byteBuffer.Put(buff)
+	slice := Get()
+	defer Put(slice)
+	buff := slice.Get()
 
 	bb, err := Pack(buff, b, pc.Cipher)
 	if err != nil {

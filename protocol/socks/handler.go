@@ -130,8 +130,9 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	b := common.Get()
-	defer common.Put(b)
+	slice := common.Get()
+	defer common.Put(slice)
+	b := slice.Get()
 
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
@@ -172,8 +173,9 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 }
 
 func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	b := common.Get()
-	defer common.Put(b)
+	slice := common.Get()
+	defer common.Put(slice)
+	b := slice.Get()
 
 	buf := [common.MaxAddrLen]byte{}
 	for {

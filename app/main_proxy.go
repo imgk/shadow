@@ -119,8 +119,9 @@ func (pc fakePacketConn) RemoteAddr() net.Addr {
 }
 
 func (pc fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
-	buf := common.Get()
-	defer common.Put(buf)
+	slice := common.Get()
+	defer common.Put(slice)
+	buf := slice.Get()
 
 	n, _, err = pc.PacketConn.ReadFrom(buf)
 	if err != nil {
@@ -136,8 +137,9 @@ func (pc fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 }
 
 func (pc fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
-	buf := common.Get()
-	defer common.Put(buf)
+	slice := common.Get()
+	defer common.Put(slice)
+	buf := slice.Get()
 
 	src, err := common.ResolveAddrBuffer(addr, b[3:])
 	if err != nil {

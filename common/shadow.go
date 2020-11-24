@@ -14,15 +14,29 @@ const MaxBufferSize = 16384
 var byteBuffer = sync.Pool{New: newBuffer}
 
 func newBuffer() interface{} {
-	return make([]byte, MaxBufferSize)
+	b := make([]byte, MaxBufferSize)
+	// Return a *[]byte instead of []byte ensures that
+	// the []byte is not copied, which would cause a heap
+	// allocation on every call to sync.pool.Put
+	return &b
 }
 
-func Get() []byte {
-	return byteBuffer.Get().([]byte)
+func Get() LazySlice {
+	p := byteBuffer.Get().(*[]byte)
+	return LazySlice{Pointer: p}
 }
 
-func Put(b []byte) {
-	byteBuffer.Put(b)
+func Put(b LazySlice) {
+	byteBuffer.Put(b.Pointer)
+	b.Pointer = nil
+}
+
+type LazySlice struct {
+	Pointer *[]byte
+}
+
+func (s LazySlice) Get() []byte {
+	return *s.Pointer
 }
 
 type Device interface {
@@ -149,8 +163,9 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 		}
 	}
 
-	b := byteBuffer.Get().([]byte)
-	defer byteBuffer.Put(b)
+	slice := Get()
+	defer Put(slice)
+	b := slice.Get()
 
 	for {
 		nr, er := r.Read(b)
