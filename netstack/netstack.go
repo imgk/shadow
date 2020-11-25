@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -84,7 +83,6 @@ type Stack struct {
 	tree     *common.DomainTree
 	hijack   bool
 
-	buffer  sync.Pool
 	counter uint16
 }
 
@@ -94,17 +92,12 @@ func NewStack(handler common.Handler, resolver common.Resolver, tree *common.Dom
 		resolver: resolver,
 		tree:     tree,
 		hijack:   hijack,
-		buffer:   sync.Pool{New: newBuffer},
 		counter:  uint16(time.Now().Unix()),
 	}
 }
 
 func (s *Stack) Start(dev common.Device, logger *zap.Logger) error {
 	return s.Stack.Start(dev.(core.Device), s, logger)
-}
-
-func newBuffer() interface{} {
-	return make([]byte, 1024*2)
 }
 
 func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
@@ -211,9 +204,10 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 func (s *Stack) HandleQuery(conn core.PacketConn) {
 	defer conn.Close()
 
-	b := s.buffer.Get().([]byte)
+	slice := common.Get()
+	defer common.Put(slice)
+	b := slice.Get()
 	m := dns.Msg{}
-	defer s.buffer.Put(b)
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(time.Second * 3))
