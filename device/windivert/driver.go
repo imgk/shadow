@@ -137,7 +137,7 @@ func GetDriverFileName() (string, error) {
 	if err != nil {
 		if _, err := os.Stat(winDivertSYS); err != nil {
 			if er := Download(); er != nil {
-				return "", fmt.Errorf("file error: %w, download error: %w", err, er)
+				return "", fmt.Errorf("download error: %w", er)
 			}
 		}
 
@@ -157,7 +157,7 @@ func GetDriverFileName() (string, error) {
 	if _, err := os.Stat(val); err != nil {
 		if _, err := os.Stat(winDivertSYS); err != nil {
 			if er := Download(); er != nil {
-				return "", fmt.Errorf("file error: %w, download error: %w", err, er)
+				return "", fmt.Errorf("download error: %w", er)
 			}
 		}
 
