@@ -18,8 +18,9 @@ var (
 )
 
 func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, err error) {
-	bb := byteBuffer.Get().([]byte)
-	defer byteBuffer.Put(bb)
+	slice := Get()
+	defer Put(slice)
+	bb := slice.Get()
 
 	b := *(*[]uint16)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(&bb[0])),
