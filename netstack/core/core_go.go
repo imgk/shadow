@@ -365,7 +365,7 @@ type UDPConn struct {
 	deadlineTimer
 
 	key    string
-	route  stack.Route
+	route  *stack.Route
 	stack  *Stack
 	addr   net.UDPAddr
 	raddr  net.UDPAddr
@@ -373,7 +373,7 @@ type UDPConn struct {
 	stream chan Packet
 }
 
-func NewUDPConn(key string, addr, raddr net.UDPAddr, s *Stack, r stack.Route) *UDPConn {
+func NewUDPConn(key string, addr, raddr net.UDPAddr, s *Stack, r *stack.Route) *UDPConn {
 	conn := &UDPConn{
 		key:    key,
 		route:  r,
@@ -442,7 +442,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	}
 
 	if tcperr := sendUDP(
-		&route,
+		route,
 		v.ToVectorisedView(),
 		uint16(src.Port),
 		uint16(conn.raddr.Port),
