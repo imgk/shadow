@@ -15,7 +15,7 @@ require (
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 	golang.org/x/sys v0.0.0-20201126233918-771906719818
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
-	golang.zx2c4.com/wireguard v0.0.20201118
-	golang.zx2c4.com/wireguard/windows v0.3.1
-	gvisor.dev/gvisor v0.0.0-20201126084641-bf476d6586a7
+	golang.zx2c4.com/wireguard v0.0.20201119-0.20201127121345-b6303091fc8c
+	golang.zx2c4.com/wireguard/windows v0.3.2
+	gvisor.dev/gvisor v0.0.0-20201127205929-1913cff58732
 )

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"html/template"
 	"io"
 	"math/rand"
 	"net"
@@ -67,9 +67,71 @@ func (h *Handler) HandlePacket(conn common.PacketConn) (err error) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	type Item struct {
+		Protocol    string
+		Source      string
+		Destination string
+	}
+
+	type Conns struct {
+		Items []Item
+	}
+
 	h.mu.RLock()
+	conns := Conns{ Items: make([]Item, 0, len(h.conns)) }
 	for _, c := range h.conns {
-		fmt.Fprintf(w, "%-25v<-%s->\t%v\n", c.LocalAddr, c.Network, c.RemoteAddr)
+		conns.Items = append(conns.Items, Item{
+			Protocol:    c.Network,
+			Source:      c.LocalAddr.String(),
+			Destination: c.RemoteAddr.String(),
+		})
 	}
 	h.mu.RUnlock()
+
+	connsTemplate.Execute(w, conns)
 }
+
+var connsTemplate = template.Must(template.New("").Parse(`
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+</style>
+</head>
+<body>
+
+<h2>Active Connections</h2>
+
+<table>
+  <tr>
+    <th>Protocol</th>
+    <th>Source Address</th>
+    <th>Destination Address</th>
+  </tr>
+  {{ range .Items }}
+  <tr>
+    <td>{{ .Protocol }}</td>
+    <td>{{ .Source }}</td>
+    <td>{{ .Destination }}</td>
+  </tr>
+  {{ end }}
+</table>
+
+</body>
+</html>
+`))
