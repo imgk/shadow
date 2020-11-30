@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"time"
@@ -153,6 +152,7 @@ func (pc fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
 // a combined socks5/http proxy server
 type proxyServer struct {
 	*zap.Logger
+	router *http.ServeMux
 
 	// Convert fake IP and handle connections
 	tree    *common.DomainTree
@@ -166,9 +166,10 @@ type proxyServer struct {
 	closed chan struct{}
 }
 
-func newProxyServer(ln net.Listener, logger *zap.Logger, handler common.Handler, tree *common.DomainTree) *proxyServer {
+func newProxyServer(ln net.Listener, logger *zap.Logger, handler common.Handler, tree *common.DomainTree, router *http.ServeMux) *proxyServer {
 	s := &proxyServer{
 		Logger:     logger,
+		router:     router,
 		tree:       tree,
 		handler:    handler,
 		netLisener: ln,
@@ -209,7 +210,7 @@ func (s *proxyServer) Serve() {
 // serve as a http server and http proxy server
 // support GET and CONNECT method
 func (s *proxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if handler, pattern := http.DefaultServeMux.Handler(r); pattern != "" {
+	if handler, pattern := s.router.Handler(r); pattern != "" {
 		handler.ServeHTTP(w, r)
 		return
 	}

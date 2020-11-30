@@ -30,7 +30,6 @@ func NewHandler(h common.Handler) *Handler {
 		Handler: h,
 		conns:   make(map[uint32]*Conn),
 	}
-	http.Handle("/admin/conns", hd)
 	return hd
 }
 
@@ -68,17 +67,17 @@ func (h *Handler) HandlePacket(conn common.PacketConn) (err error) {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	type Item struct {
-		Protocol    string
-		Source      string
-		Destination string
+		Protocol    string `json:"protocol"`
+		Source      string `json:"source_address"`
+		Destination string `json:"destination_address`
 	}
 
 	type Conns struct {
-		Items []Item
+		Items []Item `json:"connections"`
 	}
 
 	h.mu.RLock()
-	conns := Conns{ Items: make([]Item, 0, len(h.conns)) }
+	conns := Conns{Items: make([]Item, 0, len(h.conns))}
 	for _, c := range h.conns {
 		conns.Items = append(conns.Items, Item{
 			Protocol:    c.Network,

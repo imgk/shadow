@@ -5,6 +5,8 @@ package app
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/pprof"
 
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/device/tun"
@@ -37,6 +39,14 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 			}
 		}
 	}()
+
+	router := http.NewServeMux()
+	router.HandleFunc("/debug/pprof/", pprof.Index)
+	router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	router.Handle("/admin/conns", handler.(*Handler))
 
 	// new tun device
 	name := "utun"
@@ -81,7 +91,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 			return err
 		}
 
-		server := newProxyServer(ln, app.Logger, handler, tree)
+		server := newProxyServer(ln, app.Logger, handler, tree, router)
 		app.attachCloser(server)
 		go server.Serve()
 	}

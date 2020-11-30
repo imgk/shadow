@@ -5,6 +5,8 @@ package app
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -66,6 +68,14 @@ func (app *App) Run() (err error) {
 	handler = NewHandler(handler)
 	app.attachCloser(handler)
 
+	router := http.NewServeMux()
+	router.HandleFunc("/debug/pprof/", pprof.Index)
+	router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	router.Handle("/admin/conns", http.Handler(handler.(*Handler)))
+
 	// new application filter
 	appFilter, err := app.newAppFilter()
 	if err != nil {
@@ -108,7 +118,7 @@ func (app *App) Run() (err error) {
 			return err
 		}
 
-		server := newProxyServer(ln, app.Logger, handler, tree)
+		server := newProxyServer(ln, app.Logger, handler, tree, router)
 		app.attachCloser(server)
 		go server.Serve()
 	}
