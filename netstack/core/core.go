@@ -13,32 +13,8 @@ type Device interface {
 }
 
 type Handler interface {
-	Handle(Conn, *net.TCPAddr)
-	HandlePacket(PacketConn, *net.UDPAddr)
-}
-
-type Conn interface {
-	Close() error
-	CloseRead() error
-	CloseWrite() error
-	LocalAddr() net.Addr
-	RemoteAddr() net.Addr
-	SetDeadline(time.Time) error
-	SetReadDeadline(time.Time) error
-	SetWriteDeadline(time.Time) error
-	Read([]byte) (int, error)
-	Write([]byte) (int, error)
-}
-
-type PacketConn interface {
-	Close() error
-	LocalAddr() net.Addr
-	RemoteAddr() net.Addr
-	SetDeadline(time.Time) error
-	SetReadDeadline(time.Time) error
-	SetWriteDeadline(time.Time) error
-	ReadTo([]byte) (int, net.Addr, error)
-	WriteFrom([]byte, net.Addr) (int, error)
+	Handle(net.Conn, *net.TCPAddr)
+	HandlePacket(*UDPConn, *net.UDPAddr)
 }
 
 // timeoutError is how the net package reports timeouts.

@@ -14,41 +14,45 @@ import (
 	"github.com/imgk/shadow/netstack/core"
 )
 
-func NewPacketConn(conn core.PacketConn, target net.Addr, addr net.Addr, stack *Stack) common.PacketConn {
-	if target == nil && addr == nil {
-		return &udpConn{PacketConn: conn, Stack: stack}
-	}
+var _ common.PacketConn = (*FakeUDPConn)(nil)
 
-	return &fakeUDPConn{PacketConn: conn, fake: target, real: addr}
-}
-
-type fakeUDPConn struct {
-	core.PacketConn
+type FakeUDPConn struct {
+	*core.UDPConn
 	fake net.Addr
 	real net.Addr
 }
 
-func (conn *fakeUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
-	n, _, err := conn.PacketConn.ReadTo(b)
+func NewFakeUDPConn(conn *core.UDPConn, target net.Addr, addr net.Addr) *FakeUDPConn {
+	return &FakeUDPConn{UDPConn: conn, fake: target, real: addr}
+}
+
+func (conn *FakeUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
+	n, _, err := conn.UDPConn.ReadTo(b)
 	return n, conn.real, err
 }
 
-func (conn *fakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
-	return conn.PacketConn.WriteFrom(b, conn.fake)
+func (conn *FakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+	return conn.UDPConn.WriteFrom(b, conn.fake)
 }
 
-func (conn *fakeUDPConn) LocalAddr() net.Addr {
+func (conn *FakeUDPConn) LocalAddr() net.Addr {
 	return conn.real
 }
 
-type udpConn struct {
-	core.PacketConn
+var _ common.PacketConn = (*UDPConn)(nil)
+
+type UDPConn struct {
+	*core.UDPConn
 	Stack *Stack
 }
 
-func (conn *udpConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
+func NewUDPConn(conn *core.UDPConn, stack *Stack) *UDPConn {
+	return &UDPConn{UDPConn: conn, Stack: stack}
+}
+
+func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	for {
-		n, addr, err = conn.PacketConn.ReadTo(b)
+		n, addr, err = conn.UDPConn.ReadTo(b)
 		if err != nil {
 			break
 		}
@@ -63,17 +67,19 @@ func (conn *udpConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
-func (conn *udpConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
+func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	if saddr, ok := addr.(common.Addr); ok {
 		target, err := common.ResolveUDPAddr(saddr)
 		if err != nil {
 			return 0, fmt.Errorf("resolve udp addr error: %w", err)
 		}
-		return conn.PacketConn.WriteFrom(b, target)
+		return conn.UDPConn.WriteFrom(b, target)
 	}
 
-	return conn.PacketConn.WriteFrom(b, addr)
+	return conn.UDPConn.WriteFrom(b, addr)
 }
+
+var _ core.Handler = (*Stack)(nil)
 
 type Stack struct {
 	core.Stack
@@ -100,7 +106,7 @@ func (s *Stack) Start(dev common.Device, logger *zap.Logger) error {
 	return s.Stack.Start(dev.(core.Device), s, logger)
 }
 
-func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
+func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 	addr, err := s.LookupAddr(target)
 	if err == ErrNotFake {
 		if ip := target.IP.To4(); ip != nil {
@@ -144,10 +150,10 @@ func (s *Stack) Handle(conn core.Conn, target *net.TCPAddr) {
 	return
 }
 
-func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
+func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 	if target == nil {
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr()))
-		if err := s.handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
+		if err := s.handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
 			s.Error(fmt.Sprintf("handle udp error: %v", err))
 		}
 		return
@@ -187,21 +193,21 @@ func (s *Stack) HandlePacket(conn core.PacketConn, target *net.UDPAddr) {
 		}
 
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target))
-		if err := s.handler.HandlePacket(NewPacketConn(conn, nil, nil, s)); err != nil {
+		if err := s.handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
 			s.Error(fmt.Sprintf("handle udp error: %v", err))
 		}
 		return
 	}
 
 	s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), addr))
-	if err := s.handler.HandlePacket(NewPacketConn(conn, target, addr, s)); err != nil {
+	if err := s.handler.HandlePacket(NewFakeUDPConn(conn, target, addr)); err != nil {
 		s.Error(fmt.Sprintf("handle udp error: %v", err))
 	}
 	return
 }
 
 // handle dns queries
-func (s *Stack) HandleQuery(conn core.PacketConn) {
+func (s *Stack) HandleQuery(conn *core.UDPConn) {
 	defer conn.Close()
 
 	slice := common.Get()
