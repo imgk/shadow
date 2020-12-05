@@ -18,7 +18,7 @@ type node struct {
 func NewDomainTree(sep string) *DomainTree {
 	return &DomainTree{
 		node: node{
-			value:  struct{}{},
+			value:  nil,
 			branch: map[string]*node{},
 		},
 		sep:     sep,
@@ -62,7 +62,7 @@ func (n *node) store(ks []string, v interface{}) {
 		b, ok := n.branch[k]
 		if !ok {
 			b = &node{
-				value:  struct{}{},
+				value:  nil,
 				branch: map[string]*node{},
 			}
 			n.branch[k] = b
@@ -85,7 +85,7 @@ func (n *node) load(ks []string) interface{} {
 	l := len(ks)
 	switch l {
 	case 0:
-		return struct{}{}
+		return nil
 	case 1:
 		b, ok := n.branch[ks[l-1]]
 		if ok {
@@ -102,12 +102,12 @@ func (n *node) load(ks []string) interface{} {
 			return b.value
 		}
 
-		return struct{}{}
+		return nil
 	default:
 		b, ok := n.branch[ks[l-1]]
 		if ok {
 			s := b.load(ks[:l-1])
-			if s != struct{}{} {
+			if s != nil {
 				return s
 			}
 		}
@@ -115,7 +115,7 @@ func (n *node) load(ks []string) interface{} {
 		b, ok = n.branch["*"]
 		if ok {
 			s := b.load(ks[:l-1])
-			if s != struct{}{} {
+			if s != nil {
 				return s
 			}
 		}
@@ -125,6 +125,6 @@ func (n *node) load(ks []string) interface{} {
 			return b.value
 		}
 
-		return struct{}{}
+		return nil
 	}
 }

@@ -5,15 +5,18 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/netstack"
 )
 
 // shadow application configuration
@@ -151,13 +154,13 @@ func (app *App) newDomainTree() (*common.DomainTree, error) {
 	tree := common.NewDomainTree(".")
 	tree.Lock()
 	for _, domain := range app.Conf.DomainRules.Proxy {
-		tree.UnsafeStore(domain, "PROXY")
+		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "PROXY"})
 	}
 	for _, domain := range app.Conf.DomainRules.Direct {
-		tree.UnsafeStore(domain, "DIRECT")
+		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "DIRECT"})
 	}
 	for _, domain := range app.Conf.DomainRules.Blocked {
-		tree.UnsafeStore(domain, "BLOCKED")
+		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "BLOCKED"})
 	}
 	tree.Unlock()
 	return tree, nil
@@ -184,3 +187,17 @@ func newWriteSyncer(w io.Writer) zapcore.WriteSyncer {
 	}
 	return emptySyncer{Writer: w}
 }
+
+func ServePAC(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "application/x-ns-proxy-autoconfig")
+	pacTemplate.Execute(w, r.Host)
+}
+
+var pacTemplate = template.Must(template.New("").Parse(`
+function FindProxyForURL(url, host) {
+    if (isInNet(dnsResolve(host), "198.18.0.0", "255.255.0.0")) {
+        return "SOCKS5 {{ . }}; SOCKS {{ . }}; PROXY {{ . }}"
+    }
+    return "DIRECT"
+}
+`))

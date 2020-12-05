@@ -11,6 +11,7 @@ import (
 	"github.com/imgk/shadow/common"
 )
 
+// LookupAddr converts fake ip to real domain address
 func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 	switch addr.(type) {
 	case *net.TCPAddr:
@@ -39,18 +40,20 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
+// LookupIP converts fake ip to real domain address
 func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 	if ip := addr.To4(); ip != nil {
 		if ip[0] != 198 || ip[1] != 18 {
 			return nil, ErrNotFake
 		}
 
-		option := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2]))
-		if rr, ok := option.(*dns.PTR); ok {
+		if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
+			de := opt.(*DomainEntry)
+
 			b := make([]byte, common.MaxAddrLen)
 			b[0] = common.AddrTypeDomain
-			b[1] = byte(len(rr.Ptr))
-			n := copy(b[2:], rr.Ptr[:])
+			b[1] = byte(len(de.PTR.Ptr))
+			n := copy(b[2:], de.PTR.Ptr[:])
 			return b[:2+n+2], nil
 		}
 		return nil, ErrNotFound
@@ -58,140 +61,123 @@ func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 	return nil, ErrNotFake
 }
 
+// DomianEntry stores domian info
+type DomainEntry struct {
+	Rule string
+
+	// dns typeA record
+	A dns.A
+
+	// dns typeAAAA record
+	AAAA dns.AAAA
+
+	// dns typePTR record
+	PTR dns.PTR
+}
+
+// HandleMessage handles dns.Msg
 func (s *Stack) HandleMessage(m *dns.Msg) {
-	switch option := s.tree.Load(m.Question[0].Name); option.(type) {
-	case string:
-		if ok := s.HandleMessageByRule(m, option.(string)); ok {
-			return
-		}
-	case *dns.A:
-		switch m.Question[0].Qtype {
-		case dns.TypeA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(*dns.A))
-		case dns.TypeAAAA:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		default:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		}
-	case *dns.AAAA:
-		switch m.Question[0].Qtype {
-		case dns.TypeA:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		case dns.TypeAAAA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(*dns.AAAA))
-		default:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		}
-	case *dns.PTR:
-		switch m.Question[0].Qtype {
-		case dns.TypePTR:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(*dns.PTR))
-		default:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		}
-	case both:
-		switch m.Question[0].Qtype {
-		case dns.TypeA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(both).A)
-		case dns.TypeAAAA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], option.(both).AAAA)
-		default:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		}
-	default:
+	opt := s.tree.Load(m.Question[0].Name)
+	if opt == nil {
 		return
+	}
+
+	de := opt.(*DomainEntry)
+	switch m.Question[0].Qtype {
+	case dns.TypeA:
+		if de.A.Hdr.Ttl == 1 {
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], &de.A)
+		} else {
+			switch de.Rule {
+			case "PROXY":
+				s.counter++
+
+				// prevent potential race condition
+				s.tree.Lock()
+				de.A = dns.A{
+					Hdr: dns.RR_Header{
+						Name:   m.Question[0].Name,
+						Rrtype: dns.TypeA,
+						Class:  dns.ClassINET,
+						Ttl:    1,
+					},
+					A: net.IP([]byte{198, 18, byte(s.counter >> 8), byte(s.counter)}),
+				}
+				s.tree.Unlock()
+
+				ptrName := fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8))
+				s.tree.Store(ptrName, &DomainEntry{
+					PTR: dns.PTR{
+						Hdr: dns.RR_Header{
+							Name:   ptrName,
+							Rrtype: dns.TypePTR,
+							Class:  dns.ClassINET,
+							Ttl:    1,
+						},
+						Ptr: m.Question[0].Name,
+					},
+				})
+
+				m.MsgHdr.Rcode = dns.RcodeSuccess
+				m.Answer = append(m.Answer[:0], &de.A)
+			case "BLOCKED":
+				s.tree.Lock()
+				de.A = dns.A{
+					Hdr: dns.RR_Header{
+						Name:   m.Question[0].Name,
+						Rrtype: dns.TypeA,
+						Class:  dns.ClassINET,
+						Ttl:    1,
+					},
+					A: net.IPv4zero,
+				}
+				s.tree.Unlock()
+
+				m.MsgHdr.Rcode = dns.RcodeSuccess
+				m.Answer = append(m.Answer[:0], &de.A)
+			default:
+				return
+			}
+		}
+	case dns.TypeAAAA:
+		if de.AAAA.Hdr.Ttl == 1 {
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], &de.AAAA)
+		} else {
+			switch de.Rule {
+			case "PROXY":
+				m.MsgHdr.Rcode = dns.RcodeRefused
+			case "BLOCKED":
+				s.tree.Lock()
+				de.AAAA = dns.AAAA{
+					Hdr: dns.RR_Header{
+						Name:   m.Question[0].Name,
+						Rrtype: dns.TypeAAAA,
+						Class:  dns.ClassINET,
+						Ttl:    1,
+					},
+					AAAA: net.IPv6zero,
+				}
+				s.tree.Unlock()
+
+				m.MsgHdr.Rcode = dns.RcodeSuccess
+				m.Answer = append(m.Answer[:0], &de.AAAA)
+			default:
+				return
+			}
+		}
+	case dns.TypePTR:
+		if de.PTR.Hdr.Ttl == 1 {
+			m.MsgHdr.Rcode = dns.RcodeSuccess
+			m.Answer = append(m.Answer[:0], &de.PTR)
+		} else {
+			m.MsgHdr.Rcode = dns.RcodeRefused
+		}
 	}
 
 	m.MsgHdr.Response = true
 	m.MsgHdr.Authoritative = false
 	m.MsgHdr.Truncated = false
 	m.MsgHdr.RecursionAvailable = false
-}
-
-type both struct {
-	A    *dns.A
-	AAAA *dns.AAAA
-}
-
-func (s *Stack) HandleMessageByRule(m *dns.Msg, option string) bool {
-	switch option {
-	case "PROXY":
-		s.counter++
-
-		rrA := &dns.A{
-			Hdr: dns.RR_Header{
-				Name:   m.Question[0].Name,
-				Rrtype: dns.TypeA,
-				Class:  dns.ClassINET,
-				Ttl:    1,
-			},
-			A: net.IP([]byte{198, 18, byte(s.counter >> 8), byte(s.counter)}),
-		}
-		s.tree.Store(rrA.Hdr.Name, rrA)
-
-		rrPTR := &dns.PTR{
-			Hdr: dns.RR_Header{
-				Name:   fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8)),
-				Rrtype: dns.TypePTR,
-				Class:  dns.ClassINET,
-				Ttl:    1,
-			},
-			Ptr: m.Question[0].Name,
-		}
-		s.tree.Store(rrPTR.Hdr.Name, rrPTR)
-
-		switch m.Question[0].Qtype {
-		case dns.TypeA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], rrA)
-		case dns.TypeAAAA:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		default:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		}
-	case "DIRECT":
-		return true
-	case "BLOCKED":
-		rrA := &dns.A{
-			Hdr: dns.RR_Header{
-				Name:   m.Question[0].Name,
-				Rrtype: dns.TypeA,
-				Class:  dns.ClassINET,
-				Ttl:    1,
-			},
-			A: net.IPv4zero,
-		}
-
-		rrAAAA := &dns.AAAA{
-			Hdr: dns.RR_Header{
-				Name:   m.Question[0].Name,
-				Rrtype: dns.TypeAAAA,
-				Class:  dns.ClassINET,
-				Ttl:    1,
-			},
-			AAAA: net.IPv6zero,
-		}
-
-		s.tree.Store(rrA.Hdr.Name, both{A: rrA, AAAA: rrAAAA})
-
-		switch m.Question[0].Qtype {
-		case dns.TypeA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], rrA)
-		case dns.TypeAAAA:
-			m.MsgHdr.Rcode = dns.RcodeSuccess
-			m.Answer = append(m.Answer[:0], rrAAAA)
-		default:
-			m.MsgHdr.Rcode = dns.RcodeRefused
-		}
-	default:
-		return true
-	}
-
-	return false
 }
