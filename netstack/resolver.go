@@ -93,49 +93,61 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 			case "PROXY":
 				s.counter++
 
-				// prevent potential race condition
-				s.tree.Lock()
-				de.A = dns.A{
-					Hdr: dns.RR_Header{
-						Name:   m.Question[0].Name,
-						Rrtype: dns.TypeA,
-						Class:  dns.ClassINET,
-						Ttl:    1,
-					},
-					A: net.IP([]byte{198, 18, byte(s.counter >> 8), byte(s.counter)}),
-				}
-				s.tree.Unlock()
-
-				ptrName := fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8))
-				s.tree.Store(ptrName, &DomainEntry{
+				entry := &DomainEntry{
 					PTR: dns.PTR{
 						Hdr: dns.RR_Header{
-							Name:   ptrName,
+							Name:   fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8)),
 							Rrtype: dns.TypePTR,
 							Class:  dns.ClassINET,
 							Ttl:    1,
 						},
 						Ptr: m.Question[0].Name,
 					},
-				})
-
-				m.MsgHdr.Rcode = dns.RcodeSuccess
-				m.Answer = append(m.Answer[:0], &de.A)
-			case "BLOCKED":
-				s.tree.Lock()
-				de.A = dns.A{
-					Hdr: dns.RR_Header{
-						Name:   m.Question[0].Name,
-						Rrtype: dns.TypeA,
-						Class:  dns.ClassINET,
-						Ttl:    1,
-					},
-					A: net.IPv4zero,
 				}
-				s.tree.Unlock()
+				s.tree.Store(entry.PTR.Hdr.Name, entry)
+
+				entry = &DomainEntry{
+					Rule: "PROXY",
+					A: dns.A{
+						Hdr: dns.RR_Header{
+							Name:   m.Question[0].Name,
+							Rrtype: dns.TypeA,
+							Class:  dns.ClassINET,
+							Ttl:    1,
+						},
+						A: net.IP([]byte{198, 18, byte(s.counter >> 8), byte(s.counter)}),
+					},
+				}
+				s.tree.Store(entry.A.Hdr.Name, entry)
 
 				m.MsgHdr.Rcode = dns.RcodeSuccess
-				m.Answer = append(m.Answer[:0], &de.A)
+				m.Answer = append(m.Answer[:0], &entry.A)
+			case "BLOCKED":
+				entry := &DomainEntry{
+					Rule: "BLOCKED",
+					A: dns.A{
+						Hdr: dns.RR_Header{
+							Name:   m.Question[0].Name,
+							Rrtype: dns.TypeA,
+							Class:  dns.ClassINET,
+							Ttl:    1,
+						},
+						A: net.IPv4zero,
+					},
+					AAAA: dns.AAAA{
+						Hdr: dns.RR_Header{
+							Name:   m.Question[0].Name,
+							Rrtype: dns.TypeAAAA,
+							Class:  dns.ClassINET,
+							Ttl:    1,
+						},
+						AAAA: net.IPv6zero,
+					},
+				}
+				s.tree.Store(entry.A.Hdr.Name, entry)
+
+				m.MsgHdr.Rcode = dns.RcodeSuccess
+				m.Answer = append(m.Answer[:0], &entry.A)
 			default:
 				return
 			}
@@ -149,20 +161,31 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 			case "PROXY":
 				m.MsgHdr.Rcode = dns.RcodeRefused
 			case "BLOCKED":
-				s.tree.Lock()
-				de.AAAA = dns.AAAA{
-					Hdr: dns.RR_Header{
-						Name:   m.Question[0].Name,
-						Rrtype: dns.TypeAAAA,
-						Class:  dns.ClassINET,
-						Ttl:    1,
+				entry := &DomainEntry{
+					Rule: "BLOCKED",
+					A: dns.A{
+						Hdr: dns.RR_Header{
+							Name:   m.Question[0].Name,
+							Rrtype: dns.TypeA,
+							Class:  dns.ClassINET,
+							Ttl:    1,
+						},
+						A: net.IPv4zero,
 					},
-					AAAA: net.IPv6zero,
+					AAAA: dns.AAAA{
+						Hdr: dns.RR_Header{
+							Name:   m.Question[0].Name,
+							Rrtype: dns.TypeAAAA,
+							Class:  dns.ClassINET,
+							Ttl:    1,
+						},
+						AAAA: net.IPv6zero,
+					},
 				}
-				s.tree.Unlock()
+				s.tree.Store(entry.AAAA.Hdr.Name, entry)
 
 				m.MsgHdr.Rcode = dns.RcodeSuccess
-				m.Answer = append(m.Answer[:0], &de.AAAA)
+				m.Answer = append(m.Answer[:0], &entry.AAAA)
 			default:
 				return
 			}
