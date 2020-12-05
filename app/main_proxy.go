@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/miekg/dns"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/netstack"
 )
 
 type cmdError byte
@@ -242,14 +242,15 @@ func (s *proxyServer) Close() (err error) {
 }
 
 func (s *proxyServer) lookupIP(ip net.IP, b []byte) (common.Addr, error) {
-	option := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2]))
-	if rr, ok := option.(*dns.PTR); ok {
+	if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
+		de := opt.(*netstack.DomainEntry)
+
 		b[0] = common.AddrTypeDomain
-		b[1] = byte(len(rr.Ptr))
-		n := copy(b[2:], rr.Ptr[:])
+		b[1] = byte(len(de.PTR.Ptr))
+		n := copy(b[2:], de.PTR.Ptr[:])
 		return b[:2+n+2], nil
 	}
-	return nil, errors.New("fake ip address not found")
+	return nil, netstack.ErrNotFound
 }
 
 // handshake

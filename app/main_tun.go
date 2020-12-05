@@ -47,6 +47,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	router.Handle("/admin/conns", handler.(*Handler))
+	router.HandleFunc("/admin/proxy.pac", ServePAC)
 
 	// new tun device
 	name := "utun"

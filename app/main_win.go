@@ -75,6 +75,7 @@ func (app *App) Run() (err error) {
 	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	router.Handle("/admin/conns", http.Handler(handler.(*Handler)))
+	router.HandleFunc("/admin/proxy.pac", ServePAC)
 
 	// new application filter
 	appFilter, err := app.newAppFilter()
