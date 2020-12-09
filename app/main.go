@@ -112,6 +112,16 @@ func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
 	return NewAppFromConf(conf, timeout, w), nil
 }
 
+// new shadow app from byte slice
+func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, error) {
+	conf := new(Conf)
+	if err := conf.ReadFromByteSlice(b); err != nil {
+		return nil, err
+	}
+
+	return NewAppFromConf(conf, timeout, w), nil
+}
+
 // new shadow app from *Conf
 func NewAppFromConf(conf *Conf, timeout time.Duration, w io.Writer) *App {
 	return &App{
