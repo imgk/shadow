@@ -133,8 +133,9 @@ func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
 	if h.auth != "" {
 		req.Header.Add("Proxy-Authorization", h.auth)
 	}
-	if err := req.Write(conn); err != nil {
-		return nil, err
+	err = req.Write(conn)
+	if err != nil {
+		return
 	}
 
 	reader := h.readers.Get().(*bufio.Reader)
