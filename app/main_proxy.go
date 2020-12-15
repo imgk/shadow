@@ -75,28 +75,28 @@ type fakeConn struct {
 	reader io.Reader
 }
 
-func newFakeConn(conn net.Conn, reader io.Reader) fakeConn {
-	return fakeConn{
+func newFakeConn(conn net.Conn, reader io.Reader) *fakeConn {
+	return &fakeConn{
 		Conn:   conn,
 		reader: reader,
 	}
 }
 
-func (conn fakeConn) CloseRead() error {
+func (conn *fakeConn) CloseRead() error {
 	if close, ok := conn.Conn.(common.CloseReader); ok {
 		return close.CloseRead()
 	}
 	return conn.Conn.Close()
 }
 
-func (conn fakeConn) CloseWrite() error {
+func (conn *fakeConn) CloseWrite() error {
 	if close, ok := conn.Conn.(common.CloseWriter); ok {
 		return close.CloseWrite()
 	}
 	return conn.Conn.Close()
 }
 
-func (conn fakeConn) Read(b []byte) (int, error) {
+func (conn *fakeConn) Read(b []byte) (int, error) {
 	return conn.reader.Read(b)
 }
 
@@ -106,18 +106,18 @@ type fakePacketConn struct {
 	net.PacketConn
 }
 
-func newPacketConn(src net.Addr, pc net.PacketConn) fakePacketConn {
-	return fakePacketConn{
+func newPacketConn(src net.Addr, pc net.PacketConn) *fakePacketConn {
+	return &fakePacketConn{
 		addr:       src,
 		PacketConn: pc,
 	}
 }
 
-func (pc fakePacketConn) RemoteAddr() net.Addr {
+func (pc *fakePacketConn) RemoteAddr() net.Addr {
 	return pc.addr
 }
 
-func (pc fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
+func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	slice := common.Get()
 	defer common.Put(slice)
 	buf := slice.Get()
@@ -135,7 +135,7 @@ func (pc fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
-func (pc fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
+func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
 	slice := common.Get()
 	defer common.Put(slice)
 	buf := slice.Get()
