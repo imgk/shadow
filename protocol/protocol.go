@@ -8,8 +8,6 @@ import (
 	"github.com/imgk/shadow/common"
 )
 
-var errNotProtocol = errors.New("not a supported scheme")
-
 var handlers = map[string](func(string, time.Duration) (common.Handler, error)){}
 
 func RegisterHandler(proto string, fn func(string, time.Duration) (common.Handler, error)) {
@@ -17,10 +15,10 @@ func RegisterHandler(proto string, fn func(string, time.Duration) (common.Handle
 }
 
 func NewHandler(url string, timeout time.Duration) (common.Handler, error) {
-	for proto, fn := range handlers {
-		if strings.HasPrefix(url, proto) {
-			return fn(url, timeout)
-		}
+	ss := strings.Split(url, ":")
+	factory, ok := handlers[ss[0]]
+	if ok {
+		return factory(url, timeout)
 	}
-	return nil, errNotProtocol
+	return nil, errors.New("not a supported scheme: " + url)
 }
