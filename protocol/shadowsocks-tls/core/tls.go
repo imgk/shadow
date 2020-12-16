@@ -107,8 +107,6 @@ type DuplexConn interface {
 
 // Conn supports net.Conn
 type Conn struct {
-	conn *net.TCPConn
-
 	net.Conn
 	Reader io.Reader
 	Writer io.Writer
@@ -123,7 +121,6 @@ type Conn struct {
 func NewConn(nc *net.TCPConn, proxyAuth string, cfg *tls.Config) net.Conn {
 	nAddr := nc.LocalAddr().(*net.TCPAddr)
 	conn := &Conn{
-		conn:   nc,
 		nAddr:     &net.TCPAddr{IP: nAddr.IP, Port: nAddr.Port},
 		proxyAuth: proxyAuth,
 		proxyHost: "tcp.imgk.cc",
@@ -148,7 +145,6 @@ func NewPacketConn(nc *net.TCPConn, proxyAuth string, cfg *tls.Config) net.Packe
 	rAddr := nc.RemoteAddr().(*net.TCPAddr)
 	conn := &PacketConn{
 		Conn: Conn{
-			conn:   nc,
 			nAddr:     &net.UDPAddr{IP: nAddr.IP, Port: nAddr.Port},
 			proxyAuth: proxyAuth,
 			proxyHost: "udp.imgk.cc",
@@ -173,7 +169,7 @@ func (c *Conn) CloseRead() error {
 	if closer, ok := c.Conn.(CloseReader); ok {
 		return closer.CloseRead()
 	}
-	return c.conn.CloseRead()
+	return c.Conn.Close()
 }
 
 // CloseWrite CloseWriter
@@ -181,7 +177,7 @@ func (c *Conn) CloseWrite() error {
 	if closer, ok := c.Conn.(CloseWriter); ok {
 		return closer.CloseWrite()
 	}
-	return c.conn.CloseWrite()
+	return c.Conn.Close()
 }
 
 var response = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
