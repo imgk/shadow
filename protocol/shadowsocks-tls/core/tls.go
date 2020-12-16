@@ -126,7 +126,7 @@ func NewConn(nc *net.TCPConn, proxyAuth string, cfg *tls.Config) net.Conn {
 		conn:   nc,
 		nAddr:     &net.TCPAddr{IP: nAddr.IP, Port: nAddr.Port},
 		proxyAuth: proxyAuth,
-		proxyHost: ":443",
+		proxyHost: "tcp.imgk.cc",
 	}
 	if cfg == nil {
 		conn.Conn = nc
@@ -151,7 +151,7 @@ func NewPacketConn(nc *net.TCPConn, proxyAuth string, cfg *tls.Config) net.Packe
 			conn:   nc,
 			nAddr:     &net.UDPAddr{IP: nAddr.IP, Port: nAddr.Port},
 			proxyAuth: proxyAuth,
-			proxyHost: ":80",
+			proxyHost: "udp.imgk.cc",
 		},
 		nAddr: &net.UDPAddr{IP: rAddr.IP, Port: rAddr.Port},
 	}
@@ -190,6 +190,11 @@ var response = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
 func (c *Conn) Read(b []byte) (int, error) {
 	if c.Reader == nil {
 		// "HTTP/1.1 200 Connection Established\r\n\r\n"
+		if conn, ok := c.Conn.(*tls.Conn); ok {
+			if err := conn.Handshake(); err != nil {
+				return 0, err
+			}
+		}
 		bb := make([]byte, len(response))
 		if _, err := io.ReadFull(c.Conn, bb); err != nil {
 			return 0, err
