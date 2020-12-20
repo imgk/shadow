@@ -1,4 +1,4 @@
-package core
+package tls
 
 import (
 	"bytes"
@@ -186,11 +186,6 @@ var response = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
 func (c *Conn) Read(b []byte) (int, error) {
 	if c.Reader == nil {
 		// "HTTP/1.1 200 Connection Established\r\n\r\n"
-		if conn, ok := c.Conn.(*tls.Conn); ok {
-			if err := conn.Handshake(); err != nil {
-				return 0, err
-			}
-		}
 		bb := make([]byte, len(response))
 		if _, err := io.ReadFull(c.Conn, bb); err != nil {
 			return 0, err
@@ -206,6 +201,11 @@ func (c *Conn) Read(b []byte) (int, error) {
 // Write io.Writer
 func (c *Conn) Write(b []byte) (int, error) {
 	if c.Writer == nil {
+		if conn, ok := c.Conn.(*tls.Conn); ok {
+			if err := conn.Handshake(); err != nil {
+				return 0, err
+			}
+		}
 		r, err := http.NewRequest(http.MethodConnect, "", nil)
 		if err != nil {
 			return 0, err

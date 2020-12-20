@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
+	"github.com/imgk/shadow/protocol/shadowsocks/tls"
 )
 
 func init() {
@@ -19,9 +21,46 @@ func init() {
 	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
+	protocol.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+}
+
+type Dialer interface {
+	Dial(string, string) (net.Conn, error)
+	ListenPacket(string, string) (net.PacketConn, error)
+}
+
+func NewDialer(url, server, password string) (Dialer, error) {
+	if strings.HasPrefix(url, "ss-tls") || strings.HasPrefix(url, "shadowsocks-tls") {
+		return tls.NewDialer(server, password)
+	}
+
+	return &netDialer{}, nil
+}
+
+type netDialer struct {}
+
+func (d *netDialer) Dial(network, addr string) (net.Conn, error) {
+	conn, err := net.Dial(network, addr)
+	if err != nil {
+		return nil, err
+	}
+	if nc, ok := conn.(*net.TCPConn); ok {
+		nc.SetKeepAlive(true)
+	}
+	return conn, nil
+}
+
+func (d *netDialer) ListenPacket(network, addr string) (net.PacketConn, error) {
+	return net.ListenPacket(network, addr)
 }
 
 type Handler struct {
+	Dialer  Dialer
 	Cipher  core.Cipher
 	server  string
 	timeout time.Duration
@@ -42,7 +81,13 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
+	dialer, err := NewDialer(url, server, password)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Handler{
+		Dialer:  dialer,
 		Cipher:  ciph,
 		server:  server,
 		timeout: timeout,
@@ -64,11 +109,10 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 		}
 	}
 
-	rc, err := net.Dial("tcp", h.server)
+	rc, err := h.Dialer.Dial("tcp", h.server)
 	if err != nil {
 		return fmt.Errorf("dial server %v error: %v", h.server, err)
 	}
-	rc.(*net.TCPConn).SetKeepAlive(true)
 	rc = core.NewConn(rc, h.Cipher)
 	defer rc.Close()
 
@@ -100,7 +144,7 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 		return fmt.Errorf("parse udp address %v error: %v", h.server, err)
 	}
 
-	rc, err := net.ListenPacket("udp", "")
+	rc, err := h.Dialer.ListenPacket("udp", ":")
 	if err != nil {
 		conn.Close()
 		return err
