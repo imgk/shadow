@@ -15,6 +15,7 @@ import (
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
+	"github.com/imgk/shadow/protocol/shadowsocks/quic"
 	"github.com/imgk/shadow/protocol/shadowsocks/tls"
 )
 
@@ -94,6 +95,9 @@ type Dialer interface {
 func NewDialer(url, server, password string) (Dialer, error) {
 	if strings.HasPrefix(url, "ss-tls") || strings.HasPrefix(url, "shadowsocks-tls") {
 		return tls.NewDialer(server, password)
+	}
+	if strings.HasPrefix(url, "ss-quic") || strings.HasPrefix(url, "shadowsocks-quic") {
+		return quic.NewDialer(server, password)
 	}
 
 	return &netDialer{}, nil

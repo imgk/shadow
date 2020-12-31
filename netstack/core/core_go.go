@@ -432,7 +432,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 		return 0, errors.New("addr type error")
 	}
 
-	route := conn.route.Clone()
+	route := conn.route
 	defer route.Release()
 
 	if ip := src.IP.To4(); ip != nil {
