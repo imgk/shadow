@@ -1,10 +1,14 @@
 package shadowsocks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,6 +31,59 @@ func init() {
 	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
+	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (common.Handler, error) {
+		type OnlineConfig struct {
+			Version int `json:"version"`
+			Servers []struct {
+				ID            int    `json:"id"`
+				Remarks       string `json:"remarks"`
+				Server        string `json:"server"`
+				ServerPort    int    `json:"server_port"`
+				Password      string `json:"password"`
+				Method        string `json:"method"`
+				Plugin        string `json:"plugin"`
+				PluginOptions string `json:"plugin_opts"`
+
+				// for other protocol, ss, ss-tls and else
+				Protocol string `json:"protocol,omitempty"`
+			} `json:"servers"`
+			BytesUsed      uint64 `json:"bytes_used,omitempty"`
+			BytesRemaining uint64 `json:"bytes_remaining,omitempty"`
+		}
+
+		uri, err := url.Parse(s)
+		if err != nil {
+			return nil, err
+		}
+		uri.Scheme = "https"
+		r, err := http.Get(uri.String())
+		if err != nil {
+			return nil, err
+		}
+		if r.StatusCode != http.StatusOK {
+			return nil, errors.New("http response code error")
+		}
+		defer r.Body.Close()
+
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		config := OnlineConfig{}
+		if err := json.Unmarshal(b, &config); err != nil {
+			return nil, err
+		}
+		if config.Version != 1 {
+			return nil, errors.New("online config version error")
+		}
+		server := config.Servers[0]
+		if server.Protocol == "" {
+			server.Protocol = "ss"
+		}
+		addr := fmt.Sprintf("%v://%v:%v@%v:%v", server.Protocol, server.Method, server.Password, server.Server, server.ServerPort)
+		return protocol.NewHandler(addr, timeout)
+	})
 }
 
 type Dialer interface {
@@ -42,7 +99,7 @@ func NewDialer(url, server, password string) (Dialer, error) {
 	return &netDialer{}, nil
 }
 
-type netDialer struct {}
+type netDialer struct{}
 
 func (d *netDialer) Dial(network, addr string) (net.Conn, error) {
 	conn, err := net.Dial(network, addr)

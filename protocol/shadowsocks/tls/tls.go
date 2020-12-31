@@ -30,7 +30,7 @@ func NewDialer(server string, password string) (*Dialer, error) {
 		return nil, err
 	}
 	port, err := strconv.Atoi(portString)
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 	if port > math.MaxUint16 || (port != 80 && port != 443) {
@@ -62,7 +62,7 @@ func NewDialer(server string, password string) (*Dialer, error) {
 func (c *Dialer) Dial(network, addr string) (net.Conn, error) {
 	proxyAddr := &net.TCPAddr{IP: c.proxyIP, Port: c.proxyPort}
 	proxyConn, err := net.DialTCP("tcp", nil, proxyAddr)
-	if err != nil  {
+	if err != nil {
 		return nil, err
 	}
 	proxyConn.SetKeepAlive(true)
@@ -75,7 +75,7 @@ func (c *Dialer) Dial(network, addr string) (net.Conn, error) {
 func (c *Dialer) ListenPacket(network, addr string) (net.PacketConn, error) {
 	proxyAddr := &net.TCPAddr{IP: c.proxyIP, Port: c.proxyPort}
 	proxyConn, err := net.DialTCP("tcp", nil, proxyAddr)
-	if err != nil  {
+	if err != nil {
 		return nil, err
 	}
 	proxyConn.SetKeepAlive(true)
@@ -85,9 +85,9 @@ func (c *Dialer) ListenPacket(network, addr string) (net.PacketConn, error) {
 }
 
 var (
-	_ DuplexConn      = (*Conn)(nil)
-	_ net.Conn        = (*Conn)(nil)
-	_ net.PacketConn  = (*PacketConn)(nil)
+	_ DuplexConn     = (*Conn)(nil)
+	_ net.Conn       = (*Conn)(nil)
+	_ net.PacketConn = (*PacketConn)(nil)
 )
 
 type CloseReader interface {

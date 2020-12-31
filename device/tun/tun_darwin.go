@@ -15,7 +15,7 @@ import (
 
 func NewDeviceFromFile(file *os.File, mtu int) (dev *Device, err error) {
 	dev = &Device{}
-	device, err := tun.CreateTUNFromFile(file, /* mtu */ 0)
+	device, err := tun.CreateTUNFromFile(file, 0 /* mtu */)
 	if err != nil {
 		return
 	}
