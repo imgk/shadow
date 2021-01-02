@@ -149,6 +149,11 @@ func NewConnFromPacketConn(conn common.PacketConn) (c *Conn) {
 	return
 }
 
+func (c *Conn) Close() error {
+	c.SetDeadline(time.Now())
+	return c.netConn.Close()
+}
+
 func (c *Conn) Read(b []byte) (int, error) {
 	return c.Reader.Read(b)
 }
