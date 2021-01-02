@@ -109,6 +109,10 @@ func (h *OnlineHandler) tryRenew() (err error) {
 	h.mu.Lock()
 	handler := h.Handler
 	h.mu.Unlock()
+	if handler == nil {
+		err = errors.New("no valid handler")
+		return
+	}
 	go handler.Handle(rc, addr)
 
 	req, err := http.NewRequest(http.MethodGet, "http://connectivitycheck.gstatic.com/generate_204", nil)
@@ -130,7 +134,7 @@ func (h *OnlineHandler) renew() error {
 	type OnlineConfig struct {
 		Version int `json:"version"`
 		Servers []*struct {
-			ID            int    `json:"id"`
+			ID            string `json:"id"`
 			Remarks       string `json:"remarks"`
 			Server        string `json:"server"`
 			ServerPort    int    `json:"server_port"`
