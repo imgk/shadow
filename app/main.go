@@ -206,7 +206,7 @@ func ServePAC(w http.ResponseWriter, r *http.Request) {
 var pacTemplate = template.Must(template.New("").Parse(`
 function FindProxyForURL(url, host) {
     if (isInNet(dnsResolve(host), "198.18.0.0", "255.255.0.0")) {
-        return "SOCKS5 {{ . }}; SOCKS {{ . }}; PROXY {{ . }}"
+        return "SOCKS5 {{ . }}"
     }
     return "DIRECT"
 }
