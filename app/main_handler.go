@@ -43,6 +43,7 @@ func (r *Reader) Close() error {
 	if closer, ok := r.conn.(common.CloseReader); ok {
 		return closer.CloseRead()
 	}
+	r.conn.SetReadDeadline(time.Now())
 	return r.conn.Close()
 }
 
@@ -74,6 +75,7 @@ func (w *Writer) Close() error {
 	if closer, ok := w.conn.(common.CloseWriter); ok {
 		return closer.CloseWrite()
 	}
+	w.conn.SetWriteDeadline(time.Now())
 	return w.conn.Close()
 }
 

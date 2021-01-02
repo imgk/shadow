@@ -92,7 +92,7 @@ func (c duplexConn) CloseRead() error {
 	if close, ok := c.Conn.(CloseReader); ok {
 		return close.CloseRead()
 	}
-
+	c.Conn.SetReadDeadline(time.Now())
 	return c.Conn.Close()
 }
 
@@ -100,7 +100,7 @@ func (c duplexConn) CloseWrite() error {
 	if close, ok := c.Conn.(CloseWriter); ok {
 		return close.CloseWrite()
 	}
-
+	c.Conn.SetWriteDeadline(time.Now())
 	return c.Conn.Close()
 }
 

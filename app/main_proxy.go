@@ -86,6 +86,7 @@ func (conn *fakeConn) CloseRead() error {
 	if close, ok := conn.Conn.(common.CloseReader); ok {
 		return close.CloseRead()
 	}
+	conn.Conn.SetReadDeadline(time.Now())
 	return conn.Conn.Close()
 }
 
@@ -93,6 +94,7 @@ func (conn *fakeConn) CloseWrite() error {
 	if close, ok := conn.Conn.(common.CloseWriter); ok {
 		return close.CloseWrite()
 	}
+	conn.Conn.SetWriteDeadline(time.Now())
 	return conn.Conn.Close()
 }
 

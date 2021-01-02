@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // transfer shadowsocks data over tcp and tls with HTTP CONNECT tunnel
@@ -169,6 +170,7 @@ func (c *Conn) CloseRead() error {
 	if closer, ok := c.Conn.(CloseReader); ok {
 		return closer.CloseRead()
 	}
+	c.Conn.SetReadDeadline(time.Now())
 	return c.Conn.Close()
 }
 
@@ -177,6 +179,7 @@ func (c *Conn) CloseWrite() error {
 	if closer, ok := c.Conn.(CloseWriter); ok {
 		return closer.CloseWrite()
 	}
+	c.Conn.SetWriteDeadline(time.Now())
 	return c.Conn.Close()
 }
 

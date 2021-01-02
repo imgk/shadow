@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"time"
 )
 
 const MaxPacketSize = 16384
@@ -61,6 +62,9 @@ func (r *Reader) Close() (err error) {
 	if closer, ok := r.Reader.(CloseReader); ok {
 		err = closer.CloseRead()
 		return
+	}
+	if conn, ok := r.Reader.(net.Conn); ok {
+		conn.SetReadDeadline(time.Now())
 	}
 	return r.Reader.Close()
 }
@@ -201,6 +205,9 @@ func (w *Writer) Close() (err error) {
 	if closer, ok := w.Writer.(CloseWriter); ok {
 		err = closer.CloseWrite()
 		return
+	}
+	if conn, ok := w.Writer.(net.Conn); ok {
+		conn.SetWriteDeadline(time.Now())
 	}
 	return w.Writer.Close()
 }
