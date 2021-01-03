@@ -433,7 +433,6 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	}
 
 	route := conn.route
-	defer route.Release()
 
 	if ip := src.IP.To4(); ip != nil {
 		route.LocalAddress = tcpip.Address(ip)
