@@ -88,6 +88,12 @@ func (h *OnlineHandler) tryRenew() (err error) {
 	}()
 
 	c, rc := net.Pipe()
+	defer func() {
+		c.SetDeadline(time.Now())
+		rc.SetDeadline(time.Now())
+		c.Close()
+		rc.Close()
+	}()
 	t := http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return c, nil
