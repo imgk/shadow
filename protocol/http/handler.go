@@ -2,6 +2,7 @@ package http
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -31,15 +32,15 @@ func (e codeError) Error() string {
 	return fmt.Sprintf("http response code error: %v", int(e))
 }
 
-type Newer interface {
-	New() (net.Conn, error)
+type Dialer interface {
+	Dial() (net.Conn, error)
 }
 
-type rawNewer struct {
+type netDialer struct {
 	addr string
 }
 
-func (d rawNewer) New() (net.Conn, error) {
+func (d *netDialer) Dial() (net.Conn, error) {
 	conn, err := net.Dial("tcp", d.addr)
 	if err != nil {
 		return nil, err
@@ -50,12 +51,12 @@ func (d rawNewer) New() (net.Conn, error) {
 	return conn, nil
 }
 
-type tlsNewer struct {
+type tlsDialer struct {
 	addr   string
 	config tls.Config
 }
 
-func (d *tlsNewer) New() (net.Conn, error) {
+func (d *tlsDialer) Dial() (net.Conn, error) {
 	conn, err := net.Dial("tcp", d.addr)
 	if err != nil {
 		return nil, err
@@ -64,7 +65,7 @@ func (d *tlsNewer) New() (net.Conn, error) {
 		nc.SetKeepAlive(true)
 	}
 
-	conn = tls.Client(conn, d.config.Clone())
+	conn = tls.Client(conn, &d.config)
 	if err := conn.(*tls.Conn).Handshake(); err != nil {
 		conn.Close()
 		return nil, err
@@ -72,8 +73,28 @@ func (d *tlsNewer) New() (net.Conn, error) {
 	return conn, nil
 }
 
+type Conn struct {
+	net.Conn
+	Reader *bytes.Reader
+}
+
+func (conn *Conn) Read(b []byte) (int, error) {
+	if conn.Reader == nil {
+		return conn.Conn.Read(b)
+	}
+	n, err := conn.Reader.Read(b)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			conn.Reader = nil
+			return n, nil
+		}
+		return n, err
+	}
+	return n, nil
+}
+
 type Handler struct {
-	Newer
+	dialer  Dialer
 	readers sync.Pool
 	auth    string
 }
@@ -97,10 +118,10 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}
 	switch scheme {
 	case "http":
-		newer := rawNewer{addr: addr}
-		handler.Newer = newer
+		dialer := &netDialer{addr: addr}
+		handler.dialer = dialer
 	case "https":
-		newer := &tlsNewer{
+		dialer := &tlsDialer{
 			addr: addr,
 			config: tls.Config{
 				ServerName:         domain,
@@ -108,14 +129,14 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				InsecureSkipVerify: false,
 			},
 		}
-		handler.Newer = newer
+		handler.dialer = dialer
 	}
 
 	return handler, nil
 }
 
 func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
-	conn, err = h.Newer.New()
+	conn, err = h.dialer.Dial()
 	if err != nil {
 		return
 	}
@@ -149,6 +170,13 @@ func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
 	if res.StatusCode != http.StatusOK {
 		err = codeError(res.StatusCode)
 		return
+	}
+	if n := reader.Buffered(); n > 0 {
+		b := make([]byte, n)
+		if _, err = io.ReadFull(conn, b); err != nil {
+			return
+		}
+		conn = &Conn{Conn: conn, Reader: bytes.NewReader(b)}
 	}
 
 	return
