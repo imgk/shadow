@@ -104,7 +104,7 @@ func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 		return nil, err
 	}
 
-	if saltSize+len(dst)+aead.Overhead() < len(pkt) {
+	if len(dst) < saltSize+len(pkt)+aead.Overhead() {
 		return nil, io.ErrShortBuffer
 	}
 
