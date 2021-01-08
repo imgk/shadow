@@ -28,6 +28,7 @@ type Handler struct {
 	Cipher    core.Cipher
 	Client    http.Client
 	proxyAuth string
+	timeout   time.Duration
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
@@ -74,6 +75,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			},
 		},
 		proxyAuth: proxyAuth,
+		timeout:   timeout,
 	}, nil
 }
 
@@ -116,6 +118,7 @@ func NewQUICHandler(url string, timeout time.Duration) (*Handler, error) {
 			},
 		},
 		proxyAuth: proxyAuth,
+		timeout:   timeout,
 	}, nil
 }
 
@@ -187,7 +190,7 @@ var zerononce = [128]byte{}
 func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	defer conn.Close()
 
-	req, err := h.NewRequest(http.MethodConnect, "udp.imgk.cc", NewPacketReader(h.Cipher, conn))
+	req, err := h.NewRequest(http.MethodConnect, "udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout))
 	if err != nil {
 		return fmt.Errorf("NewRequest error: %v", err)
 	}
@@ -219,7 +222,7 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 				return fmt.Errorf("read packet error: %v", err)
 			}
 
-			bb, err := func (pkt []byte, cipher core.Cipher) ([]byte, error) {
+			bb, err := func(pkt []byte, cipher core.Cipher) ([]byte, error) {
 				saltSize := cipher.SaltSize()
 				if len(pkt) < saltSize {
 					return nil, core.ErrShortPacket
@@ -387,14 +390,16 @@ func (r *Reader) init(b []byte) (int, error) {
 type PacketReader struct {
 	core.Cipher
 	io.Closer
-	Reader common.PacketConn
+	Reader  common.PacketConn
+	timeout time.Duration
 }
 
-func NewPacketReader(ciph core.Cipher, conn common.PacketConn) *PacketReader {
+func NewPacketReader(ciph core.Cipher, conn common.PacketConn, timeout time.Duration) *PacketReader {
 	r := &PacketReader{
-		Cipher: ciph,
-		Closer: conn,
-		Reader: conn,
+		Cipher:  ciph,
+		Closer:  conn,
+		Reader:  conn,
+		timeout: timeout,
 	}
 	return r
 }
@@ -404,7 +409,7 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 	if len(b) < headerLen {
 		return 0, io.ErrShortBuffer
 	}
-	r.Reader.SetReadDeadline(time.Now().Add(time.Minute*3))
+	r.Reader.SetReadDeadline(time.Now().Add(r.timeout))
 	n, addr, err := r.Reader.ReadTo(b[headerLen:])
 	if err != nil {
 		return 0, err
