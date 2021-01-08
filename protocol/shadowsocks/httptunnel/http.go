@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -167,7 +168,7 @@ func (h *Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req, err := h.NewRequest(http.MethodConnect, "tcp.imgk.cc", NewReader(h.Cipher, io.ReadCloser(conn), tgt))
+	req, err := h.NewRequest(http.MethodConnect, "tcp.imgk.cc", ioutil.NopCloser(NewReader(h.Cipher, conn, tgt)))
 	if err != nil {
 		return fmt.Errorf("NewRequest error: %v", err)
 	}
@@ -190,7 +191,7 @@ var zerononce = [128]byte{}
 func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	defer conn.Close()
 
-	req, err := h.NewRequest(http.MethodConnect, "udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout))
+	req, err := h.NewRequest(http.MethodConnect, "udp.imgk.cc", ioutil.NopCloser(NewPacketReader(h.Cipher, conn, h.timeout)))
 	if err != nil {
 		return fmt.Errorf("NewRequest error: %v", err)
 	}
@@ -274,7 +275,6 @@ type Reader struct {
 	cipher.AEAD
 
 	core.Cipher
-	io.Closer
 	Reader io.Reader
 
 	tgt   net.Addr
@@ -284,7 +284,6 @@ type Reader struct {
 func NewReader(ciph core.Cipher, rc io.ReadCloser, tgt net.Addr) *Reader {
 	r := &Reader{
 		Cipher: ciph,
-		Closer: rc,
 		Reader: rc,
 		tgt:    tgt,
 	}
@@ -389,7 +388,6 @@ func (r *Reader) init(b []byte) (int, error) {
 
 type PacketReader struct {
 	core.Cipher
-	io.Closer
 	Reader  common.PacketConn
 	timeout time.Duration
 }
@@ -397,7 +395,6 @@ type PacketReader struct {
 func NewPacketReader(ciph core.Cipher, conn common.PacketConn, timeout time.Duration) *PacketReader {
 	r := &PacketReader{
 		Cipher:  ciph,
-		Closer:  conn,
 		Reader:  conn,
 		timeout: timeout,
 	}
