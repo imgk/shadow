@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -45,7 +46,7 @@ func NewReader(r io.ReadCloser, cipher Cipher) *Reader {
 func (r *Reader) init() (err error) {
 	salt := make([]byte, r.Cipher.SaltSize())
 	if _, err := io.ReadFull(r.Reader, salt); err != nil {
-		return err
+		return fmt.Errorf("init Reader error: %v", err)
 	}
 
 	r.AEAD, err = r.Cipher.NewAead(salt)

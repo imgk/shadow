@@ -19,7 +19,7 @@ import (
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
-	"github.com/imgk/shadow/protocol/shadowsocks/quic"
+	"github.com/imgk/shadow/protocol/shadowsocks/httptunnel"
 	"github.com/imgk/shadow/protocol/shadowsocks/tls"
 )
 
@@ -36,13 +36,31 @@ func init() {
 	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
+	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (common.Handler, error) {
+		return httptunnel.NewHandler(s, timeout)
+	})
+	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (common.Handler, error) {
+		return httptunnel.NewHandler(s, timeout)
+	})
+	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (common.Handler, error) {
+		return httptunnel.NewQUICHandler(s, timeout)
+	})
+	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (common.Handler, error) {
+		return httptunnel.NewQUICHandler(s, timeout)
+	})
 	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewOnlineHandler(s, timeout)
+	})
+	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewOnlineHandler(s, timeout)
+	})
+	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewOnlineHandler(s, timeout)
 	})
 }
 
 type OnlineHandler struct {
-	Handler *Handler
+	Handler common.Handler
 	URL     string
 	timeout time.Duration
 	limiter *rate.Limiter
@@ -150,6 +168,7 @@ func (h *OnlineHandler) renew() error {
 			PluginOptions string `json:"plugin_opts"`
 
 			// for other protocol, ss, ss-tls and else
+			// TODO: support http/https and trojan
 			Protocol string `json:"protocol,omitempty"`
 		} `json:"servers"`
 		BytesUsed      uint64 `json:"bytes_used,omitempty"`
@@ -184,7 +203,7 @@ func (h *OnlineHandler) renew() error {
 		}
 		addr := fmt.Sprintf("%v://%v:%v@%v:%v", server.Protocol, server.Method, server.Password, server.Server, server.ServerPort)
 
-		handler, err := NewHandler(addr, h.timeout)
+		handler, err := protocol.NewHandler(addr, h.timeout)
 		if err != nil {
 			continue
 		}
@@ -235,9 +254,6 @@ type Dialer interface {
 func NewDialer(url, server, password string) (Dialer, error) {
 	if strings.HasPrefix(url, "ss-tls") || strings.HasPrefix(url, "shadowsocks-tls") {
 		return tls.NewDialer(server, password)
-	}
-	if strings.HasPrefix(url, "ss-quic") || strings.HasPrefix(url, "shadowsocks-quic") {
-		return quic.NewDialer(server, password)
 	}
 
 	return &netDialer{}, nil
