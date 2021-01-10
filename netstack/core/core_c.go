@@ -9,22 +9,20 @@ import (
 	"sync"
 
 	"github.com/eycorsican/go-tun2socks/core"
-	"go.uber.org/multierr"
-	"go.uber.org/zap"
 )
 
 type Stack struct {
-	*zap.Logger
+	Logger
 	Device  Device
 	Handler Handler
 	Stack   core.LWIPStack
 
 	mtu   int32
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	conns map[core.UDPConn]*UDPConn
 }
 
-func (s *Stack) Start(device Device, handler Handler, logger *zap.Logger) error {
+func (s *Stack) Start(device Device, handler Handler, logger Logger) error {
 	s.Logger = logger
 
 	s.Device = device
@@ -48,7 +46,7 @@ func (s *Stack) Close() error {
 	for _, conn := range s.conns {
 		conn.Close()
 	}
-	return multierr.Combine(s.Logger.Sync(), s.Stack.Close())
+	return s.Stack.Close()
 }
 
 func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) error {
@@ -57,9 +55,9 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) error {
 }
 
 func (s *Stack) Get(k core.UDPConn) (*UDPConn, bool) {
-	s.mutex.Lock()
+	s.mutex.RLock()
 	conn, ok := s.conns[k]
-	s.mutex.Unlock()
+	s.mutex.RUnlock()
 	return conn, ok
 }
 

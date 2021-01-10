@@ -13,7 +13,6 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"go.uber.org/zap"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -28,17 +27,17 @@ import (
 )
 
 type Stack struct {
-	*zap.Logger
+	Logger
 	Device  Device
 	Handler Handler
 	Stack   *stack.Stack
 
 	mtu   int32
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	conns map[string]*UDPConn
 }
 
-func (s *Stack) Start(device Device, handler Handler, logger *zap.Logger) (err error) {
+func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error) {
 	s.Logger = logger
 
 	s.Device = device
@@ -261,9 +260,9 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 }
 
 func (s *Stack) Get(k string) (*UDPConn, bool) {
-	s.mutex.Lock()
+	s.mutex.RLock()
 	conn, ok := s.conns[k]
-	s.mutex.Unlock()
+	s.mutex.RUnlock()
 	return conn, ok
 }
 

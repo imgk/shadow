@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+type Logger interface {
+	Error(string)
+	Info(string)
+}
+
 type Device interface {
 	io.Writer
 	io.WriterTo

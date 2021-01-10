@@ -79,6 +79,18 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.UDPConn.WriteFrom(b, addr)
 }
 
+type Logger struct {
+	Logger *zap.Logger
+}
+
+func (l *Logger) Error(s string) {
+	l.Logger.Error(s)
+}
+
+func (l *Logger) Info(s string) {
+	l.Logger.Info(s)
+}
+
 var _ core.Handler = (*Stack)(nil)
 
 type Stack struct {
@@ -103,7 +115,7 @@ func NewStack(handler common.Handler, resolver common.Resolver, tree *common.Dom
 }
 
 func (s *Stack) Start(dev common.Device, logger *zap.Logger) error {
-	return s.Stack.Start(dev.(core.Device), s, logger)
+	return s.Stack.Start(dev.(core.Device), s, &Logger{Logger: logger})
 }
 
 func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
