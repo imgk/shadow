@@ -91,6 +91,10 @@ func (l *Logger) Info(s string) {
 	l.Logger.Info(s)
 }
 
+func (l *Logger) Debug(s string) {
+	l.Logger.Debug(s)
+}
+
 var _ core.Handler = (*Stack)(nil)
 
 type Stack struct {

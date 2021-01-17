@@ -157,7 +157,7 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	deadline := conn.readCancel()
 	select {
 	case <-deadline:
-		err = timeoutError{}
+		err = &timeoutError{}
 	case <-conn.closed:
 		err = io.EOF
 	case pkt := <-conn.stream:

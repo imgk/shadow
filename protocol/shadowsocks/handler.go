@@ -173,6 +173,8 @@ func (h *OnlineHandler) renew() error {
 		} `json:"servers"`
 		BytesUsed      uint64 `json:"bytes_used,omitempty"`
 		BytesRemaining uint64 `json:"bytes_remaining,omitempty"`
+		DaysUsed       uint64 `json:"days_used"`
+		DaysRemaining  uint64 `json:"days_remaining"`
 	}
 
 	r, err := http.Get(h.URL)

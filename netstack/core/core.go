@@ -10,6 +10,7 @@ import (
 type Logger interface {
 	Error(string)
 	Info(string)
+	Debug(string)
 }
 
 type Device interface {
@@ -25,9 +26,9 @@ type Handler interface {
 // timeoutError is how the net package reports timeouts.
 type timeoutError struct{}
 
-func (e timeoutError) Error() string   { return "i/o timeout" }
-func (e timeoutError) Timeout() bool   { return true }
-func (e timeoutError) Temporary() bool { return true }
+func (e *timeoutError) Error() string   { return "i/o timeout" }
+func (e *timeoutError) Timeout() bool   { return true }
+func (e *timeoutError) Temporary() bool { return true }
 
 type deadlineTimer struct {
 	// mu protects the fields below.
