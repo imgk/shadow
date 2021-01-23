@@ -5,12 +5,14 @@ import (
 	"net/url"
 )
 
+// UrlError is ...
 type UrlError string
 
 func (e UrlError) Error() string {
 	return fmt.Sprintf("shadowsocks url error: %v", string(e))
 }
 
+// ParseUrl is ...
 func ParseUrl(s string) (server, cipher, password string, err error) {
 	u, er := url.Parse(s)
 	if err != nil {
