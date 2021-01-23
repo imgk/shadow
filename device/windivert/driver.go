@@ -136,9 +136,7 @@ func GetDriverFileName() (string, error) {
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\EventLog\\System\\WinDivert", registry.QUERY_VALUE)
 	if err != nil {
 		if _, err := os.Stat(winDivertSYS); err != nil {
-			if er := Download(); er != nil {
-				return "", fmt.Errorf("download error: %w", er)
-			}
+			return "", fmt.Errorf("WinDivert error: %v", err)
 		}
 
 		if err := RegisterEventSource(winDivertSYS); err != nil {
@@ -156,9 +154,7 @@ func GetDriverFileName() (string, error) {
 
 	if _, err := os.Stat(val); err != nil {
 		if _, err := os.Stat(winDivertSYS); err != nil {
-			if er := Download(); er != nil {
-				return "", fmt.Errorf("download error: %w", er)
-			}
+			return "", fmt.Errorf("WinDivert error: %v", err)
 		}
 
 		if err := RegisterEventSource(winDivertSYS); err != nil {
