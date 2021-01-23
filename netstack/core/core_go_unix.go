@@ -38,10 +38,6 @@ func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.Endpoint.Attach(dispatcher)
 
-	r, ok := e.dev.(ReaderOffset)
-	if !ok {
-		return
-	}
 	go func(r ReaderOffset, size int, ep *channel.Endpoint) {
 		for {
 			buf := make([]byte, size)
@@ -62,7 +58,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 				})
 			}
 		}
-	}(r, 4+e.mtu, e.Endpoint)
+	}(e.dev.(ReaderOffset), 4+e.mtu, e.Endpoint)
 }
 
 // WriteNotify is to write packets back to system
