@@ -116,6 +116,7 @@ func NewQUICHandler(url string, timeout time.Duration) (*Handler, error) {
 					ServerName:         host,
 					ClientSessionCache: tls.NewLRUClientSessionCache(32),
 				},
+				QuicConfig: &quic.Config{KeepAlive: true},
 			},
 		},
 		proxyAuth: proxyAuth,
