@@ -61,7 +61,7 @@ func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 	return nil, ErrNotFake
 }
 
-// DomianEntry stores domian info
+// DomianEntry stores domain info
 type DomainEntry struct {
 	Rule string
 

@@ -1,4 +1,3 @@
-// +build !shadow_cgo
 // +build windows
 
 package core
@@ -13,6 +12,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+// Endpoint is ...
 type Endpoint struct {
 	*channel.Endpoint
 	mtu int
@@ -22,6 +22,7 @@ type Endpoint struct {
 	wt  io.Writer
 }
 
+// NewEndpoint is ...
 func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 	ep := &Endpoint{
 		Endpoint: channel.New(512, uint32(mtu), ""),
@@ -34,9 +35,11 @@ func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 	return ep
 }
 
+// Attach is to attach device to stack
 func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.Endpoint.Attach(dispatcher)
 
+	// WinDivert has no io.Reader
 	r, ok := e.dev.(io.Reader)
 	if !ok {
 		go func(w *Endpoint, wt io.WriterTo) {
@@ -46,6 +49,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 		}(e, e.dev)
 		return
 	}
+	// WinTun
 	go func(r io.Reader, size int, ep *channel.Endpoint) {
 		for {
 			buf := make([]byte, size)
@@ -69,6 +73,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	}(r, e.mtu, e.Endpoint)
 }
 
+// WriteNotify is to write packets back to system
 func (e *Endpoint) WriteNotify() {
 	info, ok := e.Endpoint.Read()
 	if !ok {
@@ -83,6 +88,7 @@ func (e *Endpoint) WriteNotify() {
 	e.mu.Unlock()
 }
 
+// Write is to write packet to stack
 func (e *Endpoint) Write(b []byte) (int, error) {
 	buf := append(make([]byte, 0, len(b)), b...)
 

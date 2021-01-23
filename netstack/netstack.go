@@ -14,8 +14,14 @@ import (
 	"github.com/imgk/shadow/netstack/core"
 )
 
-var _ common.PacketConn = (*FakeUDPConn)(nil)
+var (
+	_ common.PacketConn = (*FakeUDPConn)(nil)
+	_ common.PacketConn = (*UDPConn)(nil)
+	_ core.Handler      = (*Stack)(nil)
+	_ core.Logger       = (*Logger)(nil)
+)
 
+// FakeUDPConn is ...
 type FakeUDPConn struct {
 	*core.UDPConn
 	fake net.Addr
@@ -39,8 +45,7 @@ func (conn *FakeUDPConn) LocalAddr() net.Addr {
 	return conn.real
 }
 
-var _ common.PacketConn = (*UDPConn)(nil)
-
+// UDPConn is ...
 type UDPConn struct {
 	*core.UDPConn
 	Stack *Stack
@@ -79,6 +84,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.UDPConn.WriteFrom(b, addr)
 }
 
+// Logger is core.Logger
 type Logger struct {
 	Logger *zap.Logger
 }
@@ -95,8 +101,7 @@ func (l *Logger) Debug(s string) {
 	l.Logger.Debug(s)
 }
 
-var _ core.Handler = (*Stack)(nil)
-
+// Stack is core.Handler
 type Stack struct {
 	core.Stack
 	handler common.Handler
@@ -122,6 +127,7 @@ func (s *Stack) Start(dev common.Device, logger *zap.Logger) error {
 	return s.Stack.Start(dev.(core.Device), s, &Logger{Logger: logger})
 }
 
+// Handle handles net.Conn
 func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 	addr, err := s.LookupAddr(target)
 	if err == ErrNotFake {
@@ -166,6 +172,7 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 	return
 }
 
+// HandlePacket handles core.UDPConn
 func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 	if target == nil {
 		s.Info(fmt.Sprintf("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr()))
@@ -222,7 +229,7 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 	return
 }
 
-// handle dns queries
+// HandleQuery handles dns queries
 func (s *Stack) HandleQuery(conn *core.UDPConn) {
 	defer conn.Close()
 

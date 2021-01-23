@@ -1,5 +1,3 @@
-// +build !shadow_cgo
-
 package core
 
 import (
@@ -26,6 +24,7 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
+// Stack is
 type Stack struct {
 	Logger
 	Device  Device
@@ -37,6 +36,7 @@ type Stack struct {
 	conns map[string]*UDPConn
 }
 
+// Start is to start the stack
 func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error) {
 	s.Logger = logger
 
@@ -216,6 +216,7 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error)
 	return
 }
 
+// HandleStream is to handle incoming TCP connections
 func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 	var id = r.ID()
 	var wq = waiter.Queue{}
@@ -259,6 +260,7 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 	go s.Handler.Handle(gonet.NewTCPConn(&wq, ep), &net.TCPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
 }
 
+// Get is to get *UDPConn
 func (s *Stack) Get(k string) (*UDPConn, bool) {
 	s.mutex.RLock()
 	conn, ok := s.conns[k]
@@ -266,18 +268,21 @@ func (s *Stack) Get(k string) (*UDPConn, bool) {
 	return conn, ok
 }
 
+// Add is to add *UDPConn
 func (s *Stack) Add(k string, conn *UDPConn) {
 	s.mutex.Lock()
 	s.conns[k] = conn
 	s.mutex.Unlock()
 }
 
+// Del is to delete *UDPConn
 func (s *Stack) Del(k string) {
 	s.mutex.Lock()
 	delete(s.conns, k)
 	s.mutex.Unlock()
 }
 
+// HandlePacket is to handle UDP connections
 func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuffer) bool {
 	// Ref: gVisor pkg/tcpip/transport/udp/endpoint.go HandlePacket
 	udpHdr := header.UDP(pkt.TransportHeader().View())
@@ -344,6 +349,7 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 	return true
 }
 
+// Close is to close the stack
 func (s *Stack) Close() error {
 	for _, conn := range s.conns {
 		conn.Close()
@@ -371,6 +377,7 @@ type UDPConn struct {
 	stream chan Packet
 }
 
+// NewUDPConn is to create a new *UDPConn
 func NewUDPConn(key string, addr, raddr net.UDPAddr, s *Stack, r *stack.Route) *UDPConn {
 	conn := &UDPConn{
 		key:    key,
@@ -385,6 +392,7 @@ func NewUDPConn(key string, addr, raddr net.UDPAddr, s *Stack, r *stack.Route) *
 	return conn
 }
 
+// Close close UDPConn
 func (conn *UDPConn) Close() error {
 	select {
 	case <-conn.closed:
@@ -397,14 +405,17 @@ func (conn *UDPConn) Close() error {
 	return nil
 }
 
+// LocalAddr is net.PacketConn.LocalAddr
 func (conn *UDPConn) LocalAddr() net.Addr {
 	return &conn.addr
 }
 
+// RemoteAddr is net.PacketConn.RemoteAddr
 func (conn *UDPConn) RemoteAddr() net.Addr {
 	return &conn.raddr
 }
 
+// ReadTo is ...
 func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	deadline := conn.readCancel()
 	select {
@@ -419,6 +430,7 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
+// WriteFrom is ...
 func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	v := buffer.View(b)
 	if len(v) > header.UDPMaximumPacketSize {
@@ -454,6 +466,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return len(b), nil
 }
 
+// HandlePacket is to read packet to UDPConn
 func (conn *UDPConn) HandlePacket(b []byte, addr *net.UDPAddr) {
 	select {
 	case <-conn.closed:

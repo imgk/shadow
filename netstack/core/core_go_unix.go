@@ -1,4 +1,3 @@
-// +build !shadow_cgo
 // +build linux darwin
 
 package core
@@ -12,6 +11,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+// Endpoint is ...
 type Endpoint struct {
 	*channel.Endpoint
 	mtu int
@@ -21,6 +21,7 @@ type Endpoint struct {
 	wt  WriterOffset
 }
 
+// NewEndpoint is ...
 func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 	ep := &Endpoint{
 		Endpoint: channel.New(512, uint32(mtu), ""),
@@ -33,6 +34,7 @@ func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 	return ep
 }
 
+// Attach is to attach device to stack
 func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.Endpoint.Attach(dispatcher)
 
@@ -63,6 +65,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	}(r, 4+e.mtu, e.Endpoint)
 }
 
+// WriteNotify is to write packets back to system
 func (e *Endpoint) WriteNotify() {
 	info, ok := e.Endpoint.Read()
 	if !ok {
@@ -77,10 +80,12 @@ func (e *Endpoint) WriteNotify() {
 	e.mu.Unlock()
 }
 
+// ReaderOffset is for unix tun reading with 4 bytes prefix
 type ReaderOffset interface {
 	ReadOffset([]byte, int) (int, error)
 }
 
+// ReaderOffset is for linux tun writing with 4 bytes prefix
 type WriterOffset interface {
 	WriteOffset([]byte, int) (int, error)
 }

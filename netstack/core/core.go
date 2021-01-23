@@ -7,17 +7,20 @@ import (
 	"time"
 )
 
+// Logger is for showing logs of netstack
 type Logger interface {
 	Error(string)
 	Info(string)
 	Debug(string)
 }
 
+// Device is a tun-like device for reading packets from system
 type Device interface {
 	io.Writer
 	io.WriterTo
 }
 
+// Handler is for handling incoming TCP and UDP connections
 type Handler interface {
 	Handle(net.Conn, *net.TCPAddr)
 	HandlePacket(*UDPConn, *net.UDPAddr)
