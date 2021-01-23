@@ -2,7 +2,7 @@ name: Go
 
 on:
   push:
-    branches: [ master, dev ]
+    branches: [ dev ]
   pull_request:
     branches: [ master ]
 
@@ -30,34 +30,17 @@ jobs:
             dep ensure
         fi
 
-    - name: Set up MinGW
-      uses: egor-tensin/setup-mingw@v1
-      with:
-        platform: x64
+    - name: Build Windows-WinDivert
+      run: env CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -v -trimpath -ldflags="-s -w" -tags="shadow_divert" ./...
 
-    - name: Build-Windows-WinDivert-gvisor-divert-dll
-      run: CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -v -trimpath -ldflags="-s -w" -tags="shadow_divert" ./...
+    - name: Build Windows-WinTun
+      run: env CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -v -trimpath -ldflags="-s -w" -tags="" ./...
 
-    - name: Build-Windows-WinDivert-gvisor-divert-embedded
-      run: CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -v -trimpath -ldflags="-s -w" -tags="shadow_divert divert_embedded" ./...
+    - name: Build macOS
+      run: env CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build -v -trimpath -ldflags="-s -w" -tags="" ./...
 
-    - name: Build-Windows-WinDivert-lwip-divert-cgo
-      run: CGO_ENABLED=1 GOARCH=amd64 GOOS=windows CC=x86_64-w64-mingw32-gcc go build -v -trimpath -ldflags="-s -w" -tags="shadow_cgo shadow_divert divert_cgo" ./...
-
-    - name: Build-Windows-WinTun-gvisor
-      run: CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -v -trimpath -ldflags="-s -w" -tags="" ./...
-
-    - name: Build-Windows-WinTun-lwip
-      run: CGO_ENABLED=1 GOARCH=amd64 GOOS=windows CC=x86_64-w64-mingw32-gcc go build -v -trimpath -ldflags="-s -w" -tags="shadow_cgo" ./...
-
-    - name: Build-macOS-gvisor
-      run: CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build -v -trimpath -ldflags="-s -w" -tags="" ./...
-
-    - name: Build-Linux-lwip
-      run: CGO_ENABLED=1 GOARCH=amd64 GOOS=linux go build -v -trimpath -ldflags="-s -w" -tags="shadow_cgo" ./...
-
-    - name: Build-Linux-gvisor
-      run: CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -v -trimpath -ldflags="-s -w" -tags="" ./...
+    - name: Build Linux
+      run: env CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -v -trimpath -ldflags="-s -w" -tags="" ./...
 
     - name: Test
       run: go test -v ./...
