@@ -13,8 +13,6 @@
     // trojan://password@ip:port/
     //   path?
     //   transport=(tls|websocket)
-    //   &cipher=(dummy|chacha20-ietf-poly1305|aes-256-gcm)
-    //   &password=(aead_password)
     //   &mux=(off|v1)
     //   #domain.name
 

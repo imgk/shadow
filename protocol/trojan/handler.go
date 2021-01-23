@@ -18,39 +18,40 @@ import (
 
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/protocol/shadowsocks/core"
 )
 
 func init() {
 	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (common.Handler, error) {
 		return NewHandler(s, timeout)
 	})
+	protocol.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (common.Handler, error) {
+		return NewHandler(s, timeout)
+	})
 }
 
 const (
+	// trojan header length
 	HeaderLen = 56
-)
 
-const (
 	cmdConnect   = 1
 	cmdAssocaite = 3
 )
 
-type Dialer struct {
-	dialer net.Dialer
-	addr   string
+type dialer struct {
+	net.Dialer
+	addr string
 }
 
-func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
-	conn, err := d.dialer.Dial(network, d.addr)
+func (d *dialer) Dial(network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial(network, d.addr)
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
 	}
 	return conn, err
 }
 
-func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	conn, err := d.dialer.DialContext(ctx, network, d.addr)
+func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, network, d.addr)
 	if nc, ok := conn.(*net.TCPConn); ok {
 		nc.SetKeepAlive(true)
 	}
@@ -62,8 +63,8 @@ type Connector interface {
 }
 
 type TLS struct {
+	dialer
 	server string
-	dialer Dialer
 	config *tls.Config
 }
 
@@ -87,11 +88,11 @@ type WebSocket struct {
 
 func (h *WebSocket) Connect() (conn net.Conn, err error) {
 	wc, _, err := h.dialer.Dial(h.addr, nil)
-	conn = &WebSocketConn{Conn: wc, Reader: emptyReader{}}
+	conn = &wsConn{Conn: wc, Reader: &emptyReader{}}
 	return
 }
 
-type MuxConfig struct {
+type muxConfig struct {
 	sync.Mutex
 	config smux.Config
 	max    int
@@ -99,9 +100,8 @@ type MuxConfig struct {
 }
 
 type Handler struct {
-	connector  Connector
-	cipher     core.Cipher
-	mux        MuxConfig
+	Connector
+	mux        muxConfig
 	muxEnabled bool
 
 	header  [HeaderLen + 2 + 8 + 2]byte
@@ -112,12 +112,12 @@ type Handler struct {
 }
 
 func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	opt, err := ParseUrl(url)
+	password, address, path, transport, muxEnabled, domainName, err := ParseUrl(url)
 	if err != nil {
 		return nil, err
 	}
 
-	addr, err := net.ResolveUDPAddr("udp", opt.Server)
+	addr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return nil, err
 	}
@@ -128,48 +128,42 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		server:  host,
 	}
 	tlsConfig := &tls.Config{
-		ServerName:         opt.DomainName,
+		ServerName:         domainName,
 		ClientSessionCache: tls.NewLRUClientSessionCache(32),
 		InsecureSkipVerify: false,
 	}
-	dialer := Dialer{
-		dialer: net.Dialer{},
+	dialer := dialer{
+		Dialer: net.Dialer{},
 		addr:   host,
 	}
 
-	hash := sha256.Sum224([]byte(opt.Password))
+	hash := sha256.Sum224([]byte(password))
 	hex.Encode(hd.header[:HeaderLen], hash[:])
 	hd.header[HeaderLen], hd.header[HeaderLen+1] = 0x0d, 0x0a
 
-	switch opt.Transport {
+	switch transport {
 	case "websocket":
-		hd.connector = &WebSocket{
+		hd.Connector = &WebSocket{
 			dialer: websocket.Dialer{
 				NetDial:         dialer.Dial,
 				NetDialContext:  dialer.DialContext,
 				TLSClientConfig: tlsConfig,
 			},
-			addr: "wss://" + opt.DomainName + opt.Path,
+			addr: fmt.Sprintf("wss://%s%s", domainName, path),
 		}
 	case "tls":
-		hd.connector = &TLS{
+		hd.Connector = &TLS{
 			server: hd.server,
 			dialer: dialer,
 			config: tlsConfig,
 		}
 	}
 
-	cipher, err := core.NewCipher(opt.Aead, opt.AeadPassword)
-	if err != nil {
-		return nil, err
-	}
-	hd.cipher = cipher
-
-	switch opt.Mux {
+	switch muxEnabled {
 	case "off":
 		hd.muxEnabled = false
 	case "v1":
-		hd.mux = MuxConfig{
+		hd.mux = muxConfig{
 			Mutex: sync.Mutex{},
 			config: smux.Config{
 				Version:           1,
@@ -190,7 +184,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		hd.closed = make(chan struct{})
 		go hd.closeIdleSession()
 	case "v2":
-		hd.mux = MuxConfig{
+		hd.mux = muxConfig{
 			Mutex: sync.Mutex{},
 			config: smux.Config{
 				Version:           2,
@@ -246,12 +240,6 @@ LOOP:
 		}
 		h.mux.Unlock()
 	}
-}
-
-func (h *Handler) Connect() (conn net.Conn, err error) {
-	conn, err = h.connector.Connect()
-	conn = core.NewConn(conn, h.cipher)
-	return
 }
 
 func (h *Handler) ConnectMux() (conn net.Conn, err error) {
@@ -561,16 +549,16 @@ func copyWithChannel(conn common.PacketConn, rc net.Conn, timeout time.Duration,
 
 type emptyReader struct{}
 
-func (emptyReader) Read(b []byte) (int, error) {
+func (*emptyReader) Read(b []byte) (int, error) {
 	return 0, io.EOF
 }
 
-type WebSocketConn struct {
+type wsConn struct {
 	*websocket.Conn
 	Reader io.Reader
 }
 
-func (conn *WebSocketConn) Read(b []byte) (int, error) {
+func (conn *wsConn) Read(b []byte) (int, error) {
 	n, err := conn.Reader.Read(b)
 	if n > 0 {
 		return n, nil
@@ -588,7 +576,7 @@ func (conn *WebSocketConn) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-func (conn *WebSocketConn) Write(b []byte) (int, error) {
+func (conn *wsConn) Write(b []byte) (int, error) {
 	err := conn.Conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		if we := (*websocket.CloseError)(nil); errors.As(err, &we) {
@@ -599,13 +587,13 @@ func (conn *WebSocketConn) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (conn *WebSocketConn) SetDeadline(t time.Time) error {
+func (conn *wsConn) SetDeadline(t time.Time) error {
 	conn.SetReadDeadline(t)
 	conn.SetWriteDeadline(t)
 	return nil
 }
 
-func (conn *WebSocketConn) Close() (err error) {
+func (conn *wsConn) Close() (err error) {
 	err = conn.Conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second*5))
 	conn.Conn.Close()
 	return
