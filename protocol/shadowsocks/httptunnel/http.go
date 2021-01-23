@@ -407,7 +407,7 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 	// the default buffer size is 16 << 10 - 1, to avoid overlap error when use aead cipher
 	// use 512 for buffer for 2 + SaltSize + MaxAddrLen + Overhead
 	headerLen := len(b)/2 + 512
-	if len(b) < headerLen + 2<<10 {
+	if len(b) < headerLen+2<<10 {
 		return 0, io.ErrShortBuffer
 	}
 	r.Reader.SetReadDeadline(time.Now().Add(r.timeout))
@@ -447,23 +447,23 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 
-	buf, err := func (dst, pkt []byte, cipher core.Cipher) ([]byte, error) {
+	buf, err := func(dst, pkt []byte, cipher core.Cipher) ([]byte, error) {
 		saltSize := cipher.SaltSize()
 		salt := dst[:saltSize]
 		_, err := rand.Read(salt)
 		if err != nil {
 			return nil, err
 		}
-	
+
 		aead, err := cipher.NewAead(salt)
 		if err != nil {
 			return nil, err
 		}
-	
+
 		if len(dst) < saltSize+len(pkt)+aead.Overhead() {
 			return nil, io.ErrShortBuffer
 		}
-	
+
 		return aead.Seal(dst[:saltSize], zerononce[:aead.NonceSize()], pkt, nil), nil
 	}(b[2:], b[offset:headerLen+n], r.Cipher)
 	b[0] = byte(len(buf) >> 8)
