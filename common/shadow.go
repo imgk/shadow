@@ -5,8 +5,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"go.uber.org/multierr"
 )
 
 const MaxBufferSize = 16384
@@ -131,7 +129,7 @@ func relay(c, rc DuplexConn) error {
 		rc.CloseRead()
 	}
 
-	return multierr.Combine(err, <-errCh)
+	return CombineError(err, <-errCh)
 }
 
 func relay2(c, rc DuplexConn, errCh chan error) {

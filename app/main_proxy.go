@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/imgk/shadow/common"
@@ -239,7 +238,7 @@ func (s *proxyServer) Close() (err error) {
 		close(s.closed)
 	}
 
-	err = multierr.Combine(s.netLisener.Close(), s.listener.Close(), s.Server.Close())
+	err = common.CombineError(s.netLisener.Close(), s.listener.Close(), s.Server.Close())
 	return
 }
 
