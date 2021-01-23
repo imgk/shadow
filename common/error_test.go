@@ -6,7 +6,7 @@ import (
 )
 
 func TestCombineError(t *testing.T) {
-	var set = []struct{
+	var set = []struct {
 		err []error
 		str string
 	}{

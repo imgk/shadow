@@ -10,7 +10,6 @@ require (
 	github.com/miekg/dns v1.1.35
 	github.com/oschwald/maxminddb-golang v1.8.0
 	github.com/xtaci/smux v1.5.15
-	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777
 	golang.org/x/sys v0.0.0-20210122235752-a8b976e07c7b

@@ -3,17 +3,16 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 	"time"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack"
@@ -91,9 +90,23 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 	return nil
 }
 
+type Logger log.Logger
+
+func (l *Logger) Error(s string, v ...interface{}) {
+	(*log.Logger)(l).Printf(fmt.Sprintf("Error: %s", s), v...)
+}
+
+func (l *Logger) Info(s string, v ...interface{}) {
+	(*log.Logger)(l).Printf(fmt.Sprintf("Info: %s", s), v...)
+}
+
+func (l *Logger) Debug(s string, v ...interface{}) {
+	(*log.Logger)(l).Printf(fmt.Sprintf("Debug: %s", s), v...)
+}
+
 // shadow application
 type App struct {
-	*zap.Logger
+	*Logger
 	*Conf
 
 	timeout time.Duration
@@ -125,11 +138,7 @@ func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, er
 // new shadow app from *Conf
 func NewAppFromConf(conf *Conf, timeout time.Duration, w io.Writer) *App {
 	return &App{
-		Logger: zap.New(zapcore.NewCore(
-			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
-			newWriteSyncer(w),
-			zap.NewAtomicLevelAt(zap.InfoLevel),
-		), zap.Development()),
+		Logger:  (*Logger)(log.New(w, "", log.LstdFlags)),
 		Conf:    conf,
 		timeout: timeout,
 		done:    make(chan struct{}),
@@ -174,28 +183,6 @@ func (app *App) newDomainTree() (*common.DomainTree, error) {
 	}
 	tree.Unlock()
 	return tree, nil
-}
-
-// empty writer, drop all bytes
-type emptyWriter struct{}
-
-func (w emptyWriter) Write(b []byte) (int, error) { return len(b), nil }
-func (w emptyWriter) Sync() error                 { return nil }
-
-type emptySyncer struct{ io.Writer }
-
-// empty syncer, always return nil
-func (emptySyncer) Sync() error { return nil }
-
-func newWriteSyncer(w io.Writer) zapcore.WriteSyncer {
-	if w == nil {
-		return emptyWriter{}
-	}
-
-	if wt, ok := w.(zapcore.WriteSyncer); ok {
-		return wt
-	}
-	return emptySyncer{Writer: w}
 }
 
 func ServePAC(w http.ResponseWriter, r *http.Request) {

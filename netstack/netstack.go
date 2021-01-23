@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"go.uber.org/zap"
 
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack/core"
@@ -18,8 +17,9 @@ var (
 	_ common.PacketConn = (*FakeUDPConn)(nil)
 	_ common.PacketConn = (*UDPConn)(nil)
 	_ core.Handler      = (*Stack)(nil)
-	_ core.Logger       = (*Logger)(nil)
 )
+
+type Logger core.Logger
 
 // FakeUDPConn is ...
 type FakeUDPConn struct {
@@ -84,23 +84,6 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.UDPConn.WriteFrom(b, addr)
 }
 
-// Logger is core.Logger
-type Logger struct {
-	Logger *zap.Logger
-}
-
-func (l *Logger) Error(s string) {
-	l.Logger.Error(s)
-}
-
-func (l *Logger) Info(s string) {
-	l.Logger.Info(s)
-}
-
-func (l *Logger) Debug(s string) {
-	l.Logger.Debug(s)
-}
-
 // Stack is core.Handler
 type Stack struct {
 	core.Stack
@@ -123,8 +106,8 @@ func NewStack(handler common.Handler, resolver common.Resolver, tree *common.Dom
 	}
 }
 
-func (s *Stack) Start(dev common.Device, logger *zap.Logger) error {
-	return s.Stack.Start(dev.(core.Device), s, &Logger{Logger: logger})
+func (s *Stack) Start(dev common.Device, logger Logger) error {
+	return s.Stack.Start(dev.(core.Device), s, logger)
 }
 
 // Handle handles net.Conn
@@ -139,7 +122,7 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
 				(ip[0] == 192 && ip[1] == 168) ||
 				(ip[0] == 169 && ip[1] == 254) {
-				s.Info(fmt.Sprintf("ignore conns to %v", target))
+				s.Info("ignore conns to %v", target)
 				conn.Close()
 				return
 			}
@@ -147,27 +130,27 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 			ip := target.IP.To16()
 			if ip[0] == 0xfe && ip[1] == 0x80 ||
 				(ip[0] == 0xff && ip[1] == 0x02) {
-				s.Info(fmt.Sprintf("ignore conns to %v", target))
+				s.Info("ignore conns to %v", target)
 				conn.Close()
 				return
 			}
 		}
 
-		s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), target))
+		s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), target)
 		if err := s.handler.Handle(conn, target); err != nil {
-			s.Error(fmt.Sprintf("handle tcp error: %v", err))
+			s.Error("handle tcp error: %v", err)
 		}
 		return
 	}
 	if err == ErrNotFound {
-		s.Error(fmt.Sprintf("handle tcp error: target %v %v", target, err))
+		s.Error("handle tcp error: target %v %v", target, err)
 		conn.Close()
 		return
 	}
 
-	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr))
+	s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
 	if err := s.handler.Handle(conn, addr); err != nil {
-		s.Error(fmt.Sprintf("handle tcp error: %v", err))
+		s.Error("handle tcp error: %v", err)
 	}
 	return
 }
@@ -175,21 +158,21 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 // HandlePacket handles core.UDPConn
 func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 	if target == nil {
-		s.Info(fmt.Sprintf("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr()))
+		s.Info("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr())
 		if err := s.handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
-			s.Error(fmt.Sprintf("handle udp error: %v", err))
+			s.Error("handle udp error: %v", err)
 		}
 		return
 	}
 
 	addr, err := s.LookupAddr(target)
 	if err == ErrNotFound {
-		s.Error(fmt.Sprintf("%v not found", target))
+		s.Error("%v not found", target)
 		return
 	}
 	if err == ErrNotFake {
 		if target.Port == 53 && s.hijack {
-			s.Info(fmt.Sprintf("hijack %v <-UDP-> %v", conn.RemoteAddr(), target))
+			s.Info("hijack %v <-UDP-> %v", conn.RemoteAddr(), target)
 			s.HandleQuery(conn)
 			return
 		}
@@ -201,7 +184,7 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
 				(ip[0] == 192 && ip[1] == 168) ||
 				(ip[0] == 169 && ip[1] == 254) {
-				s.Info(fmt.Sprintf("ignore packets to %v", target))
+				s.Info("ignore packets to %v", target)
 				conn.Close()
 				return
 			}
@@ -209,22 +192,22 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 			ip := target.IP.To16()
 			if ip[0] == 0xfe && ip[1] == 0x80 ||
 				(ip[0] == 0xff && ip[1] == 0x02) {
-				s.Info(fmt.Sprintf("ignore packets to %v", target))
+				s.Info("ignore packets to %v", target)
 				conn.Close()
 				return
 			}
 		}
 
-		s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target))
+		s.Info("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target)
 		if err := s.handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
-			s.Error(fmt.Sprintf("handle udp error: %v", err))
+			s.Error("handle udp error: %v", err)
 		}
 		return
 	}
 
-	s.Info(fmt.Sprintf("proxyd %v <-UDP-> %v", conn.RemoteAddr(), addr))
+	s.Info("proxyd %v <-UDP-> %v", conn.RemoteAddr(), addr)
 	if err := s.handler.HandlePacket(NewFakeUDPConn(conn, target, addr)); err != nil {
-		s.Error(fmt.Sprintf("handle udp error: %v", err))
+		s.Error("handle udp error: %v", err)
 	}
 	return
 }
@@ -250,12 +233,12 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 			if err == io.EOF {
 				break
 			}
-			s.Error(fmt.Sprintf("read dns error: %v", err))
+			s.Error("read dns error: %v", err)
 			break
 		}
 
 		if err := m.Unpack(b[2 : 2+n]); err != nil {
-			s.Error(fmt.Sprintf("unpack message error: %v", err))
+			s.Error("unpack message error: %v", err)
 			continue
 		}
 
@@ -263,7 +246,7 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 			s.Error("no question in message")
 			continue
 		}
-		s.Info(fmt.Sprintf("queryd %v ask for %v", conn.RemoteAddr(), m.Question[0].Name))
+		s.Info("queryd %v ask for %v", conn.RemoteAddr(), m.Question[0].Name)
 
 		s.HandleMessage(&m)
 		if m.MsgHdr.Response {

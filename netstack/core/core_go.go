@@ -222,13 +222,13 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 	var wq = waiter.Queue{}
 	ep, tcperr := r.CreateEndpoint(&wq)
 	if tcperr != nil {
-		s.Error(fmt.Sprintf("tcp %v:%v <---> %v:%v create endpoint error: %v",
+		s.Error("tcp %v:%v <---> %v:%v create endpoint error: %v",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
 			net.IP(id.LocalAddress),
 			int(id.LocalPort),
 			tcperr,
-		))
+		)
 		// prevent potential half-open TCP connection leak.
 		r.Complete(true)
 		return
@@ -248,13 +248,13 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 		}
 		return nil
 	}(ep); err != nil {
-		s.Error(fmt.Sprintf("tcp %v:%v <---> %v:%v create endpoint error: %v",
+		s.Error("tcp %v:%v <---> %v:%v create endpoint error: %v",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
 			net.IP(id.LocalAddress),
 			int(id.LocalPort),
 			err,
-		))
+		)
 	}
 
 	go s.Handler.Handle(gonet.NewTCPConn(&wq, ep), &net.TCPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
@@ -287,23 +287,23 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 	// Ref: gVisor pkg/tcpip/transport/udp/endpoint.go HandlePacket
 	udpHdr := header.UDP(pkt.TransportHeader().View())
 	if int(udpHdr.Length()) > pkt.Data.Size()+header.UDPMinimumSize {
-		s.Error(fmt.Sprintf("udp %v:%v <---> %v:%v malformed packet",
+		s.Error("udp %v:%v <---> %v:%v malformed packet",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
 			net.IP(id.LocalAddress),
 			int(id.LocalPort),
-		))
+		)
 		s.Stack.Stats().UDP.MalformedPacketsReceived.Increment()
 		return true
 	}
 
 	if !verifyChecksum(udpHdr, pkt) {
-		s.Error(fmt.Sprintf("udp %v:%v <---> %v:%v checksum error",
+		s.Error("udp %v:%v <---> %v:%v checksum error",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
 			net.IP(id.LocalAddress),
 			int(id.LocalPort),
-		))
+		)
 		s.Stack.Stats().UDP.ChecksumErrors.Increment()
 		return true
 	}
@@ -325,13 +325,13 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 		false, /* multicastLoop */
 	)
 	if tcperr != nil {
-		s.Error(fmt.Sprintf("udp %v:%v <---> %v:%v find route error: %v",
+		s.Error("udp %v:%v <---> %v:%v find route error: %v",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
 			net.IP(id.LocalAddress),
 			int(id.LocalPort),
 			tcperr,
-		))
+		)
 		return true
 	}
 

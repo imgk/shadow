@@ -9,9 +9,9 @@ import (
 
 // Logger is for showing logs of netstack
 type Logger interface {
-	Error(string)
-	Info(string)
-	Debug(string)
+	Error(string, ...interface{})
+	Info(string, ...interface{})
+	Debug(string, ...interface{})
 }
 
 // Device is a tun-like device for reading packets from system

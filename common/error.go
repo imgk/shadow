@@ -17,7 +17,7 @@ func (e *mError) Error() string {
 	}
 }
 
-func CombineError(err... error) error {
+func CombineError(err ...error) error {
 	me := []error{}
 	for _, e := range err {
 		if e != nil {

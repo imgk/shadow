@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack"
 )
@@ -152,7 +150,7 @@ func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) 
 
 // a combined socks5/http proxy server
 type proxyServer struct {
-	*zap.Logger
+	*Logger
 	router *http.ServeMux
 
 	// Convert fake IP and handle connections
@@ -167,7 +165,7 @@ type proxyServer struct {
 	closed chan struct{}
 }
 
-func newProxyServer(ln net.Listener, logger *zap.Logger, handler common.Handler, tree *common.DomainTree, router *http.ServeMux) *proxyServer {
+func newProxyServer(ln net.Listener, logger *Logger, handler common.Handler, tree *common.DomainTree, router *http.ServeMux) *proxyServer {
 	s := &proxyServer{
 		Logger:     logger,
 		router:     router,
@@ -196,7 +194,7 @@ func (s *proxyServer) Serve() {
 				if errors.Is(err, io.EOF) {
 					return
 				}
-				s.Error(fmt.Sprintf("handshake error: %v", err))
+				s.Error("handshake error: %v", err)
 				return
 			}
 			if ok {
@@ -351,7 +349,7 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 
 		src, err := common.ResolveUDPAddr(addr)
 		if err != nil {
-			s.Error(fmt.Sprintf("resolve udp addr error: %v", err))
+			s.Error("resolve udp addr error: %v", err)
 			return
 		}
 
@@ -368,19 +366,19 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 			}
 		}(conn, pc)
 
-		s.Info(fmt.Sprintf("proxyd %v <-UDP-> all", addr))
+		s.Info("proxyd %v <-UDP-> all", addr)
 		if err := s.handler.HandlePacket(newPacketConn(src, pc)); err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				return
 			}
-			s.Error(fmt.Sprintf("handle udp error: %v", err))
+			s.Error("handle udp error: %v", err)
 		}
 		return
 	}
 
-	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr))
+	s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
 	if err := s.handler.Handle(conn, addr); err != nil {
-		s.Error(fmt.Sprintf("handle tcp error: %v", err))
+		s.Error("handle tcp error: %v", err)
 	}
 }
 
@@ -394,7 +392,7 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, errEmptyAddress) {
 			return
 		}
-		s.Error(fmt.Sprintf("parse url host error: %v", err))
+		s.Error("parse url host error: %v", err)
 		return
 	}
 
@@ -406,10 +404,10 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", r.RemoteAddr, addr))
+	s.Info("proxyd %v <-TCP-> %v", r.RemoteAddr, addr)
 	go func(conn net.Conn, addr net.Addr) {
 		if err := s.handler.Handle(conn, addr); err != nil {
-			s.Error(fmt.Sprintf("handle http conn error: %v", err))
+			s.Error("handle http conn error: %v", err)
 		}
 	}(dst, addr)
 
@@ -430,7 +428,7 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, io.EOF) {
 			return
 		}
-		s.Error(fmt.Sprintf("copy response body error: %v", err))
+		s.Error("copy response body error: %v", err)
 	}
 }
 
@@ -444,7 +442,7 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 	b := [common.MaxAddrLen]byte{}
 	addr, err := s.parseAddr(host, port, b[:])
 	if err != nil {
-		s.Error(fmt.Sprintf("parse url host error: %v", err))
+		s.Error("parse url host error: %v", err)
 		return
 	}
 
@@ -455,15 +453,15 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	conn, _, err := rw.Hijack()
 	if err != nil {
-		s.Error(fmt.Sprintf("http hijack error: %v", err))
+		s.Error("http hijack error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
-	s.Info(fmt.Sprintf("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr))
+	s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
 	if err := s.handler.Handle(conn, addr); err != nil {
-		s.Error(fmt.Sprintf("handle https conn error: %v", err))
+		s.Error("handle https conn error: %v", err)
 	}
 }
 
