@@ -12,10 +12,12 @@ require (
 	github.com/xtaci/smux v1.5.15
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777
-	golang.org/x/sys v0.0.0-20210122235752-a8b976e07c7b
+	golang.org/x/sys v0.0.0-20210123231150-1d476976d117
 	golang.org/x/text v0.3.5 // indirect
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
 	golang.zx2c4.com/wireguard v0.0.20201119-0.20210120232502-fcc8ad05df75
 	golang.zx2c4.com/wireguard/windows v0.3.4
-	gvisor.dev/gvisor v0.0.0-20210123004235-abbbd39c152e
+	gvisor.dev/gvisor v0.0.0-20210123022034-2b3626de0553
 )
+
+replace gvisor.dev/gvisor v0.0.0-20210123022034-2b3626de0553 => github.com/imgk/gvisor v0.0.0-20210124022905-5cccce67027d
