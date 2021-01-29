@@ -24,8 +24,6 @@ func NewDeviceFromFile(file *os.File, mtu int) (dev *Device, err error) {
 		return
 	}
 	dev.MTU = mtu
-	dev.buf = make([]byte, 4+dev.MTU)
-	dev.buff = make([]byte, 4+dev.MTU)
 	return
 }
 

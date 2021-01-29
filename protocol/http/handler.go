@@ -10,18 +10,28 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/imgk/shadow/common"
+	"golang.org/x/net/http2"
+
+	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/http3"
+
+	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/protocol"
 )
 
 func init() {
-	protocol.RegisterHandler("http", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("http", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (netstack.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+	protocol.RegisterHandler("http2", func(s string, timeout time.Duration) (netstack.Handler, error) {
+		return NewHandler(s, timeout)
+	})
+	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }
@@ -32,15 +42,16 @@ func (e codeError) Error() string {
 	return fmt.Sprintf("http response code error: %v", int(e))
 }
 
+// Dialer is ...
 type Dialer interface {
 	Dial() (net.Conn, error)
 }
 
-type netDialer struct {
+type rawDialer struct {
 	addr string
 }
 
-func (d *netDialer) Dial() (net.Conn, error) {
+func (d *rawDialer) Dial() (net.Conn, error) {
 	conn, err := net.Dial("tcp", d.addr)
 	if err != nil {
 		return nil, err
@@ -73,11 +84,13 @@ func (d *tlsDialer) Dial() (net.Conn, error) {
 	return conn, nil
 }
 
+// Conn is ...
 type Conn struct {
 	net.Conn
 	Reader *bytes.Reader
 }
 
+// Read is ...
 func (conn *Conn) Read(b []byte) (int, error) {
 	if conn.Reader == nil {
 		return conn.Conn.Read(b)
@@ -86,21 +99,21 @@ func (conn *Conn) Read(b []byte) (int, error) {
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			conn.Reader = nil
-			return n, nil
+			err = nil
 		}
-		return n, err
 	}
-	return n, nil
+	return n, err
 }
 
+// Handler is ...
 type Handler struct {
-	dialer  Dialer
-	readers sync.Pool
-	auth    string
+	dialer Dialer
+	auth   string
 }
 
-func NewHandler(s string, timeout time.Duration) (*Handler, error) {
-	auth, addr, domain, scheme, err := ParseUrl(s)
+// NewHandler is ...
+func NewHandler(s string, timeout time.Duration) (netstack.Handler, error) {
+	auth, server, domain, scheme, err := ParseUrl(s)
 	if err != nil {
 		return nil, err
 	}
@@ -108,21 +121,58 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		auth = fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(auth)))
 	}
 
-	handler := &Handler{
-		readers: sync.Pool{
-			New: func() interface{} {
-				return bufio.NewReader(nil)
+	if scheme == "http2" {
+		handler := &handler{
+			Client: http.Client{
+				Transport: &http2.Transport{
+					DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
+						conn, err = net.Dial("tcp", server)
+						if err != nil {
+							return
+						}
+						conn = tls.Client(conn, cfg)
+						return
+					},
+					TLSClientConfig: &tls.Config{
+						ServerName:         domain,
+						ClientSessionCache: tls.NewLRUClientSessionCache(32),
+					},
+				},
 			},
-		},
+			auth: auth,
+		}
+		return handler, nil
+	}
+
+	if scheme == "http3" {
+		handler := &handler{
+			Client: http.Client{
+				Transport: &http3.RoundTripper{
+					Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+						return quic.DialAddrEarly(server, tlsCfg, cfg)
+					},
+					TLSClientConfig: &tls.Config{
+						ServerName:         domain,
+						ClientSessionCache: tls.NewLRUClientSessionCache(32),
+					},
+					QuicConfig: &quic.Config{KeepAlive: true},
+				},
+			},
+			auth: auth,
+		}
+		return handler, nil
+	}
+
+	handler := &Handler{
 		auth: auth,
 	}
 	switch scheme {
 	case "http":
-		dialer := &netDialer{addr: addr}
+		dialer := &rawDialer{addr: server}
 		handler.dialer = dialer
 	case "https":
 		dialer := &tlsDialer{
-			addr: addr,
+			addr: server,
 			config: tls.Config{
 				ServerName:         domain,
 				ClientSessionCache: tls.NewLRUClientSessionCache(32),
@@ -135,6 +185,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	return handler, nil
 }
 
+// Dial is ...
 func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
 	conn, err = h.dialer.Dial()
 	if err != nil {
@@ -159,10 +210,7 @@ func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
 		return
 	}
 
-	reader := h.readers.Get().(*bufio.Reader)
-	defer h.readers.Put(reader)
-
-	reader.Reset(conn)
+	reader := bufio.NewReader(conn)
 	res, err := http.ReadResponse(reader, req)
 	if err != nil {
 		return
@@ -182,10 +230,12 @@ func (h *Handler) Dial(network, addr string) (conn net.Conn, err error) {
 	return
 }
 
+// Close is ...
 func (*Handler) Close() error {
 	return nil
 }
 
+// Handle is ...
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
@@ -195,7 +245,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	defer rc.Close()
 
-	if err := common.Relay(conn, rc); err != nil {
+	if err := netstack.Relay(conn, rc); err != nil {
 		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
@@ -210,6 +260,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	return nil
 }
 
-func (h *Handler) HandlePacket(conn common.PacketConn) error {
+// HandlePacket is ...
+func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	return errors.New("http proxy does not support UDP")
 }

@@ -1,23 +1,21 @@
 package core
 
 import (
-	"io"
 	"net"
 	"sync"
 	"time"
 )
+
+// Reader is for unix tun reading with 4 bytes prefix
+type Reader interface {
+	Read([]byte, int) (int, error)
+}
 
 // Logger is for showing logs of netstack
 type Logger interface {
 	Error(string, ...interface{})
 	Info(string, ...interface{})
 	Debug(string, ...interface{})
-}
-
-// Device is a tun-like device for reading packets from system
-type Device interface {
-	io.Writer
-	io.WriterTo
 }
 
 // Handler is for handling incoming TCP and UDP connections

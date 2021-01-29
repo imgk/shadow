@@ -6,10 +6,11 @@ import (
 	"net/url"
 )
 
-type UrlError string
+// URLError is ...
+type URLError string
 
-func (e UrlError) Error() string {
-	return fmt.Sprintf("http/https url error: %v", string(e))
+func (e *URLError) Error() string {
+	return fmt.Sprintf("http/https url error: %v", string(*e))
 }
 
 func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
@@ -22,7 +23,8 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 		username := u.User.Username()
 		password, ok := u.User.Password()
 		if !ok {
-			err = UrlError("no password")
+			e := URLError("no password")
+			err = &e
 			return
 		}
 		auth = fmt.Sprintf("%v:%v", username, password)
@@ -43,7 +45,7 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 		}
 
 		scheme = "http"
-	case "https":
+	case "https", "http2", "http3":
 		host := u.Hostname()
 		port := u.Port()
 		if port == "" {
@@ -56,9 +58,10 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 			domain = host
 		}
 
-		scheme = "https"
+		scheme = u.Scheme
 	default:
-		err = UrlError("scheme error: " + u.Scheme)
+		e := URLError(fmt.Sprintf("scheme error: %v", u.Scheme))
+		err = &e
 		return
 	}
 

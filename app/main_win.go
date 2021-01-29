@@ -13,9 +13,10 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/device/windivert"
+	"github.com/imgk/shadow/device/windivert/filter"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
 )
 
@@ -51,7 +52,7 @@ func (app *App) Run() (err error) {
 	}
 
 	// new dns resolver
-	resolver, err := common.NewResolver(app.Conf.NameServer)
+	resolver, err := resolver.NewResolver(app.Conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -127,8 +128,8 @@ func (app *App) Run() (err error) {
 	return nil
 }
 
-func (app *App) newIPFilter() (*common.IPFilter, error) {
-	filter := common.NewIPFilter()
+func (app *App) newIPFilter() (*filter.IPFilter, error) {
+	filter := filter.NewIPFilter()
 
 	filter.Lock()
 	for _, item := range app.Conf.IPCIDRRules.Proxy {
@@ -149,13 +150,13 @@ func (e pidError) Error() string {
 	return fmt.Sprintf("Pid strconv error: %v", string(e))
 }
 
-func (app *App) newAppFilter() (*common.AppFilter, error) {
+func (app *App) newAppFilter() (*filter.AppFilter, error) {
 	env := os.Getenv("SHADOW_PIDS")
 	if env == "" && len(app.Conf.AppRules.Proxy) == 0 {
 		return nil, nil
 	}
 
-	filter := common.NewAppFilter()
+	filter := filter.NewAppFilter()
 
 	filter.Lock()
 	for _, item := range app.Conf.AppRules.Proxy {

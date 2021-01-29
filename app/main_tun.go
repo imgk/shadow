@@ -8,15 +8,15 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/device/tun"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
 )
 
 func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	// new dns resolver
-	resolver, err := common.NewResolver(app.Conf.NameServer)
+	resolver, err := resolver.NewResolver(app.Conf.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}

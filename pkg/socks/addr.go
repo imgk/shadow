@@ -1,4 +1,4 @@
-package common
+package socks
 
 import (
 	"errors"
@@ -8,14 +8,23 @@ import (
 	"strconv"
 )
 
-type Addr []byte
-
+// MaxAddrLen is the maximum length of socks.Addr
 const MaxAddrLen = 1 + 1 + 255 + 2
 
+var (
+	// ErrInvalidAddrType is ...
+	ErrInvalidAddrType = errors.New("invalid address type")
+	// ErrInvalidAddrLen is ...
+	ErrInvalidAddrLen = errors.New("invalid address length")
+)
+
 const (
-	AddrTypeIPv4   = 1
+	// AddrTypeIPv4 is ...
+	AddrTypeIPv4 = 1
+	// AddrTypeDomain is ...
 	AddrTypeDomain = 3
-	AddrTypeIPv6   = 4
+	// AddrTypeIPv6 is ...
+	AddrTypeIPv6 = 4
 )
 
 type errAddrType byte
@@ -24,12 +33,15 @@ func (e errAddrType) Error() string {
 	return fmt.Sprintf("address type %v error", byte(e))
 }
 
-var ErrInvalidAddrType = errors.New("invalid address type")
+// Addr is ...
+type Addr []byte
 
-func (addr Addr) Network() string {
+// Network is ...
+func (Addr) Network() string {
 	return "socks"
 }
 
+// String is ...
 func (addr Addr) String() string {
 	switch addr[0] {
 	case AddrTypeIPv4:
@@ -49,9 +61,12 @@ func (addr Addr) String() string {
 	}
 }
 
+// ReadAddr is ....
 func ReadAddr(conn net.Conn) (Addr, error) {
 	return ReadAddrBuffer(conn, make([]byte, MaxAddrLen))
 }
+
+// ReadAddrBuffer is ...
 func ReadAddrBuffer(conn net.Conn, addr []byte) (Addr, error) {
 	_, err := io.ReadFull(conn, addr[:2])
 	if err != nil {
@@ -88,8 +103,7 @@ func ReadAddrBuffer(conn net.Conn, addr []byte) (Addr, error) {
 	}
 }
 
-var ErrInvalidAddrLen = errors.New("invalid address length")
-
+// ParseAddr is ...
 func ParseAddr(addr []byte) (Addr, error) {
 	if len(addr) < 1+1+1+2 {
 		return nil, ErrInvalidAddrLen
@@ -122,6 +136,7 @@ func ParseAddr(addr []byte) (Addr, error) {
 	}
 }
 
+// ResolveTCPAddr is ...
 func ResolveTCPAddr(addr Addr) (*net.TCPAddr, error) {
 	switch addr[0] {
 	case AddrTypeIPv4:
@@ -139,6 +154,7 @@ func ResolveTCPAddr(addr Addr) (*net.TCPAddr, error) {
 	}
 }
 
+// ResolveUDPAddr is ...
 func ResolveUDPAddr(addr Addr) (*net.UDPAddr, error) {
 	switch addr[0] {
 	case AddrTypeIPv4:
@@ -156,6 +172,7 @@ func ResolveUDPAddr(addr Addr) (*net.UDPAddr, error) {
 	}
 }
 
+// ResolveAddr is ...
 func ResolveAddr(addr net.Addr) (Addr, error) {
 	if a, ok := addr.(Addr); ok {
 		return a, nil
@@ -163,45 +180,45 @@ func ResolveAddr(addr net.Addr) (Addr, error) {
 
 	return ResolveAddrBuffer(addr, make([]byte, MaxAddrLen))
 }
+
+// ResolveAddrBuffer is ...
 func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
-	if a, ok := addr.(*net.TCPAddr); ok {
-		if ip := a.IP.To4(); ip != nil {
+	if nAddr, ok := addr.(*net.TCPAddr); ok {
+		if ipv4 := nAddr.IP.To4(); ipv4 != nil {
 			b[0] = AddrTypeIPv4
-			copy(b[1:], ip)
-			b[1+net.IPv4len] = byte(a.Port >> 8)
-			b[1+net.IPv4len+1] = byte(a.Port)
+			copy(b[1:], ipv4)
+			b[1+net.IPv4len] = byte(nAddr.Port >> 8)
+			b[1+net.IPv4len+1] = byte(nAddr.Port)
 
 			return b[:1+net.IPv4len+2], nil
-		} else {
-			ip = a.IP.To16()
-
-			b[0] = AddrTypeIPv6
-			copy(b[1:], ip)
-			b[1+net.IPv6len] = byte(a.Port >> 8)
-			b[1+net.IPv6len+1] = byte(a.Port)
-
-			return b[:1+net.IPv6len+2], nil
 		}
+		ipv6 := nAddr.IP.To16()
+
+		b[0] = AddrTypeIPv6
+		copy(b[1:], ipv6)
+		b[1+net.IPv6len] = byte(nAddr.Port >> 8)
+		b[1+net.IPv6len+1] = byte(nAddr.Port)
+
+		return b[:1+net.IPv6len+2], nil
 	}
 
-	if a, ok := addr.(*net.UDPAddr); ok {
-		if ip := a.IP.To4(); ip != nil {
+	if nAddr, ok := addr.(*net.UDPAddr); ok {
+		if ipv4 := nAddr.IP.To4(); ipv4 != nil {
 			b[0] = AddrTypeIPv4
-			copy(b[1:], ip)
-			b[1+net.IPv4len] = byte(a.Port >> 8)
-			b[1+net.IPv4len+1] = byte(a.Port)
+			copy(b[1:], ipv4)
+			b[1+net.IPv4len] = byte(nAddr.Port >> 8)
+			b[1+net.IPv4len+1] = byte(nAddr.Port)
 
 			return b[:1+net.IPv4len+2], nil
-		} else {
-			ip = a.IP.To16()
-
-			b[0] = AddrTypeIPv6
-			copy(b[1:], ip)
-			b[1+net.IPv6len] = byte(a.Port >> 8)
-			b[1+net.IPv6len+1] = byte(a.Port)
-
-			return b[:1+net.IPv6len+2], nil
 		}
+		ipv6 := nAddr.IP.To16()
+
+		b[0] = AddrTypeIPv6
+		copy(b[1:], ipv6)
+		b[1+net.IPv6len] = byte(nAddr.Port >> 8)
+		b[1+net.IPv6len+1] = byte(nAddr.Port)
+
+		return b[:1+net.IPv6len+2], nil
 	}
 
 	if a, ok := addr.(Addr); ok {

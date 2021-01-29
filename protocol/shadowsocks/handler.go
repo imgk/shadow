@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
 	"github.com/imgk/shadow/protocol/shadowsocks/httptunnel"
@@ -17,37 +18,37 @@ import (
 )
 
 func init() {
-	protocol.RegisterHandler("ss", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("ss", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return httptunnel.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return httptunnel.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return httptunnel.NewQUICHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return httptunnel.NewQUICHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return online.NewOnlineHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return online.NewOnlineHandler(s, timeout)
 	})
-	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return online.NewOnlineHandler(s, timeout)
 	})
 }
@@ -124,9 +125,9 @@ func (*Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	defer conn.Close()
 
-	addr, ok := tgt.(common.Addr)
+	addr, ok := tgt.(socks.Addr)
 	if !ok {
-		addr, err = common.ResolveAddrBuffer(tgt, make([]byte, common.MaxAddrLen))
+		addr, err = socks.ResolveAddrBuffer(tgt, make([]byte, socks.MaxAddrLen))
 		if err != nil {
 			return fmt.Errorf("resolve addr error: %v", err)
 		}
@@ -143,7 +144,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 		return fmt.Errorf("write to server %v error: %v", h.server, err)
 	}
 
-	if err := common.Relay(conn, rc); err != nil {
+	if err := netstack.Relay(conn, rc); err != nil {
 		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
@@ -159,7 +160,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	return nil
 }
 
-func (h *Handler) HandlePacket(conn common.PacketConn) error {
+func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
 	raddr, err := net.ResolveUDPAddr("udp", h.server)
@@ -177,8 +178,8 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	slice := common.Get()
-	defer common.Put(slice)
+	slice := netstack.Get()
+	defer netstack.Put(slice)
 	b := slice.Get()
 
 	for {
@@ -194,7 +195,7 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 			break
 		}
 
-		raddr, er := common.ParseAddr(b[:n])
+		raddr, er := socks.ParseAddr(b[:n])
 		if er != nil {
 			err = fmt.Errorf("parse addr error: %v", er)
 			break
@@ -218,14 +219,14 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	return <-errCh
 }
 
-func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	slice := common.Get()
-	defer common.Put(slice)
+func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
+	slice := netstack.Get()
+	defer netstack.Put(slice)
 	b := slice.Get()
 
-	buf := [common.MaxAddrLen]byte{}
+	buf := [socks.MaxAddrLen]byte{}
 	for {
-		n, tgt, err := conn.ReadTo(b[common.MaxAddrLen:])
+		n, tgt, err := conn.ReadTo(b[socks.MaxAddrLen:])
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
@@ -235,19 +236,19 @@ func copyWithChannel(conn common.PacketConn, rc net.PacketConn, timeout time.Dur
 			break
 		}
 
-		addr, ok := tgt.(common.Addr)
+		addr, ok := tgt.(socks.Addr)
 		if !ok {
-			addr, err = common.ResolveAddrBuffer(tgt, buf[:])
+			addr, err = socks.ResolveAddrBuffer(tgt, buf[:])
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %w", err)
 				break
 			}
 		}
 
-		copy(b[common.MaxAddrLen-len(addr):], addr)
+		copy(b[socks.MaxAddrLen-len(addr):], addr)
 
 		rc.SetWriteDeadline(time.Now().Add(timeout))
-		_, err = rc.WriteTo(b[common.MaxAddrLen-len(addr):common.MaxAddrLen+n], raddr)
+		_, err = rc.WriteTo(b[socks.MaxAddrLen-len(addr):socks.MaxAddrLen+n], raddr)
 		if err != nil {
 			errCh <- err
 			break

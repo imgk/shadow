@@ -9,17 +9,22 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack/core"
+	"github.com/imgk/shadow/pkg/resolver"
+	"github.com/imgk/shadow/pkg/socks"
+	"github.com/imgk/shadow/pkg/suffixtree"
 )
 
 var (
-	_ common.PacketConn = (*FakeUDPConn)(nil)
-	_ common.PacketConn = (*UDPConn)(nil)
-	_ core.Handler      = (*Stack)(nil)
+	_ PacketConn   = (*FakeUDPConn)(nil)
+	_ PacketConn   = (*UDPConn)(nil)
+	_ core.Handler = (*Stack)(nil)
 )
 
-type Logger core.Logger
+// Logger is ...
+type Logger interface {
+	core.Logger
+}
 
 // FakeUDPConn is ...
 type FakeUDPConn struct {
@@ -28,19 +33,23 @@ type FakeUDPConn struct {
 	real net.Addr
 }
 
+// NewFakeUDPConn is ...
 func NewFakeUDPConn(conn *core.UDPConn, target net.Addr, addr net.Addr) *FakeUDPConn {
 	return &FakeUDPConn{UDPConn: conn, fake: target, real: addr}
 }
 
+// ReadTo is ...
 func (conn *FakeUDPConn) ReadTo(b []byte) (int, net.Addr, error) {
 	n, _, err := conn.UDPConn.ReadTo(b)
 	return n, conn.real, err
 }
 
+// WriteFrom is ...
 func (conn *FakeUDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	return conn.UDPConn.WriteFrom(b, conn.fake)
 }
 
+// LocalAddr is ...
 func (conn *FakeUDPConn) LocalAddr() net.Addr {
 	return conn.real
 }
@@ -51,10 +60,12 @@ type UDPConn struct {
 	Stack *Stack
 }
 
+// NewUDPConn is ...
 func NewUDPConn(conn *core.UDPConn, stack *Stack) *UDPConn {
 	return &UDPConn{UDPConn: conn, Stack: stack}
 }
 
+// ReadTo is ...
 func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	for {
 		n, addr, err = conn.UDPConn.ReadTo(b)
@@ -72,9 +83,10 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
+// WriteFrom is ...
 func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
-	if saddr, ok := addr.(common.Addr); ok {
-		target, err := common.ResolveUDPAddr(saddr)
+	if saddr, ok := addr.(socks.Addr); ok {
+		target, err := socks.ResolveUDPAddr(saddr)
 		if err != nil {
 			return 0, fmt.Errorf("resolve udp addr error: %w", err)
 		}
@@ -87,16 +99,17 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 // Stack is core.Handler
 type Stack struct {
 	core.Stack
-	handler common.Handler
+	handler Handler
 
-	resolver common.Resolver
-	tree     *common.DomainTree
+	resolver resolver.Resolver
+	tree     *suffixtree.DomainTree
 	hijack   bool
 
 	counter uint16
 }
 
-func NewStack(handler common.Handler, resolver common.Resolver, tree *common.DomainTree, hijack bool) *Stack {
+// NewStack is ....
+func NewStack(handler Handler, resolver resolver.Resolver, tree *suffixtree.DomainTree, hijack bool) *Stack {
 	return &Stack{
 		handler:  handler,
 		resolver: resolver,
@@ -106,7 +119,8 @@ func NewStack(handler common.Handler, resolver common.Resolver, tree *common.Dom
 	}
 }
 
-func (s *Stack) Start(dev common.Device, logger Logger) error {
+// Start is ...
+func (s *Stack) Start(dev Device, logger Logger) error {
 	return s.Stack.Start(dev.(core.Device), s, logger)
 }
 
@@ -216,8 +230,8 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 func (s *Stack) HandleQuery(conn *core.UDPConn) {
 	defer conn.Close()
 
-	slice := common.Get()
-	defer common.Put(slice)
+	slice := Get()
+	defer Put(slice)
 	b := slice.Get()
 	m := dns.Msg{}
 

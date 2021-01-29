@@ -8,31 +8,32 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
-var winDivertSYS = ""
-var winDivertDLL = ""
-var DeviceName = windows.StringToUTF16Ptr("WinDivert")
-
-const types = 7
+var (
+	// SysFilePath is ...
+	SysFilePath = ""
+	// DllFilePath is ...
+	DllFilePath = ""
+)
 
 func init() {
 	system32, err := windows.GetSystemDirectory()
 	if err != nil {
 		log.Panic(err)
 	}
-	winDivertSYS = filepath.Join(system32, "WinDivert"+strconv.Itoa(32<<(^uint(0)>>63))+".sys")
-	winDivertDLL = filepath.Join(system32, "WinDivert.dll")
+	SysFilePath = filepath.Join(system32, fmt.Sprintf("WinDivert%v.sys", 32<<(^uint(0)>>63)))
+	DllFilePath = filepath.Join(system32, "WinDivert.dll")
 
 	if err := InstallDriver(); err != nil {
 		log.Panic(err)
 	}
 }
 
+// InstallDriver is ...
 func InstallDriver() error {
 	mutex, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr("WinDivertDriverInstallMutex"))
 	if err != nil {
@@ -59,6 +60,7 @@ func InstallDriver() error {
 	}
 	defer windows.CloseServiceHandle(manager)
 
+	DeviceName := windows.StringToUTF16Ptr("WinDivert")
 	service, err := windows.OpenService(manager, DeviceName, windows.SERVICE_ALL_ACCESS)
 	if err == nil {
 		windows.CloseServiceHandle(service)
@@ -94,6 +96,7 @@ func InstallDriver() error {
 	return nil
 }
 
+// RemoveDriver is ...
 func RemoveDriver() error {
 	status := windows.SERVICE_STATUS{}
 
@@ -103,6 +106,7 @@ func RemoveDriver() error {
 	}
 	defer windows.CloseServiceHandle(manager)
 
+	DeviceName := windows.StringToUTF16Ptr("WinDivert")
 	service, err := windows.OpenService(manager, DeviceName, windows.SERVICE_ALL_ACCESS)
 	if err != nil {
 		if err == windows.ERROR_SERVICE_DOES_NOT_EXIST {
@@ -132,18 +136,19 @@ func RemoveDriver() error {
 	return nil
 }
 
+// GetDriverFileName is ...
 func GetDriverFileName() (string, error) {
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\EventLog\\System\\WinDivert", registry.QUERY_VALUE)
 	if err != nil {
-		if _, err := os.Stat(winDivertSYS); err != nil {
-			return "", fmt.Errorf("WinDivert error: %v", err)
+		if _, err := os.Stat(SysFilePath); err != nil {
+			return "", fmt.Errorf("WinDivert error: %w", err)
 		}
 
-		if err := RegisterEventSource(winDivertSYS); err != nil {
+		if err := RegisterEventSource(SysFilePath); err != nil {
 			return "", err
 		}
 
-		return winDivertSYS, nil
+		return SysFilePath, nil
 	}
 	defer key.Close()
 
@@ -153,20 +158,21 @@ func GetDriverFileName() (string, error) {
 	}
 
 	if _, err := os.Stat(val); err != nil {
-		if _, err := os.Stat(winDivertSYS); err != nil {
-			return "", fmt.Errorf("WinDivert error: %v", err)
+		if _, err := os.Stat(SysFilePath); err != nil {
+			return "", fmt.Errorf("WinDivert error: %w", err)
 		}
 
-		if err := RegisterEventSource(winDivertSYS); err != nil {
+		if err := RegisterEventSource(SysFilePath); err != nil {
 			return "", err
 		}
 
-		return winDivertSYS, nil
+		return SysFilePath, nil
 	}
 
 	return val, nil
 }
 
+// RegisterEventSource is ...
 func RegisterEventSource(sys string) error {
 	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\EventLog\\System\\WinDivert", registry.ALL_ACCESS)
 	if err != nil {
@@ -178,7 +184,8 @@ func RegisterEventSource(sys string) error {
 		return err
 	}
 
-	if err := key.SetDWordValue("TypesSupported", types); err != nil {
+	const TypesSupported = 7
+	if err := key.SetDWordValue("TypesSupported", TypesSupported); err != nil {
 		return err
 	}
 

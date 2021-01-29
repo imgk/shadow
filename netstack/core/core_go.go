@@ -31,8 +31,7 @@ type Stack struct {
 	Handler Handler
 	Stack   *stack.Stack
 
-	mtu   int32
-	mutex sync.RWMutex
+	mu    sync.RWMutex
 	conns map[string]*UDPConn
 }
 
@@ -70,7 +69,7 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error)
 			return
 		}
 		if tcperr := s.Stack.SetNetworkProtocolOption(ipv6.ProtocolNumber, &opt); tcperr != nil {
-			fmt.Errorf("set ipv6 default TTL: %s", tcperr)
+			err = fmt.Errorf("set ipv6 default TTL: %s", tcperr)
 			return
 		}
 	}
@@ -218,8 +217,8 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error)
 
 // HandleStream is to handle incoming TCP connections
 func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
-	var id = r.ID()
-	var wq = waiter.Queue{}
+	id := r.ID()
+	wq := waiter.Queue{}
 	ep, tcperr := r.CreateEndpoint(&wq)
 	if tcperr != nil {
 		s.Error("tcp %v:%v <---> %v:%v create endpoint error: %v",
@@ -262,24 +261,24 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 
 // Get is to get *UDPConn
 func (s *Stack) Get(k string) (*UDPConn, bool) {
-	s.mutex.RLock()
+	s.mu.RLock()
 	conn, ok := s.conns[k]
-	s.mutex.RUnlock()
+	s.mu.RUnlock()
 	return conn, ok
 }
 
 // Add is to add *UDPConn
 func (s *Stack) Add(k string, conn *UDPConn) {
-	s.mutex.Lock()
+	s.mu.Lock()
 	s.conns[k] = conn
-	s.mutex.Unlock()
+	s.mu.Unlock()
 }
 
 // Del is to delete *UDPConn
 func (s *Stack) Del(k string) {
-	s.mutex.Lock()
+	s.mu.Lock()
 	delete(s.conns, k)
-	s.mutex.Unlock()
+	s.mu.Unlock()
 }
 
 // HandlePacket is to handle UDP connections
@@ -358,13 +357,13 @@ func (s *Stack) Close() error {
 	return nil
 }
 
-// UDP Packet
+// Packet is ...
 type Packet struct {
 	Addr *net.UDPAddr
 	Byte []byte
 }
 
-// UDPtConn
+// UDPConn is ...
 type UDPConn struct {
 	deadlineTimer
 

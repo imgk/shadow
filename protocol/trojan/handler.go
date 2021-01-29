@@ -16,15 +16,16 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/xtaci/smux"
 
-	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 )
 
 func init() {
-	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (common.Handler, error) {
+	protocol.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (netstack.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }
@@ -177,7 +178,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			conns: make(map[*smux.Session]struct{}),
 		}
 
-		copy(hd.header[HeaderLen+2:], []byte{0x7f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
+		copy(hd.header[HeaderLen+2:], []byte{0x7f, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
 		hd.muxEnabled = true
 		hd.ticker = time.NewTicker(time.Minute * 3)
@@ -198,7 +199,7 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 			conns: make(map[*smux.Session]struct{}),
 		}
 
-		copy(hd.header[HeaderLen+2:], []byte{0x8f, common.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
+		copy(hd.header[HeaderLen+2:], []byte{0x8f, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a})
 
 		hd.muxEnabled = true
 		hd.ticker = time.NewTicker(time.Minute * 3)
@@ -319,7 +320,7 @@ func (h *Handler) ConnectMuxNew() (conn net.Conn, err error) {
 }
 
 func (h *Handler) DialConn(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
-	target := [HeaderLen + 2 + 1 + common.MaxAddrLen + 2]byte{}
+	target := [HeaderLen + 2 + 1 + socks.MaxAddrLen + 2]byte{}
 
 	conn, err = h.Connect()
 	if err != nil {
@@ -334,12 +335,12 @@ func (h *Handler) DialConn(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 	n := copy(target[0:], h.header[:HeaderLen+2])
 	target[HeaderLen+2] = cmd
 
-	addr, ok := tgt.(common.Addr)
+	addr, ok := tgt.(socks.Addr)
 	if ok {
 		copy(target[HeaderLen+2+1:], addr)
 		n = HeaderLen + 2 + 1 + len(addr) + 2
 	} else {
-		addr, er := common.ResolveAddrBuffer(tgt, target[HeaderLen+2+1:])
+		addr, er := socks.ResolveAddrBuffer(tgt, target[HeaderLen+2+1:])
 		if er != nil {
 			err = fmt.Errorf("resolve addr error: %w", er)
 			return
@@ -357,7 +358,7 @@ func (h *Handler) DialConn(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 }
 
 func (h *Handler) DialMux(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
-	target := [HeaderLen + 2 + 1 + common.MaxAddrLen + 2]byte{}
+	target := [HeaderLen + 2 + 1 + socks.MaxAddrLen + 2]byte{}
 
 	conn, err = h.ConnectMux()
 	if err != nil {
@@ -372,11 +373,11 @@ func (h *Handler) DialMux(tgt net.Addr, cmd byte) (conn net.Conn, err error) {
 	target[0] = cmd
 	n := 1
 
-	addr, ok := tgt.(common.Addr)
+	addr, ok := tgt.(socks.Addr)
 	if ok {
 		n += copy(target[1:], addr)
 	} else {
-		addr, er := common.ResolveAddrBuffer(tgt, target[1:])
+		addr, er := socks.ResolveAddrBuffer(tgt, target[1:])
 		if er != nil {
 			err = fmt.Errorf("resolve addr error: %w", er)
 			return
@@ -408,7 +409,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	defer rc.Close()
 
-	if err := common.Relay(conn, rc); err != nil {
+	if err := netstack.Relay(conn, rc); err != nil {
 		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
@@ -423,7 +424,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	return nil
 }
 
-func (h *Handler) HandlePacket(conn common.PacketConn) error {
+func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
 	rc, err := h.Dial(conn.LocalAddr(), cmdAssocaite)
@@ -435,13 +436,13 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, errCh)
 
-	slice := common.Get()
-	defer common.Put(slice)
+	slice := netstack.Get()
+	defer netstack.Put(slice)
 	b := slice.Get()
 
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
-		raddr, er := common.ReadAddrBuffer(rc, b)
+		raddr, er := socks.ReadAddrBuffer(rc, b)
 		if er != nil {
 			if ne := net.Error(nil); errors.As(err, &ne) {
 				if ne.Timeout() {
@@ -507,16 +508,16 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	return err
 }
 
-func copyWithChannel(conn common.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
-	slice := common.Get()
-	defer common.Put(slice)
+func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
+	slice := netstack.Get()
+	defer netstack.Put(slice)
 	b := slice.Get()
 
-	b[common.MaxAddrLen+2], b[common.MaxAddrLen+3] = 0x0d, 0x0a
+	b[socks.MaxAddrLen+2], b[socks.MaxAddrLen+3] = 0x0d, 0x0a
 
-	buf := [common.MaxAddrLen]byte{}
+	buf := [socks.MaxAddrLen]byte{}
 	for {
-		n, tgt, err := conn.ReadTo(b[common.MaxAddrLen+4:])
+		n, tgt, err := conn.ReadTo(b[socks.MaxAddrLen+4:])
 		if err != nil {
 			if err == io.EOF {
 				errCh <- nil
@@ -525,21 +526,21 @@ func copyWithChannel(conn common.PacketConn, rc net.Conn, timeout time.Duration,
 			errCh <- err
 			break
 		}
-		b[common.MaxAddrLen], b[common.MaxAddrLen+1] = byte(n>>8), byte(n)
+		b[socks.MaxAddrLen], b[socks.MaxAddrLen+1] = byte(n>>8), byte(n)
 
-		addr, ok := tgt.(common.Addr)
+		addr, ok := tgt.(socks.Addr)
 		if !ok {
-			addr, err = common.ResolveAddrBuffer(tgt, buf[:])
+			addr, err = socks.ResolveAddrBuffer(tgt, buf[:])
 			if err != nil {
 				errCh <- fmt.Errorf("resolve addr error: %w", err)
 				break
 			}
 		}
 
-		copy(b[common.MaxAddrLen-len(addr):], addr)
+		copy(b[socks.MaxAddrLen-len(addr):], addr)
 
 		rc.SetWriteDeadline(time.Now().Add(timeout))
-		_, err = rc.Write(b[common.MaxAddrLen-len(addr) : common.MaxAddrLen+4+n])
+		_, err = rc.Write(b[socks.MaxAddrLen-len(addr) : socks.MaxAddrLen+4+n])
 		if err != nil {
 			errCh <- err
 			break

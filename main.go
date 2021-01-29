@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -18,22 +16,19 @@ import (
 )
 
 func main() {
-	var conf struct {
+	type FlagConfig struct {
 		Verbose  bool
 		FilePath string
 		Timeout  time.Duration
 	}
+
+	conf := FlagConfig{}
 	flag.BoolVar(&conf.Verbose, "v", false, "enable verbose mode")
 	flag.StringVar(&conf.FilePath, "c", "config.json", "config file")
 	flag.DurationVar(&conf.Timeout, "t", time.Minute, "timeout")
 	flag.Parse()
 
-	// if not verbose, discard all logs
-	w := io.Writer(ioutil.Discard)
-	if conf.Verbose {
-		w = os.Stdout
-	}
-	app, err := app.NewApp(conf.FilePath, conf.Timeout, w)
+	app, err := app.NewApp(conf.FilePath, conf.Timeout, conf.Verbose)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -1,4 +1,4 @@
-package common
+package xerror
 
 import "fmt"
 
@@ -17,6 +17,7 @@ func (e *mError) Error() string {
 	}
 }
 
+// CombineError is ...
 func CombineError(err ...error) error {
 	me := []error{}
 	for _, e := range err {

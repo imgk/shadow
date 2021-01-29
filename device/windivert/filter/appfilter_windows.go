@@ -1,11 +1,10 @@
 // +build windows
 
-package common
+package filter
 
 import (
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"unsafe"
 
@@ -18,15 +17,7 @@ var (
 )
 
 func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, err error) {
-	slice := Get()
-	defer Put(slice)
-	bb := slice.Get()
-
-	b := *(*[]uint16)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&bb[0])),
-		Len:  MaxBufferSize / 2,
-		Cap:  MaxBufferSize / 2,
-	}))
+	b := make([]uint16, windows.MAX_PATH)
 	n := uint32(windows.MAX_PATH)
 
 	// BOOL QueryFullProcessImageNameA(

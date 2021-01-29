@@ -8,7 +8,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/pkg/socks"
 )
 
 // LookupAddr converts fake ip to real domain address
@@ -28,7 +28,7 @@ func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 		}
 		binary.BigEndian.PutUint16(buf[len(buf)-2:], uint16(addr.(*net.UDPAddr).Port))
 		return buf, nil
-	case common.Addr:
+	case socks.Addr:
 		return addr, nil
 	default:
 		return addr, errors.New("address not support")
@@ -36,12 +36,14 @@ func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
 }
 
 var (
-	ErrNotFake  = errors.New("not fake")
+	// ErrNotFake is ...
+	ErrNotFake = errors.New("not fake")
+	// ErrNotFound is ...
 	ErrNotFound = errors.New("not found")
 )
 
 // LookupIP converts fake ip to real domain address
-func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
+func (s *Stack) LookupIP(addr net.IP) (socks.Addr, error) {
 	if ip := addr.To4(); ip != nil {
 		if ip[0] != 198 || ip[1] != 18 {
 			return nil, ErrNotFake
@@ -50,8 +52,8 @@ func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 		if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
 			de := opt.(*DomainEntry)
 
-			b := make([]byte, common.MaxAddrLen)
-			b[0] = common.AddrTypeDomain
+			b := make([]byte, socks.MaxAddrLen)
+			b[0] = socks.AddrTypeDomain
 			b[1] = byte(len(de.PTR.Ptr))
 			n := copy(b[2:], de.PTR.Ptr[:])
 			return b[:2+n+2], nil
@@ -61,7 +63,7 @@ func (s *Stack) LookupIP(addr net.IP) (common.Addr, error) {
 	return nil, ErrNotFake
 }
 
-// DomianEntry stores domain info
+// DomainEntry stores domain info
 type DomainEntry struct {
 	Rule string
 

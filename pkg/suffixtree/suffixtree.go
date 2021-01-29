@@ -1,10 +1,11 @@
-package common
+package suffixtree
 
 import (
 	"strings"
 	"sync"
 )
 
+// DomainTree is ....
 type DomainTree struct {
 	node
 	sep string
@@ -15,6 +16,7 @@ type node struct {
 	branch map[string]*node
 }
 
+// NewDomainTree is ...
 func NewDomainTree(sep string) *DomainTree {
 	return &DomainTree{
 		node: node{
@@ -26,11 +28,14 @@ func NewDomainTree(sep string) *DomainTree {
 	}
 }
 
+// Store is ...
 func (t *DomainTree) Store(k string, v interface{}) {
 	t.Lock()
 	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
 	t.Unlock()
 }
+
+// UnsafeStore is ...
 func (t *DomainTree) UnsafeStore(k string, v interface{}) {
 	t.store(strings.Split(strings.TrimSuffix(k, t.sep), t.sep), v)
 }
@@ -72,12 +77,15 @@ func (n *node) store(ks []string, v interface{}) {
 	}
 }
 
+// Load is ...
 func (t *DomainTree) Load(k string) interface{} {
 	t.RLock()
 	v := t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
 	t.RUnlock()
 	return v
 }
+
+// UnsafeLoad is ...
 func (t *DomainTree) UnsafeLoad(k string) interface{} {
 	return t.load(strings.Split(strings.TrimSuffix(k, t.sep), t.sep))
 }

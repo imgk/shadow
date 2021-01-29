@@ -6,16 +6,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 
-	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/suffixtree"
 )
 
 // shadow application configuration
@@ -90,60 +88,51 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 	return nil
 }
 
-type Logger log.Logger
-
-func (l *Logger) Error(s string, v ...interface{}) {
-	(*log.Logger)(l).Printf(fmt.Sprintf("Error: %s", s), v...)
-}
-
-func (l *Logger) Info(s string, v ...interface{}) {
-	(*log.Logger)(l).Printf(fmt.Sprintf("Info: %s", s), v...)
-}
-
-func (l *Logger) Debug(s string, v ...interface{}) {
-	(*log.Logger)(l).Printf(fmt.Sprintf("Debug: %s", s), v...)
-}
-
 // shadow application
 type App struct {
-	*Logger
-	*Conf
+	Logger netstack.Logger
+	Conf   *Conf
 
 	timeout time.Duration
 
-	done    chan struct{}
+	closed  chan struct{}
 	closers []io.Closer
 }
 
 // new shadow app from config file
-func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
+func NewApp(file string, timeout time.Duration, verbose bool) (*App, error) {
 	conf := new(Conf)
 	if err := conf.ReadFromFile(file); err != nil {
 		return nil, err
 	}
 
-	return NewAppFromConf(conf, timeout, w), nil
+	return NewAppFromConf(conf, timeout, verbose), nil
 }
 
 // new shadow app from byte slice
-func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, error) {
+func NewAppFromByteSlice(b []byte, timeout time.Duration, verbose bool) (*App, error) {
 	conf := new(Conf)
 	if err := conf.ReadFromByteSlice(b); err != nil {
 		return nil, err
 	}
 
-	return NewAppFromConf(conf, timeout, w), nil
+	return NewAppFromConf(conf, timeout, verbose), nil
 }
 
 // new shadow app from *Conf
-func NewAppFromConf(conf *Conf, timeout time.Duration, w io.Writer) *App {
-	return &App{
-		Logger:  (*Logger)(log.New(w, "", log.LstdFlags)),
+func NewAppFromConf(conf *Conf, timeout time.Duration, verbose bool) *App {
+	app := &App{
 		Conf:    conf,
 		timeout: timeout,
-		done:    make(chan struct{}),
+		closed:  make(chan struct{}),
 		closers: []io.Closer{},
 	}
+	if verbose {
+		app.Logger = NewLogger(os.Stdout)
+	} else {
+		app.Logger = &emptyLogger{}
+	}
+	return app
 }
 
 func (app *App) attachCloser(closer io.Closer) {
@@ -152,25 +141,25 @@ func (app *App) attachCloser(closer io.Closer) {
 
 // done channel
 func (app *App) Done() chan struct{} {
-	return app.done
+	return app.closed
 }
 
 // shutdown application
 func (app *App) Close() error {
 	select {
-	case <-app.done:
+	case <-app.closed:
 		return nil
 	default:
-		close(app.done)
 	}
 	for _, closer := range app.closers {
 		closer.Close()
 	}
+	close(app.closed)
 	return nil
 }
 
-func (app *App) newDomainTree() (*common.DomainTree, error) {
-	tree := common.NewDomainTree(".")
+func (app *App) newDomainTree() (*suffixtree.DomainTree, error) {
+	tree := suffixtree.NewDomainTree(".")
 	tree.Lock()
 	for _, domain := range app.Conf.DomainRules.Proxy {
 		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "PROXY"})
@@ -185,16 +174,16 @@ func (app *App) newDomainTree() (*common.DomainTree, error) {
 	return tree, nil
 }
 
+// ServePAC is to serve proxy pac file
 func ServePAC(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "application/x-ns-proxy-autoconfig")
-	pacTemplate.Execute(w, r.Host)
+	const Format = `function FindProxyForURL(url, host) {
+	if (isInNet(dnsResolve(host), "198.18.0.0", "255.255.0.0")) {
+		return "SOCKS5 %s"
+	}
+	return "DIRECT"
 }
+`
 
-var pacTemplate = template.Must(template.New("").Parse(`
-function FindProxyForURL(url, host) {
-    if (isInNet(dnsResolve(host), "198.18.0.0", "255.255.0.0")) {
-        return "SOCKS5 {{ . }}"
-    }
-    return "DIRECT"
+	w.Header().Add("Content-Type", "application/x-ns-proxy-autoconfig")
+	fmt.Fprintf(w, Format, r.Host)
 }
-`))

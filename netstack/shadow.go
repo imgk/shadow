@@ -1,10 +1,13 @@
-package common
+package netstack
 
 import (
 	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/imgk/shadow/netstack/core"
+	"github.com/imgk/shadow/pkg/xerror"
 )
 
 const MaxBufferSize = 16384
@@ -39,8 +42,7 @@ func (s LazySlice) Get() []byte {
 
 type Device interface {
 	io.Closer
-	io.Writer
-	io.WriterTo
+	core.Device
 }
 
 type Handler interface {
@@ -129,7 +131,7 @@ func relay(c, rc DuplexConn) error {
 		rc.CloseRead()
 	}
 
-	return CombineError(err, <-errCh)
+	return xerror.CombineError(err, <-errCh)
 }
 
 func relay2(c, rc DuplexConn, errCh chan error) {

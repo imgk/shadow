@@ -1,6 +1,6 @@
 // +build windows
 
-package common
+package filter
 
 import (
 	"net"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/oschwald/maxminddb-golang"
 
-	"github.com/imgk/shadow/common/iptree"
+	"github.com/imgk/shadow/device/windivert/filter/iptree"
 )
 
 type IPFilter struct {

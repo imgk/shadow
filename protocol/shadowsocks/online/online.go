@@ -14,12 +14,13 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 )
 
 type OnlineHandler struct {
-	Handler common.Handler
+	Handler netstack.Handler
 	URL     string
 	timeout time.Duration
 	limiter *rate.Limiter
@@ -79,14 +80,14 @@ func (h *OnlineHandler) tryRenew() (err error) {
 			return c, nil
 		},
 	}
-	addr := func() common.Addr {
+	addr := func() socks.Addr {
 		addr := "connectivitycheck.gstatic.com"
-		b := make([]byte, 0, common.MaxAddrLen)
-		b = append(b, common.AddrTypeDomain)
+		b := make([]byte, 0, socks.MaxAddrLen)
+		b = append(b, socks.AddrTypeDomain)
 		b = append(b, byte(len(addr)))
 		b = append(b, []byte(addr)...)
 		b = append(b, 0, 80)
-		return common.Addr(b[:1+1+len(addr)+2])
+		return socks.Addr(b[:1+1+len(addr)+2])
 	}()
 
 	h.mu.Lock()
@@ -195,7 +196,7 @@ func (h *OnlineHandler) Handle(conn net.Conn, tgt net.Addr) error {
 	return err
 }
 
-func (h *OnlineHandler) HandlePacket(conn common.PacketConn) error {
+func (h *OnlineHandler) HandlePacket(conn netstack.PacketConn) error {
 	h.mu.Lock()
 	handler := h.Handler
 	h.mu.Unlock()

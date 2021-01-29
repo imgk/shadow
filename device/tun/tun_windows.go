@@ -5,10 +5,8 @@ package tun
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"io"
 	"net"
-	"os"
 	"sort"
 	"unsafe"
 
@@ -59,74 +57,12 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	return
 }
 
-func (d *Device) Read(b []byte) (int, error) {
-	return d.NativeTun.Read(b, 0)
-}
-
-func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
-	b := make([]byte, d.MTU)
-	for {
-		nr, er := d.NativeTun.Read(b, 0)
-		if nr > 0 {
-			nw, ew := w.Write(b[:nr])
-			if nw > 0 {
-				n += int64(nw)
-			}
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er != nil {
-			if errors.Is(er, os.ErrClosed) {
-				break
-			}
-			if er != io.EOF {
-				err = er
-			}
-			break
-		}
-	}
-	return
+func (d *Device) DeviceType() string {
+	return "WinTun"
 }
 
 func (d *Device) Write(b []byte) (int, error) {
 	return d.NativeTun.Write(b, 0)
-}
-
-func (d *Device) ReadFrom(r io.Reader) (n int64, err error) {
-	b := make([]byte, d.MTU)
-	for {
-		nr, er := r.Read(b)
-		if nr > 0 {
-			nw, ew := d.NativeTun.Write(b, 0)
-			if nw > 0 {
-				n += int64(nw)
-			}
-			if ew != nil {
-				err = er
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er != nil {
-			if errors.Is(er, os.ErrClosed) {
-				break
-			}
-			if er != io.EOF {
-				err = er
-			}
-			break
-		}
-	}
-	return
 }
 
 //https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L22-L58

@@ -23,9 +23,11 @@ func NewUnmonitoredDeviceFromFD(fd int, mtu int) (dev *Device, err error) {
 		return
 	}
 	dev.MTU = mtu
-	dev.buf = make([]byte, 4+dev.MTU)
-	dev.buff = make([]byte, 4+dev.MTU)
 	return
+}
+
+type in6_addr struct {
+	addr [16]byte
 }
 
 // https://github.com/daaku/go.ip/blob/master/ip.go
@@ -64,10 +66,6 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 	}
 
 	return nil
-}
-
-type in6_addr struct {
-	addr [16]byte
 }
 
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
@@ -171,10 +169,10 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	for _, item := range cidr {
 		_, ipNet, _ := net.ParseCIDR(item)
 
-		ip4 := ipNet.IP.To4()
+		ipv4 := ipNet.IP.To4()
 		mask := net.IP(ipNet.Mask).To4()
 
-		route.rt_dst.Addr = *(*[4]byte)(unsafe.Pointer(&ip4[0]))
+		route.rt_dst.Addr = *(*[4]byte)(unsafe.Pointer(&ipv4[0]))
 		route.rt_genmask.Addr = *(*[4]byte)(unsafe.Pointer(&mask[0]))
 
 		if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCADDRT, uintptr(unsafe.Pointer(&route))); errno != 0 {
@@ -213,11 +211,11 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	for _, item := range cidr {
 		_, ipNet, _ := net.ParseCIDR(item)
 
-		ip6 := ipNet.IP.To16()
+		ipv6 := ipNet.IP.To16()
 		mask := net.IP(ipNet.Mask).To16()
 
 		ones, _ := net.IPMask(mask).Size()
-		route.rtmsg_dst.addr = *(*[16]byte)(unsafe.Pointer(&ip6[0]))
+		route.rtmsg_dst.addr = *(*[16]byte)(unsafe.Pointer(&ipv6[0]))
 		route.rtmsg_dst_len = uint16(ones)
 		route.rtmsg_flags = unix.RTF_UP
 		if ones == 128 {

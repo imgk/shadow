@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/imgk/shadow/common"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/socks"
+	"github.com/imgk/shadow/pkg/suffixtree"
+	"github.com/imgk/shadow/pkg/xerror"
 )
 
 type cmdError byte
@@ -80,7 +82,7 @@ func newFakeConn(conn net.Conn, reader io.Reader) *fakeConn {
 }
 
 func (conn *fakeConn) CloseRead() error {
-	if close, ok := conn.Conn.(common.CloseReader); ok {
+	if close, ok := conn.Conn.(netstack.CloseReader); ok {
 		return close.CloseRead()
 	}
 	conn.Conn.SetReadDeadline(time.Now())
@@ -88,7 +90,7 @@ func (conn *fakeConn) CloseRead() error {
 }
 
 func (conn *fakeConn) CloseWrite() error {
-	if close, ok := conn.Conn.(common.CloseWriter); ok {
+	if close, ok := conn.Conn.(netstack.CloseWriter); ok {
 		return close.CloseWrite()
 	}
 	conn.Conn.SetWriteDeadline(time.Now())
@@ -99,7 +101,7 @@ func (conn *fakeConn) Read(b []byte) (int, error) {
 	return conn.reader.Read(b)
 }
 
-// fake common.PacketConn
+// fake netstack.PacketConn
 type fakePacketConn struct {
 	addr net.Addr
 	net.PacketConn
@@ -117,29 +119,29 @@ func (pc *fakePacketConn) RemoteAddr() net.Addr {
 }
 
 func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
-	slice := common.Get()
-	defer common.Put(slice)
+	slice := netstack.Get()
+	defer netstack.Put(slice)
 	buf := slice.Get()
 
 	n, _, err = pc.PacketConn.ReadFrom(buf)
 	if err != nil {
 		return
 	}
-	tgt, err := common.ParseAddr(buf[3:])
+	tgt, err := socks.ParseAddr(buf[3:])
 	if err != nil {
 		return
 	}
-	addr = common.Addr(append(make([]byte, 0, len(tgt)), tgt...))
+	addr = socks.Addr(append(make([]byte, 0, len(tgt)), tgt...))
 	n = copy(b, buf[3+len(tgt):n])
 	return
 }
 
 func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
-	slice := common.Get()
-	defer common.Put(slice)
+	slice := netstack.Get()
+	defer netstack.Put(slice)
 	buf := slice.Get()
 
-	src, err := common.ResolveAddrBuffer(addr, b[3:])
+	src, err := socks.ResolveAddrBuffer(addr, b[3:])
 	if err != nil {
 		return
 	}
@@ -150,12 +152,12 @@ func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) 
 
 // a combined socks5/http proxy server
 type proxyServer struct {
-	*Logger
+	Logger netstack.Logger
 	router *http.ServeMux
 
 	// Convert fake IP and handle connections
-	tree    *common.DomainTree
-	handler common.Handler
+	tree    *suffixtree.DomainTree
+	handler netstack.Handler
 
 	// Listen
 	http.Server
@@ -165,7 +167,7 @@ type proxyServer struct {
 	closed chan struct{}
 }
 
-func newProxyServer(ln net.Listener, logger *Logger, handler common.Handler, tree *common.DomainTree, router *http.ServeMux) *proxyServer {
+func newProxyServer(ln net.Listener, logger netstack.Logger, handler netstack.Handler, tree *suffixtree.DomainTree, router *http.ServeMux) *proxyServer {
 	s := &proxyServer{
 		Logger:     logger,
 		router:     router,
@@ -179,7 +181,7 @@ func newProxyServer(ln net.Listener, logger *Logger, handler common.Handler, tre
 	return s
 }
 
-// accpet net.Conn
+// accept net.Conn
 func (s *proxyServer) Serve() {
 	go s.Server.Serve(s.listener)
 
@@ -194,7 +196,7 @@ func (s *proxyServer) Serve() {
 				if errors.Is(err, io.EOF) {
 					return
 				}
-				s.Error("handshake error: %v", err)
+				s.Logger.Error("handshake error: %v", err)
 				return
 			}
 			if ok {
@@ -236,15 +238,15 @@ func (s *proxyServer) Close() (err error) {
 		close(s.closed)
 	}
 
-	err = common.CombineError(s.netLisener.Close(), s.listener.Close(), s.Server.Close())
+	err = xerror.CombineError(s.netLisener.Close(), s.listener.Close(), s.Server.Close())
 	return
 }
 
-func (s *proxyServer) lookupIP(ip net.IP, b []byte) (common.Addr, error) {
+func (s *proxyServer) lookupIP(ip net.IP, b []byte) (socks.Addr, error) {
 	if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
 		de := opt.(*netstack.DomainEntry)
 
-		b[0] = common.AddrTypeDomain
+		b[0] = socks.AddrTypeDomain
 		b[1] = byte(len(de.PTR.Ptr))
 		n := copy(b[2:], de.PTR.Ptr[:])
 		return b[:2+n+2], nil
@@ -254,7 +256,7 @@ func (s *proxyServer) lookupIP(ip net.IP, b []byte) (common.Addr, error) {
 
 // handshake
 func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, ok bool, err error) {
-	b := [3 + common.MaxAddrLen]byte{}
+	b := [3 + socks.MaxAddrLen]byte{}
 	// read socks5 header
 	if _, err = io.ReadFull(conn, b[:2]); err != nil {
 		return
@@ -306,12 +308,12 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		return
 	}
 
-	bb := make([]byte, common.MaxAddrLen)
-	tgt, err = common.ReadAddrBuffer(conn, bb)
+	bb := make([]byte, socks.MaxAddrLen)
+	tgt, err = socks.ReadAddrBuffer(conn, bb)
 	if err != nil {
 		return
 	}
-	if bb[0] == common.AddrTypeIPv4 {
+	if bb[0] == socks.AddrTypeIPv4 {
 		if bb[1] == 198 && bb[2] == 18 {
 			p1 := bb[1+net.IPv4len]
 			p2 := bb[1+net.IPv4len+1]
@@ -325,12 +327,12 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 	}
 
 	// write back address
-	addr := common.Addr{}
+	addr := socks.Addr{}
 	switch b[1] {
 	case 0x01:
-		addr, err = common.ResolveAddrBuffer(conn.LocalAddr(), b[3:])
+		addr, err = socks.ResolveAddrBuffer(conn.LocalAddr(), b[3:])
 	case 0x03:
-		addr, err = common.ResolveAddrBuffer(pc.LocalAddr(), b[3:])
+		addr, err = socks.ResolveAddrBuffer(pc.LocalAddr(), b[3:])
 	}
 	if err != nil {
 		return
@@ -341,15 +343,15 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 }
 
 // handle socks5 proxy
-func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.Addr) {
+func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr socks.Addr) {
 	defer conn.Close()
 
 	if pc != nil {
 		defer pc.Close()
 
-		src, err := common.ResolveUDPAddr(addr)
+		src, err := socks.ResolveUDPAddr(addr)
 		if err != nil {
-			s.Error("resolve udp addr error: %v", err)
+			s.Logger.Error("resolve udp addr error: %v", err)
 			return
 		}
 
@@ -366,19 +368,19 @@ func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr common.A
 			}
 		}(conn, pc)
 
-		s.Info("proxyd %v <-UDP-> all", addr)
+		s.Logger.Info("proxyd %v <-UDP-> all", addr)
 		if err := s.handler.HandlePacket(newPacketConn(src, pc)); err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				return
 			}
-			s.Error("handle udp error: %v", err)
+			s.Logger.Error("handle udp error: %v", err)
 		}
 		return
 	}
 
-	s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
+	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
 	if err := s.handler.Handle(conn, addr); err != nil {
-		s.Error("handle tcp error: %v", err)
+		s.Logger.Error("handle tcp error: %v", err)
 	}
 }
 
@@ -386,13 +388,13 @@ var errEmptyAddress = errors.New("nil address error")
 
 // handle http proxy GET
 func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
-	b := [common.MaxAddrLen]byte{}
+	b := [socks.MaxAddrLen]byte{}
 	addr, err := s.parseAddr(r.Host, "80", b[:])
 	if err != nil {
 		if errors.Is(err, errEmptyAddress) {
 			return
 		}
-		s.Error("parse url host error: %v", err)
+		s.Logger.Error("parse url host error: %v", err)
 		return
 	}
 
@@ -404,10 +406,10 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	s.Info("proxyd %v <-TCP-> %v", r.RemoteAddr, addr)
+	s.Logger.Info("proxyd %v <-TCP-> %v", r.RemoteAddr, addr)
 	go func(conn net.Conn, addr net.Addr) {
 		if err := s.handler.Handle(conn, addr); err != nil {
-			s.Error("handle http conn error: %v", err)
+			s.Logger.Error("handle http conn error: %v", err)
 		}
 	}(dst, addr)
 
@@ -424,11 +426,11 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 
-	if _, err := common.Copy(w, resp.Body); err != nil {
+	if _, err := netstack.Copy(w, resp.Body); err != nil {
 		if errors.Is(err, io.EOF) {
 			return
 		}
-		s.Error("copy response body error: %v", err)
+		s.Logger.Error("copy response body error: %v", err)
 	}
 }
 
@@ -439,33 +441,33 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b := [common.MaxAddrLen]byte{}
+	b := [socks.MaxAddrLen]byte{}
 	addr, err := s.parseAddr(host, port, b[:])
 	if err != nil {
-		s.Error("parse url host error: %v", err)
+		s.Logger.Error("parse url host error: %v", err)
 		return
 	}
 
 	rw, ok := w.(http.Hijacker)
 	if !ok {
-		s.Error("not a http.Hijacker")
+		s.Logger.Error("not a http.Hijacker")
 		return
 	}
 	conn, _, err := rw.Hijack()
 	if err != nil {
-		s.Error("http hijack error: %v", err)
+		s.Logger.Error("http hijack error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
-	s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
+	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
 	if err := s.handler.Handle(conn, addr); err != nil {
-		s.Error("handle https conn error: %v", err)
+		s.Logger.Error("handle https conn error: %v", err)
 	}
 }
 
-func (s *proxyServer) parseAddr(host, port string, b []byte) (common.Addr, error) {
+func (s *proxyServer) parseAddr(host, port string, b []byte) (socks.Addr, error) {
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return nil, err
@@ -474,7 +476,7 @@ func (s *proxyServer) parseAddr(host, port string, b []byte) (common.Addr, error
 		if host == "" {
 			return nil, errEmptyAddress
 		}
-		b[0] = common.AddrTypeDomain
+		b[0] = socks.AddrTypeDomain
 		b[1] = byte(len(host))
 		copy(b[2:], []byte(host))
 		n := 1 + 1 + len(host)
@@ -484,7 +486,7 @@ func (s *proxyServer) parseAddr(host, port string, b []byte) (common.Addr, error
 	} else {
 		if ipv4 := ip.To4(); ipv4 == nil {
 			ipv6 := ip.To16()
-			b[0] = common.AddrTypeIPv6
+			b[0] = socks.AddrTypeIPv6
 			copy(b, ipv6)
 			b[1+net.IPv6len] = byte(p >> 8)
 			b[1+net.IPv6len+1] = byte(p)
@@ -497,7 +499,7 @@ func (s *proxyServer) parseAddr(host, port string, b []byte) (common.Addr, error
 				return addr, err
 			}
 
-			b[0] = common.AddrTypeIPv4
+			b[0] = socks.AddrTypeIPv4
 			copy(b, ipv4)
 			b[1+net.IPv4len] = byte(p >> 8)
 			b[1+net.IPv4len+1] = byte(p)

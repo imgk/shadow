@@ -3,7 +3,9 @@
 package core
 
 import (
+	"errors"
 	"io"
+	"log"
 	"sync"
 
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -12,24 +14,35 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+// Device is a tun-like device for reading packets from system
+type Device interface {
+	io.Writer
+	DeviceType() string
+}
+
 // Endpoint is ...
 type Endpoint struct {
 	*channel.Endpoint
-	mtu int
-	dev Device
-	buf []byte
-	mu  sync.Mutex
-	wt  io.Writer
+	Device Device
+	Writer io.Writer
+
+	mtu  int
+	mu   sync.Mutex
+	buff []byte
 }
 
 // NewEndpoint is ...
 func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
+	wt, ok := dev.(io.Writer)
+	if !ok {
+		log.Panic(errors.New("not a valid device for windows"))
+	}
 	ep := &Endpoint{
 		Endpoint: channel.New(512, uint32(mtu), ""),
-		dev:      dev,
+		Device:   dev,
+		Writer:   wt,
 		mtu:      mtu,
-		buf:      make([]byte, mtu),
-		wt:       dev.(io.Writer),
+		buff:     make([]byte, mtu),
 	}
 	ep.Endpoint.AddNotify(ep)
 	return ep
@@ -39,25 +52,29 @@ func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.Endpoint.Attach(dispatcher)
 
-	// WinDivert has no io.Reader
-	r, ok := e.dev.(io.Reader)
+	// WinDivert has no Reader
+	r, ok := e.Device.(Reader)
 	if !ok {
+		wt, ok := e.Device.(io.WriterTo)
+		if !ok {
+			log.Panic(errors.New("not a valid device for windows"))
+		}
 		go func(w *Endpoint, wt io.WriterTo) {
 			if _, err := wt.WriteTo(w); err != nil {
 				return
 			}
-		}(e, e.dev)
+		}(e, wt)
 		return
 	}
 	// WinTun
-	go func(r io.Reader, size int, ep *channel.Endpoint) {
+	go func(r Reader, size int, ep *channel.Endpoint) {
 		for {
 			buf := make([]byte, size)
-			n, err := r.Read(buf)
+			nr, err := r.Read(buf, 0)
 			if err != nil {
 				break
 			}
-			buf = buf[:n]
+			buf = buf[:nr]
 
 			switch header.IPVersion(buf) {
 			case header.IPv4Version:
@@ -81,10 +98,10 @@ func (e *Endpoint) WriteNotify() {
 	}
 
 	e.mu.Lock()
-	buf := append(e.buf[:0], info.Pkt.NetworkHeader().View()...)
+	buf := append(e.buff[:0], info.Pkt.NetworkHeader().View()...)
 	buf = append(buf, info.Pkt.TransportHeader().View()...)
 	buf = append(buf, info.Pkt.Data.ToView()...)
-	e.wt.Write(buf)
+	e.Writer.Write(buf)
 	e.mu.Unlock()
 }
 

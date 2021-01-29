@@ -26,27 +26,17 @@
     "name_server": "https://1.1.1.1/dns-query",
 
 
+    // tun device only
+    "tun_name": "utun",
+    "tun_addr": ["192.168.0.11/24"],
+
+
     // windivert only
     // filter string passed to WinDivert
     // https://www.reqrypt.org/windivert-doc.html#filter_language
     // outbound and ip and ip.DstAddr != serverip and ip.DstAddr != dnsserverip
     // example: outbound and ip and ip.DstAddr != 1.2.3.4 and ip.DstAddr != 1.1.1.1
     "windivert_filter_string": "outbound and ip and ip.DstAddr != 1.2.3.4 and ip.DstAddr != 1.1.1.1",
-
-
-    // tun device only
-    "tun_name": "utun",
-    "tun_addr": ["192.168.0.11/24"],
-
-
-    // Packets to IPs in this list will be diverted to shadow
-    "ip_cidr_rules": {
-        "proxy": [
-            "198.18.0.0/16",
-            "8.8.8.8/32"
-        ]
-    },
-
 
     // windivert only
     // maxmind geoip file
@@ -59,12 +49,22 @@
         "final": "",
     },
 
-
     // windivert only
     // programs in this list will be proxied
     "app_rules": {
         "proxy":[
             "git.exe"
+        ]
+    },
+
+
+    // Packets to IPs in this list will be diverted to shadow
+    // For tun device, these IPs will be added to route table
+    // For WinDivert, packets sending to these IPs will be diverted
+    "ip_cidr_rules": {
+        "proxy": [
+            "198.18.0.0/16",
+            "8.8.8.8/32"
         ]
     },
 

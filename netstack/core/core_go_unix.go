@@ -3,6 +3,8 @@
 package core
 
 import (
+	"errors"
+	"log"
 	"sync"
 
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -11,24 +13,40 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+// Device is a tun-like device for reading packets from system
+type Device interface {
+	Reader
+	Writer
+	DeviceType() string
+}
+
 // Endpoint is ...
 type Endpoint struct {
 	*channel.Endpoint
-	mtu int
-	dev Device
-	buf []byte
-	mu  sync.Mutex
-	wt  WriterOffset
+	Reader Reader
+	Writer Writer
+
+	mtu  int
+	mu   sync.Mutex
+	buff []byte
 }
 
 // NewEndpoint is ...
 func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
+	wt, ok := dev.(Writer)
+	if !ok {
+		log.Panic(errors.New("not a valid tun for unix"))
+	}
+	rt, ok := dev.(Reader)
+	if !ok {
+		log.Panic(errors.New("not a valid tun for unix"))
+	}
 	ep := &Endpoint{
 		Endpoint: channel.New(512, uint32(mtu), ""),
-		dev:      dev,
+		Reader:   rt,
+		Writer:   wt,
 		mtu:      mtu,
-		buf:      make([]byte, 4+mtu),
-		wt:       dev.(WriterOffset),
+		buff:     make([]byte, 4+mtu),
 	}
 	ep.Endpoint.AddNotify(ep)
 	return ep
@@ -36,52 +54,50 @@ func NewEndpoint(dev Device, mtu int) stack.LinkEndpoint {
 
 // Attach is to attach device to stack
 func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
-	e.Endpoint.Attach(dispatcher)
+	const Offset = 4
 
-	go func(r ReaderOffset, size int, ep *channel.Endpoint) {
+	e.Endpoint.Attach(dispatcher)
+	go func(r Reader, size int, ep *channel.Endpoint) {
 		for {
 			buf := make([]byte, size)
-			n, err := r.ReadOffset(buf, 4)
+			nr, err := r.Read(buf, Offset)
 			if err != nil {
 				break
 			}
-			buf = buf[4 : 4+n]
+			buf = buf[Offset:]
 
 			switch header.IPVersion(buf) {
 			case header.IPv4Version:
 				ep.InjectInbound(header.IPv4ProtocolNumber, &stack.PacketBuffer{
-					Data: buffer.View(buf).ToVectorisedView(),
+					Data: buffer.View(buf[:nr]).ToVectorisedView(),
 				})
 			case header.IPv6Version:
 				ep.InjectInbound(header.IPv6ProtocolNumber, &stack.PacketBuffer{
-					Data: buffer.View(buf).ToVectorisedView(),
+					Data: buffer.View(buf[:nr]).ToVectorisedView(),
 				})
 			}
 		}
-	}(e.dev.(ReaderOffset), 4+e.mtu, e.Endpoint)
+	}(e.Reader, Offset+e.mtu, e.Endpoint)
 }
 
 // WriteNotify is to write packets back to system
 func (e *Endpoint) WriteNotify() {
+	const Offset = 4
+
 	info, ok := e.Endpoint.Read()
 	if !ok {
 		return
 	}
 
 	e.mu.Lock()
-	buf := append(e.buf[:4], info.Pkt.NetworkHeader().View()...)
+	buf := append(e.buff[:Offset], info.Pkt.NetworkHeader().View()...)
 	buf = append(buf, info.Pkt.TransportHeader().View()...)
 	buf = append(buf, info.Pkt.Data.ToView()...)
-	e.wt.WriteOffset(buf, 4)
+	e.Writer.Write(buf, Offset)
 	e.mu.Unlock()
 }
 
-// ReaderOffset is for unix tun reading with 4 bytes prefix
-type ReaderOffset interface {
-	ReadOffset([]byte, int) (int, error)
-}
-
-// ReaderOffset is for linux tun writing with 4 bytes prefix
-type WriterOffset interface {
-	WriteOffset([]byte, int) (int, error)
+// Writer is for linux tun writing with 4 bytes prefix
+type Writer interface {
+	Write([]byte, int) (int, error)
 }

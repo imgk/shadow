@@ -15,7 +15,7 @@ import (
 
 	"github.com/imgk/divert-go"
 
-	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/device/windivert/filter"
 )
 
 const (
@@ -27,8 +27,8 @@ type Device struct {
 	address *divert.Address
 	handle  *divert.Handle
 
-	appFilter *common.AppFilter
-	ipFilter  *common.IPFilter
+	appFilter *filter.AppFilter
+	ipFilter  *filter.IPFilter
 	hijack    bool
 
 	r *io.PipeReader
@@ -39,11 +39,11 @@ type Device struct {
 	TCP6Map [65536]uint8
 	UDP6Map [65536]uint8
 
-	active chan struct{}
+	closed chan struct{}
 	event  chan struct{}
 }
 
-func NewDevice(filter string, appFilter *common.AppFilter, ipFilter *common.IPFilter, hijack bool) (dev *Device, err error) {
+func NewDevice(filter string, appFilter *filter.AppFilter, ipFilter *filter.IPFilter, hijack bool) (dev *Device, err error) {
 	ifIdx, subIfIdx, er := GetInterfaceIndex()
 	if er != nil {
 		err = er
@@ -84,7 +84,7 @@ func NewDevice(filter string, appFilter *common.AppFilter, ipFilter *common.IPFi
 		hijack:    hijack,
 		r:         r,
 		w:         w,
-		active:    make(chan struct{}),
+		closed:    make(chan struct{}),
 		event:     make(chan struct{}, 1),
 	}
 
@@ -97,12 +97,16 @@ func NewDevice(filter string, appFilter *common.AppFilter, ipFilter *common.IPFi
 	return
 }
 
+func (d *Device) DeviceType() string {
+	return "WinDivert"
+}
+
 func (d *Device) Close() (err error) {
 	select {
-	case <-d.active:
+	case <-d.closed:
 		return nil
 	default:
-		close(d.active)
+		close(d.closed)
 	}
 	defer func() {
 		if er := d.handle.Close(); er != nil {
@@ -121,74 +125,59 @@ func (d *Device) Close() (err error) {
 }
 
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
-	a := make([]divert.Address, divert.BatchMax)
-	b := make([]byte, 1500*divert.BatchMax)
+	addr := make([]divert.Address, divert.BatchMax)
+	buff := make([]byte, 1500*divert.BatchMax)
 
-	const f = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5) | uint8(0x01<<3)
+	const flags = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5) | uint8(0x01<<3)
+
+	defer func() {
+		select {
+		case <-d.closed:
+			err = nil
+		default:
+		}
+	}()
 
 	for {
-		nr, nx, er := d.handle.RecvEx(b, a)
+		nb, nx, er := d.handle.RecvEx(buff, addr)
 		if er != nil {
-			select {
-			case <-d.active:
-			default:
-				if er != divert.ErrNoData {
-					err = fmt.Errorf("RecvEx in WriteTo error: %v", er)
-				}
-			}
-
+			err = er
 			return
 		}
-		if nr < 1 || nx < 1 {
+		if nb < 1 || nx < 1 {
 			continue
 		}
 
-		n += int64(nr)
+		n += int64(nb)
 
-		bb := b[:nr]
+		bb := buff[:nb]
 		for i := uint(0); i < nx; i++ {
 			switch bb[0] >> 4 {
 			case ipv4.Version:
 				l := int(bb[2])<<8 | int(bb[3])
-
 				if d.CheckIPv4(bb) {
-					_, er := w.Write(bb[:l])
-					if er != nil {
-						select {
-						case <-d.active:
-						default:
-							err = fmt.Errorf("Write in WriteTo error: %v", er)
-						}
-
+					if _, ew := w.Write(bb[:l]); ew != nil {
+						err = ew
 						return
 					}
-
-					a[i].Flags |= f
-
+					// set address flag to NoChecksum to avoid calculate checksum
+					addr[i].Flags |= flags
+					// set TTL to 0
 					bb[8] = 0
 				}
-
 				bb = bb[l:]
 			case ipv6.Version:
 				l := int(bb[4])<<8 | int(bb[5]) + ipv6.HeaderLen
-
 				if d.CheckIPv6(bb) {
-					_, er := w.Write(bb[:l])
-					if er != nil {
-						select {
-						case <-d.active:
-						default:
-							err = fmt.Errorf("Write in WriteTo error: %v", er)
-						}
-
+					if _, ew := w.Write(bb[:l]); ew != nil {
+						err = ew
 						return
 					}
-
-					a[i].Flags |= f
-
+					// set address flag to NoChecksum to avoid calculate checksum
+					addr[i].Flags |= flags
+					// set TTL to 0
 					bb[7] = 0
 				}
-
 				bb = bb[l:]
 			default:
 				err = errors.New("invalid ip version")
@@ -197,17 +186,13 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 		}
 
 		d.handle.Lock()
-		_, er = d.handle.SendEx(b[:nr], a[:nx])
+		_, ew := d.handle.SendEx(buff[:nb], addr[:nx])
 		d.handle.Unlock()
-		if er != nil && er != divert.ErrHostUnreachable {
-			select {
-			case <-d.active:
-			default:
-				err = fmt.Errorf("SendEx in WriteTo error: %v", er)
-			}
-
-			return
+		if ew == nil || errors.Is(ew, divert.ErrHostUnreachable) {
+			continue
 		}
+		err = ew
+		return
 	}
 }
 
@@ -302,7 +287,7 @@ func (d *Device) CheckTCP4ByPID(b []byte) bool {
 		return false
 	}
 
-	rs, err := common.GetTCPTable()
+	rs, err := filter.GetTCPTable()
 	if err != nil {
 		return false
 	}
@@ -325,7 +310,7 @@ func (d *Device) CheckUDP4ByPID(b []byte) bool {
 		return false
 	}
 
-	rs, err := common.GetUDPTable()
+	rs, err := filter.GetUDPTable()
 	if err != nil {
 		return false
 	}
@@ -422,7 +407,7 @@ func (d *Device) CheckTCP6ByPID(b []byte) bool {
 		return false
 	}
 
-	rs, err := common.GetTCP6Table()
+	rs, err := filter.GetTCP6Table()
 	if err != nil {
 		return false
 	}
@@ -446,7 +431,7 @@ func (d *Device) CheckUDP6ByPID(b []byte) bool {
 		return false
 	}
 
-	rs, err := common.GetUDP6Table()
+	rs, err := filter.GetUDP6Table()
 	if err != nil {
 		return false
 	}
@@ -489,7 +474,7 @@ func (d *Device) writeLoop() {
 				d.handle.Unlock()
 				if err != nil {
 					select {
-					case <-d.active:
+					case <-d.closed:
 					default:
 						panic(fmt.Errorf("device writeLoop error: %v", err))
 					}
@@ -503,7 +488,7 @@ func (d *Device) writeLoop() {
 			nr, err := d.r.Read(b[n:])
 			if err != nil {
 				select {
-				case <-d.active:
+				case <-d.closed:
 				default:
 					panic(fmt.Errorf("device writeLoop error: %v", err))
 				}
@@ -520,7 +505,7 @@ func (d *Device) writeLoop() {
 				d.handle.Unlock()
 				if err != nil {
 					select {
-					case <-d.active:
+					case <-d.closed:
 					default:
 						panic(fmt.Errorf("device writeLoop error: %v", err))
 					}
@@ -530,7 +515,7 @@ func (d *Device) writeLoop() {
 
 				n, m = 0, 0
 			}
-		case <-d.active:
+		case <-d.closed:
 			return
 		}
 	}
@@ -538,7 +523,7 @@ func (d *Device) writeLoop() {
 
 func (d *Device) Write(b []byte) (int, error) {
 	select {
-	case <-d.active:
+	case <-d.closed:
 		return 0, io.EOF
 	case d.event <- struct{}{}:
 	}
@@ -546,7 +531,7 @@ func (d *Device) Write(b []byte) (int, error) {
 	n, err := d.w.Write(b)
 	if err != nil {
 		select {
-		case <-d.active:
+		case <-d.closed:
 			return 0, io.EOF
 		default:
 		}

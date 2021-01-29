@@ -21,13 +21,16 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 
-	"github.com/imgk/shadow/common"
+	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
 )
 
+// Handler is ...
 type Handler struct {
-	Cipher    core.Cipher
-	Client    http.Client
+	Cipher core.Cipher
+	Client http.Client
+
 	proxyAuth string
 	timeout   time.Duration
 }
@@ -171,25 +174,25 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	req, err := h.NewRequest(http.MethodConnect, "tcp.imgk.cc", ioutil.NopCloser(NewReader(h.Cipher, conn, tgt)))
 	if err != nil {
-		return fmt.Errorf("NewRequest error: %v", err)
+		return fmt.Errorf("NewRequest error: %w", err)
 	}
 
 	r, err := h.Client.Do(req)
 	if err != nil {
-		return fmt.Errorf("do request error: %v", err)
+		return fmt.Errorf("do request error: %w", err)
 	}
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
 	if _, err := core.NewReader(r.Body, h.Cipher).WriteTo(io.Writer(conn)); err != nil {
-		return fmt.Errorf("WriteTo error: %v", err)
+		return fmt.Errorf("WriteTo error: %w", err)
 	}
 	return nil
 }
 
 var zerononce = [128]byte{}
 
-func (h *Handler) HandlePacket(conn common.PacketConn) error {
+func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
 	req, err := h.NewRequest(http.MethodConnect, "udp.imgk.cc", ioutil.NopCloser(NewPacketReader(h.Cipher, conn, h.timeout)))
@@ -206,8 +209,8 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 	}
 
 	err = func(r io.Reader) error {
-		slice := common.Get()
-		defer common.Put(slice)
+		slice := netstack.Get()
+		defer netstack.Put(slice)
 		b := slice.Get()
 
 		for {
@@ -246,9 +249,9 @@ func (h *Handler) HandlePacket(conn common.PacketConn) error {
 				return fmt.Errorf("unpack error: %v", err)
 			}
 
-			raddr, err := common.ParseAddr(bb)
+			raddr, err := socks.ParseAddr(bb)
 			if err != nil {
-				return fmt.Errorf("parse common.Addr error: %v", err)
+				return fmt.Errorf("parse socks.Addr error: %v", err)
 			}
 
 			if _, err := conn.WriteFrom(bb[len(raddr):], raddr); err != nil {
@@ -341,7 +344,7 @@ func (r *Reader) init(b []byte) (int, error) {
 	r.nonce = make([]byte, r.AEAD.NonceSize())
 
 	overhead := r.AEAD.Overhead()
-	if len(b) < saltSize+2+overhead+common.MaxAddrLen+overhead {
+	if len(b) < saltSize+2+overhead+socks.MaxAddrLen+overhead {
 		return 0, io.ErrShortBuffer
 	}
 
@@ -349,20 +352,20 @@ func (r *Reader) init(b []byte) (int, error) {
 	buf := b[2+overhead:]
 
 	n, err := func(b []byte, tgt net.Addr) (int, error) {
-		if addr, ok := tgt.(common.Addr); ok {
+		if addr, ok := tgt.(socks.Addr); ok {
 			copy(b, addr)
 			return len(addr), nil
 		}
 		if addr, ok := tgt.(*net.TCPAddr); ok {
 			if ipv4 := addr.IP.To4(); ipv4 != nil {
-				b[0] = common.AddrTypeIPv4
+				b[0] = socks.AddrTypeIPv4
 				copy(b[1:], ipv4)
 				b[1+net.IPv4len] = byte(addr.Port >> 8)
 				b[1+net.IPv4len+1] = byte(addr.Port)
 				return 1 + net.IPv4len + 2, nil
 			} else {
 				ipv6 := addr.IP.To16()
-				b[0] = common.AddrTypeIPv6
+				b[0] = socks.AddrTypeIPv6
 				copy(b[:1], ipv6)
 				b[1+net.IPv6len] = byte(addr.Port >> 8)
 				b[1+net.IPv6len+1] = byte(addr.Port)
@@ -389,11 +392,11 @@ func (r *Reader) init(b []byte) (int, error) {
 
 type PacketReader struct {
 	core.Cipher
-	Reader  common.PacketConn
+	Reader  netstack.PacketConn
 	timeout time.Duration
 }
 
-func NewPacketReader(ciph core.Cipher, conn common.PacketConn, timeout time.Duration) *PacketReader {
+func NewPacketReader(ciph core.Cipher, conn netstack.PacketConn, timeout time.Duration) *PacketReader {
 	r := &PacketReader{
 		Cipher:  ciph,
 		Reader:  conn,
@@ -417,7 +420,7 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	offset, err := func(b []byte, tgt net.Addr) (int, error) {
-		if addr, ok := tgt.(common.Addr); ok {
+		if addr, ok := tgt.(socks.Addr); ok {
 			offset := len(b) - len(addr)
 			copy(b[offset:], addr)
 			return offset, nil
@@ -426,7 +429,7 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 			if ipv4 := addr.IP.To4(); ipv4 != nil {
 				offset := len(b) - 1 - net.IPv4len - 2
 				b = b[offset:]
-				b[0] = common.AddrTypeIPv4
+				b[0] = socks.AddrTypeIPv4
 				copy(b[1:], ipv4)
 				b[1+net.IPv4len] = byte(addr.Port >> 8)
 				b[1+net.IPv4len+1] = byte(addr.Port)
@@ -435,7 +438,7 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 				ipv6 := addr.IP.To16()
 				offset := len(b) - 1 - net.IPv6len - 2
 				b = b[offset:]
-				b[0] = common.AddrTypeIPv6
+				b[0] = socks.AddrTypeIPv6
 				copy(b[1:], ipv6)
 				b[1+net.IPv6len] = byte(addr.Port >> 8)
 				b[1+net.IPv6len+1] = byte(addr.Port)
