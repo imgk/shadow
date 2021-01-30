@@ -15,7 +15,5 @@ require (
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
 	golang.zx2c4.com/wireguard v0.0.20201119-0.20210120232502-fcc8ad05df75
 	golang.zx2c4.com/wireguard/windows v0.3.4
-	gvisor.dev/gvisor v0.0.0-20210128032343-d34fe8d385b0
+	gvisor.dev/gvisor v0.0.0-20210130015358-fc39bebe486d
 )
-
-replace gvisor.dev/gvisor => github.com/imgk/gvisor v0.0.0-20210124022905-5cccce67027d

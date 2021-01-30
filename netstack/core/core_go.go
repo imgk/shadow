@@ -433,7 +433,7 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	v := buffer.View(b)
 	if len(v) > header.UDPMaximumPacketSize {
-		return 0, errors.New(tcpip.ErrMessageTooLong.String())
+		return 0, errors.New((&tcpip.ErrMessageTooLong{}).String())
 	}
 
 	src, ok := addr.(*net.UDPAddr)
@@ -441,16 +441,15 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 		return 0, errors.New("addr type error")
 	}
 
-	route := conn.route
-
-	if ip := src.IP.To4(); ip != nil {
-		route.LocalAddress = tcpip.Address(ip)
+	if ipv4 := src.IP.To4(); ipv4 != nil {
+		conn.route.LocalAddress = tcpip.Address(ipv4)
 	} else {
-		route.LocalAddress = tcpip.Address(src.IP.To16())
+		ipv6 := src.IP.To16()
+		conn.route.LocalAddress = tcpip.Address(ipv6)
 	}
 
 	if tcperr := sendUDP(
-		route,
+		conn.route,
 		v.ToVectorisedView(),
 		uint16(src.Port),
 		uint16(conn.raddr.Port),
@@ -460,7 +459,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 		nil,  /* owner */
 		true,
 	); tcperr != nil {
-		return 0, errors.New(tcperr.String())
+		return 0, errors.New((*tcperr).String())
 	}
 	return len(b), nil
 }
