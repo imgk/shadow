@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -117,12 +117,27 @@ func NewHandler(s string, timeout time.Duration) (netstack.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	if auth != "" {
-		auth = fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(auth)))
-	}
 
 	if scheme == "http2" {
 		handler := &handler{
+			NewRequest: func(addr string, body io.ReadCloser) *http.Request {
+				r := &http.Request{
+					Method: http.MethodConnect,
+					Host:   addr,
+					Body:   body,
+					URL: &url.URL{
+						Scheme: "https",
+						Host:   addr,
+					},
+					Proto:      "HTTP/2",
+					ProtoMajor: 2,
+					ProtoMinor: 0,
+					Header:     make(http.Header),
+				}
+				r.Header.Set("Accept-Encoding", "identity")
+				r.Header.Add("Proxy-Authorization", auth)
+				return r
+			},
 			Client: http.Client{
 				Transport: &http2.Transport{
 					DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
@@ -139,13 +154,31 @@ func NewHandler(s string, timeout time.Duration) (netstack.Handler, error) {
 					},
 				},
 			},
-			auth: auth,
+			proxyAuth: auth,
 		}
 		return handler, nil
 	}
 
 	if scheme == "http3" {
 		handler := &handler{
+			NewRequest: func(addr string, body io.ReadCloser) *http.Request {
+				r := &http.Request{
+					Method: http.MethodConnect,
+					Host:   addr,
+					Body:   body,
+					URL: &url.URL{
+						Scheme: "https",
+						Host:   addr,
+					},
+					Proto:      "HTTP/3",
+					ProtoMajor: 3,
+					ProtoMinor: 0,
+					Header:     make(http.Header),
+				}
+				r.Header.Set("Accept-Encoding", "identity")
+				r.Header.Add("Proxy-Authorization", auth)
+				return r
+			},
 			Client: http.Client{
 				Transport: &http3.RoundTripper{
 					Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
@@ -158,7 +191,7 @@ func NewHandler(s string, timeout time.Duration) (netstack.Handler, error) {
 					QuicConfig: &quic.Config{KeepAlive: true},
 				},
 			},
-			auth: auth,
+			proxyAuth: auth,
 		}
 		return handler, nil
 	}

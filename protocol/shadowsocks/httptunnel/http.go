@@ -28,6 +28,8 @@ import (
 
 // Handler is ...
 type Handler struct {
+	NewRequest func(string, io.ReadCloser) *http.Request
+
 	Cipher core.Cipher
 	Client http.Client
 
@@ -35,8 +37,9 @@ type Handler struct {
 	timeout   time.Duration
 }
 
-func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseUrl(url)
+// MewHandler is ...
+func NewHandler(s string, timeout time.Duration) (*Handler, error) {
+	server, cipher, password, err := ParseUrl(s)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +64,24 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
 	return &Handler{
+		NewRequest: func(addr string, body io.ReadCloser) (r *http.Request) {
+			r = &http.Request{
+				Method: http.MethodConnect,
+				Host:   addr,
+				Body:   body,
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   addr,
+				},
+				Proto:      "HTTP/2",
+				ProtoMajor: 2,
+				ProtoMinor: 0,
+				Header:     make(http.Header),
+			}
+			r.Header.Set("Accept-Encoding", "identity")
+			r.Header.Add("Proxy-Authorization", proxyAuth)
+			return
+		},
 		Cipher: ciph,
 		Client: http.Client{
 			Transport: &http2.Transport{
@@ -83,8 +104,9 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 	}, nil
 }
 
-func NewQUICHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseUrl(url)
+// NewQUCIHandler is ...
+func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
+	server, cipher, password, err := ParseUrl(s)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +131,24 @@ func NewQUICHandler(url string, timeout time.Duration) (*Handler, error) {
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
 	return &Handler{
+		NewRequest: func(addr string, body io.ReadCloser) (r *http.Request) {
+			r = &http.Request{
+				Method: http.MethodConnect,
+				Host:   addr,
+				Body:   body,
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   addr,
+				},
+				Proto:      "HTTP/3",
+				ProtoMajor: 3,
+				ProtoMinor: 0,
+				Header:     make(http.Header),
+			}
+			r.Header.Set("Accept-Encoding", "identity")
+			r.Header.Add("Proxy-Authorization", proxyAuth)
+			return
+		},
 		Cipher: ciph,
 		Client: http.Client{
 			Transport: &http3.RoundTripper{
@@ -127,55 +167,16 @@ func NewQUICHandler(url string, timeout time.Duration) (*Handler, error) {
 	}, nil
 }
 
-func (h *Handler) NewRequest(method, addr string, body io.ReadCloser) (r *http.Request, err error) {
-	if _, ok := h.Client.Transport.(*http2.Transport); ok {
-		r = &http.Request{
-			Method: method,
-			Host:   addr,
-			Body:   body,
-			URL: &url.URL{
-				Scheme: "https",
-				Host:   addr,
-			},
-			Proto:      "HTTP/2",
-			ProtoMajor: 2,
-			ProtoMinor: 0,
-			Header:     make(http.Header),
-		}
-		r.Header.Set("Accept-Encoding", "identity")
-		r.Header.Add("Proxy-Authorization", h.proxyAuth)
-		return
-	}
-
-	r = &http.Request{
-		Method: method,
-		Host:   addr,
-		Body:   body,
-		URL: &url.URL{
-			Scheme: "https",
-			Host:   addr,
-		},
-		Proto:      "HTTP/3",
-		ProtoMajor: 3,
-		ProtoMinor: 0,
-		Header:     make(http.Header),
-	}
-	r.Header.Set("Accept-Encoding", "identity")
-	r.Header.Add("Proxy-Authorization", h.proxyAuth)
-	return
-}
-
+// Close is ...
 func (h *Handler) Close() error {
 	return nil
 }
 
+// Handle is ...
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req, err := h.NewRequest(http.MethodConnect, "tcp.imgk.cc", ioutil.NopCloser(NewReader(h.Cipher, conn, tgt)))
-	if err != nil {
-		return fmt.Errorf("NewRequest error: %w", err)
-	}
+	req := h.NewRequest("tcp.imgk.cc", ioutil.NopCloser(NewReader(h.Cipher, conn, tgt)))
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -184,6 +185,8 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
+	defer r.Body.Close()
+
 	if _, err := core.NewReader(r.Body, h.Cipher).WriteTo(io.Writer(conn)); err != nil {
 		return fmt.Errorf("WriteTo error: %w", err)
 	}
@@ -192,13 +195,11 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 var zerononce = [128]byte{}
 
+// HandlePacket is ...
 func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer conn.Close()
 
-	req, err := h.NewRequest(http.MethodConnect, "udp.imgk.cc", ioutil.NopCloser(NewPacketReader(h.Cipher, conn, h.timeout)))
-	if err != nil {
-		return fmt.Errorf("NewRequest error: %v", err)
-	}
+	req := h.NewRequest("udp.imgk.cc", ioutil.NopCloser(NewPacketReader(h.Cipher, conn, h.timeout)))
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -207,6 +208,7 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
+	defer r.Body.Close()
 
 	err = func(r io.Reader) error {
 		slice := netstack.Get()
@@ -275,6 +277,7 @@ func increment(b []byte) {
 	}
 }
 
+// Reader is ...
 type Reader struct {
 	cipher.AEAD
 
@@ -285,6 +288,7 @@ type Reader struct {
 	nonce []byte
 }
 
+// NewReader is ...
 func NewReader(ciph core.Cipher, rc io.ReadCloser, tgt net.Addr) *Reader {
 	r := &Reader{
 		Cipher: ciph,
@@ -294,6 +298,7 @@ func NewReader(ciph core.Cipher, rc io.ReadCloser, tgt net.Addr) *Reader {
 	return r
 }
 
+// Read is ...
 func (r *Reader) Read(b []byte) (int, error) {
 	if r.AEAD == nil {
 		return r.init(b)
@@ -390,12 +395,14 @@ func (r *Reader) init(b []byte) (int, error) {
 	return saltSize + 2 + overhead + n + overhead, nil
 }
 
+// PacketReader is ...
 type PacketReader struct {
 	core.Cipher
 	Reader  netstack.PacketConn
 	timeout time.Duration
 }
 
+// NewPacketReader is ...
 func NewPacketReader(ciph core.Cipher, conn netstack.PacketConn, timeout time.Duration) *PacketReader {
 	r := &PacketReader{
 		Cipher:  ciph,
@@ -405,6 +412,7 @@ func NewPacketReader(ciph core.Cipher, conn netstack.PacketConn, timeout time.Du
 	return r
 }
 
+// Read is ...
 func (r *PacketReader) Read(b []byte) (int, error) {
 	// https://github.com/golang/net/blob/6772e930b67bb09bf22262c7378e7d2f67cf59d1/http2/transport.go#L646
 	// https://github.com/golang/crypto/blob/master/internal/subtle/aliasing_purego.go#L18

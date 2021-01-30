@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/url"
@@ -28,6 +29,7 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 			return
 		}
 		auth = fmt.Sprintf("%v:%v", username, password)
+		auth = fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(auth)))
 	}
 
 	switch u.Scheme {
