@@ -8,13 +8,17 @@ import (
 )
 
 // URLError is ...
-type URLError string
-
-func (e *URLError) Error() string {
-	return fmt.Sprintf("http/https url error: %v", string(*e))
+type URLError struct {
+	Err string
 }
 
-func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
+// Error is ...
+func (e *URLError) Error() string {
+	return fmt.Sprintf("http/https url error: %v", e.Err)
+}
+
+// ParseURL
+func ParseURL(s string) (auth, addr, domain, scheme string, err error) {
 	u, err := url.Parse(s)
 	if err != nil {
 		return
@@ -24,8 +28,7 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 		username := u.User.Username()
 		password, ok := u.User.Password()
 		if !ok {
-			e := URLError("no password")
-			err = &e
+			err = &URLError{Err: "no password"}
 			return
 		}
 		auth = fmt.Sprintf("%v:%v", username, password)
@@ -62,8 +65,7 @@ func ParseUrl(s string) (auth, addr, domain, scheme string, err error) {
 
 		scheme = u.Scheme
 	default:
-		e := URLError(fmt.Sprintf("scheme error: %v", u.Scheme))
-		err = &e
+		err = &URLError{Err: fmt.Sprintf("scheme error: %v", u.Scheme)}
 		return
 	}
 
