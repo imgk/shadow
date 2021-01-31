@@ -8,37 +8,37 @@ import (
 	"sync"
 )
 
+// ErrShortPacket is ...
 var ErrShortPacket = errors.New("short packet")
 var zerononce = [128]byte{}
 
-var byteBuffer = sync.Pool{New: newBuffer}
-
-func newBuffer() interface{} {
-	b := make([]byte, MaxPacketSize)
-	// Return a *[]byte instead of []byte ensures that
-	// the []byte is not copied, which would cause a heap
-	// allocation on every call to sync.pool.Put
-	return &b
+// Pool is ...
+var Pool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, MaxPacketSize)
+		// Return a *[]byte instead of []byte ensures that
+		// the []byte is not copied, which would cause a heap
+		// allocation on every call to sync.pool.Pool.Put
+		return &b
+	},
 }
 
-func Get() LazySlice {
-	p := byteBuffer.Get().(*[]byte)
-	return LazySlice{Pointer: p}
+// Get is ...
+func Get() (lazySlice, []byte) {
+	p := Pool.Get().(*[]byte)
+	return lazySlice{Pointer: p}, *p
 }
 
-func Put(b LazySlice) {
-	byteBuffer.Put(b.Pointer)
-	b.Pointer = nil
+// Put is ...
+func Put(s lazySlice) {
+	Pool.Put(s.Pointer)
 }
 
-type LazySlice struct {
+type lazySlice struct {
 	Pointer *[]byte
 }
 
-func (s LazySlice) Get() []byte {
-	return *s.Pointer
-}
-
+// PacketConn is ...
 type PacketConn struct {
 	net.PacketConn
 	Cipher Cipher
@@ -74,9 +74,8 @@ func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	slice := Get()
-	defer Put(slice)
-	buff := slice.Get()
+	sc, buff := Get()
+	defer Put(sc)
 
 	n, addr, err := pc.PacketConn.ReadFrom(buff)
 	if err != nil {
@@ -112,9 +111,8 @@ func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 }
 
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	slice := Get()
-	defer Put(slice)
-	buff := slice.Get()
+	sc, buff := Get()
+	defer Put(sc)
 
 	bb, err := Pack(buff, b, pc.Cipher)
 	if err != nil {

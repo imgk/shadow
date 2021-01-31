@@ -1,17 +1,14 @@
 package socks
 
 import (
-	"fmt"
+	"errors"
 	"net/url"
+
+	"golang.org/x/net/proxy"
 )
 
-type UrlError string
-
-func (e UrlError) Error() string {
-	return fmt.Sprintf("socks url error: %v", string(e))
-}
-
-func ParseUrl(s string) (auth *Auth, server string, err error) {
+// ParseURL is ...
+func ParseURL(s string) (auth *proxy.Auth, server string, err error) {
 	u, er := url.Parse(s)
 	if er != nil {
 		err = er
@@ -25,16 +22,13 @@ func ParseUrl(s string) (auth *Auth, server string, err error) {
 
 	username := u.User.Username()
 	password, ok := u.User.Password()
-
 	if !ok {
-		err = UrlError("no password")
+		err = errors.New("socks url error: no password")
 		return
 	}
-
-	auth = &Auth{
-		Username: username,
+	auth = &proxy.Auth{
+		User:     username,
 		Password: password,
 	}
-
 	return
 }

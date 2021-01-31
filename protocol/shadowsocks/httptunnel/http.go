@@ -21,7 +21,8 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
 )
@@ -196,7 +197,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 var zerononce = [128]byte{}
 
 // HandlePacket is ...
-func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
 	req := h.NewRequest("udp.imgk.cc", ioutil.NopCloser(NewPacketReader(h.Cipher, conn, h.timeout)))
@@ -211,9 +212,9 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	defer r.Body.Close()
 
 	err = func(r io.Reader) error {
-		slice := netstack.Get()
-		defer netstack.Put(slice)
-		b := slice.Get()
+		const MaxBufferSize = 16 << 10
+		sc, b := pool.Pool.Get(MaxBufferSize)
+		defer pool.Pool.Put(sc)
 
 		for {
 			if _, err := io.ReadFull(r, b[:2]); err != nil {
@@ -398,12 +399,12 @@ func (r *Reader) init(b []byte) (int, error) {
 // PacketReader is ...
 type PacketReader struct {
 	core.Cipher
-	Reader  netstack.PacketConn
+	Reader  gonet.PacketConn
 	timeout time.Duration
 }
 
 // NewPacketReader is ...
-func NewPacketReader(ciph core.Cipher, conn netstack.PacketConn, timeout time.Duration) *PacketReader {
+func NewPacketReader(ciph core.Cipher, conn gonet.PacketConn, timeout time.Duration) *PacketReader {
 	r := &PacketReader{
 		Cipher:  ciph,
 		Reader:  conn,

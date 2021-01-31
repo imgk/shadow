@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/pkg/suffixtree"
 	"github.com/imgk/shadow/pkg/xerror"
@@ -82,7 +84,7 @@ func newFakeConn(conn net.Conn, reader io.Reader) *fakeConn {
 }
 
 func (conn *fakeConn) CloseRead() error {
-	if close, ok := conn.Conn.(netstack.CloseReader); ok {
+	if close, ok := conn.Conn.(gonet.CloseReader); ok {
 		return close.CloseRead()
 	}
 	conn.Conn.SetReadDeadline(time.Now())
@@ -90,7 +92,7 @@ func (conn *fakeConn) CloseRead() error {
 }
 
 func (conn *fakeConn) CloseWrite() error {
-	if close, ok := conn.Conn.(netstack.CloseWriter); ok {
+	if close, ok := conn.Conn.(gonet.CloseWriter); ok {
 		return close.CloseWrite()
 	}
 	conn.Conn.SetWriteDeadline(time.Now())
@@ -101,7 +103,7 @@ func (conn *fakeConn) Read(b []byte) (int, error) {
 	return conn.reader.Read(b)
 }
 
-// fake netstack.PacketConn
+// fake gonet.PacketConn
 type fakePacketConn struct {
 	addr net.Addr
 	net.PacketConn
@@ -119,9 +121,9 @@ func (pc *fakePacketConn) RemoteAddr() net.Addr {
 }
 
 func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
-	slice := netstack.Get()
-	defer netstack.Put(slice)
-	buf := slice.Get()
+	const MaxBufferSize = 16 << 10
+	sc, buf := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	n, _, err = pc.PacketConn.ReadFrom(buf)
 	if err != nil {
@@ -137,9 +139,9 @@ func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 }
 
 func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
-	slice := netstack.Get()
-	defer netstack.Put(slice)
-	buf := slice.Get()
+	const MaxBufferSize = 16 << 10
+	sc, buf := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	src, err := socks.ResolveAddrBuffer(addr, b[3:])
 	if err != nil {
@@ -157,7 +159,7 @@ type proxyServer struct {
 
 	// Convert fake IP and handle connections
 	tree    *suffixtree.DomainTree
-	handler netstack.Handler
+	handler gonet.Handler
 
 	// Listen
 	http.Server
@@ -167,7 +169,7 @@ type proxyServer struct {
 	closed chan struct{}
 }
 
-func newProxyServer(ln net.Listener, logger netstack.Logger, handler netstack.Handler, tree *suffixtree.DomainTree, router *http.ServeMux) *proxyServer {
+func newProxyServer(ln net.Listener, logger netstack.Logger, handler gonet.Handler, tree *suffixtree.DomainTree, router *http.ServeMux) *proxyServer {
 	s := &proxyServer{
 		Logger:     logger,
 		router:     router,
@@ -426,7 +428,7 @@ func (s *proxyServer) proxyGet(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 
-	if _, err := netstack.Copy(w, resp.Body); err != nil {
+	if _, err := gonet.Copy(w, resp.Body); err != nil {
 		if errors.Is(err, io.EOF) {
 			return
 		}

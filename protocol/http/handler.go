@@ -11,21 +11,21 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/protocol"
 )
 
 func init() {
-	protocol.RegisterHandler("http", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return newHandler(s, timeout)
 	})
-	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return newHandler(s, timeout)
 	})
-	protocol.RegisterHandler("http2", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return newH2Handler(s, timeout)
 	})
-	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return newH2Handler(s, timeout)
 	})
 }
@@ -156,7 +156,7 @@ func (h *handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	defer rc.Close()
 
-	if err := netstack.Relay(conn, rc); err != nil {
+	if err := gonet.Relay(conn, rc); err != nil {
 		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
@@ -172,6 +172,6 @@ func (h *handler) Handle(conn net.Conn, tgt net.Addr) error {
 }
 
 // HandlePacket is ...
-func (h *handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *handler) HandlePacket(conn gonet.PacketConn) error {
 	return errors.New("http proxy does not support UDP")
 }

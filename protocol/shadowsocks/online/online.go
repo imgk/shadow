@@ -14,13 +14,13 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 )
 
 type OnlineHandler struct {
-	Handler netstack.Handler
+	Handler gonet.Handler
 	URL     string
 	timeout time.Duration
 	limiter *rate.Limiter
@@ -196,7 +196,7 @@ func (h *OnlineHandler) Handle(conn net.Conn, tgt net.Addr) error {
 	return err
 }
 
-func (h *OnlineHandler) HandlePacket(conn netstack.PacketConn) error {
+func (h *OnlineHandler) HandlePacket(conn gonet.PacketConn) error {
 	h.mu.Lock()
 	handler := h.Handler
 	h.mu.Unlock()

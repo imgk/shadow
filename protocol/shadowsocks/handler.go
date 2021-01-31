@@ -8,47 +8,50 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
+	"github.com/imgk/shadow/protocol/shadowsocks/tls"
+
+	// other protocols
 	"github.com/imgk/shadow/protocol/shadowsocks/httptunnel"
 	"github.com/imgk/shadow/protocol/shadowsocks/online"
-	"github.com/imgk/shadow/protocol/shadowsocks/tls"
 )
 
 func init() {
-	protocol.RegisterHandler("ss", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("ss", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return httptunnel.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return httptunnel.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return httptunnel.NewQUICHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return httptunnel.NewQUICHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewOnlineHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewOnlineHandler(s, timeout)
 	})
-	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewOnlineHandler(s, timeout)
 	})
 }
@@ -144,7 +147,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 		return fmt.Errorf("write to server %v error: %v", h.server, err)
 	}
 
-	if err := netstack.Relay(conn, rc); err != nil {
+	if err := gonet.Relay(conn, rc); err != nil {
 		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
@@ -160,7 +163,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	return nil
 }
 
-func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
 	raddr, err := net.ResolveUDPAddr("udp", h.server)
@@ -178,9 +181,9 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
 
-	slice := netstack.Get()
-	defer netstack.Put(slice)
-	b := slice.Get()
+	const MaxBufferSize = 16 << 10
+	sc, b := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
@@ -219,10 +222,10 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	return <-errCh
 }
 
-func copyWithChannel(conn netstack.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	slice := netstack.Get()
-	defer netstack.Put(slice)
-	b := slice.Get()
+func copyWithChannel(conn gonet.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
+	const MaxBufferSize = 16 << 10
+	sc, b := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	buf := [socks.MaxAddrLen]byte{}
 	for {

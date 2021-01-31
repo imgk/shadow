@@ -222,7 +222,8 @@ func ResolveAddrBuffer(addr net.Addr, b []byte) (Addr, error) {
 	}
 
 	if a, ok := addr.(Addr); ok {
-		return a, nil
+		copy(b, a)
+		return b[:len(a)], nil
 	}
 
 	return nil, ErrInvalidAddrType

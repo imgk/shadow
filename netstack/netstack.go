@@ -10,16 +10,24 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/imgk/shadow/netstack/core"
+	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/pkg/suffixtree"
 )
 
 var (
-	_ PacketConn   = (*FakeUDPConn)(nil)
-	_ PacketConn   = (*UDPConn)(nil)
-	_ core.Handler = (*Stack)(nil)
+	_ gonet.PacketConn = (*FakeUDPConn)(nil)
+	_ gonet.PacketConn = (*UDPConn)(nil)
+	_ core.Handler     = (*Stack)(nil)
 )
+
+// Device is ...
+type Device interface {
+	io.Closer
+	core.Device
+}
 
 // Logger is ...
 type Logger interface {
@@ -99,7 +107,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 // Stack is core.Handler
 type Stack struct {
 	core.Stack
-	handler Handler
+	handler gonet.Handler
 
 	resolver resolver.Resolver
 	tree     *suffixtree.DomainTree
@@ -109,7 +117,7 @@ type Stack struct {
 }
 
 // NewStack is ....
-func NewStack(handler Handler, resolver resolver.Resolver, tree *suffixtree.DomainTree, hijack bool) *Stack {
+func NewStack(handler gonet.Handler, resolver resolver.Resolver, tree *suffixtree.DomainTree, hijack bool) *Stack {
 	return &Stack{
 		handler:  handler,
 		resolver: resolver,
@@ -230,9 +238,9 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 func (s *Stack) HandleQuery(conn *core.UDPConn) {
 	defer conn.Close()
 
-	slice := Get()
-	defer Put(slice)
-	b := slice.Get()
+	const MaxMessageSize = 2 << 10
+	sc, b := pool.Pool.Get(MaxMessageSize)
+	defer pool.Pool.Put(sc)
 	m := dns.Msg{}
 
 	for {

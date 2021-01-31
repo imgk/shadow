@@ -5,16 +5,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
 )
 
-var handlers = map[string](func(string, time.Duration) (netstack.Handler, error)){}
+var handlers = map[string](func(string, time.Duration) (gonet.Handler, error)){}
 
-func RegisterHandler(proto string, fn func(string, time.Duration) (netstack.Handler, error)) {
+// RegisterHandler is ...
+func RegisterHandler(proto string, fn func(string, time.Duration) (gonet.Handler, error)) {
 	handlers[proto] = fn
 }
 
-func NewHandler(url string, timeout time.Duration) (netstack.Handler, error) {
+// NewHandler is ...
+func NewHandler(url string, timeout time.Duration) (gonet.Handler, error) {
 	ss := strings.Split(url, ":")
 	factory, ok := handlers[ss[0]]
 	if ok {

@@ -1,56 +1,22 @@
-package netstack
+package gonet
 
 import (
 	"io"
 	"net"
-	"sync"
 	"time"
 
-	"github.com/imgk/shadow/netstack/core"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/xerror"
 )
 
-const MaxBufferSize = 16384
-
-var byteBuffer = sync.Pool{New: newBuffer}
-
-func newBuffer() interface{} {
-	b := make([]byte, MaxBufferSize)
-	// Return a *[]byte instead of []byte ensures that
-	// the []byte is not copied, which would cause a heap
-	// allocation on every call to sync.pool.Put
-	return &b
-}
-
-func Get() LazySlice {
-	p := byteBuffer.Get().(*[]byte)
-	return LazySlice{Pointer: p}
-}
-
-func Put(b LazySlice) {
-	byteBuffer.Put(b.Pointer)
-	b.Pointer = nil
-}
-
-type LazySlice struct {
-	Pointer *[]byte
-}
-
-func (s LazySlice) Get() []byte {
-	return *s.Pointer
-}
-
-type Device interface {
-	io.Closer
-	core.Device
-}
-
+// Handler is ...
 type Handler interface {
 	io.Closer
 	Handle(net.Conn, net.Addr) error
 	HandlePacket(PacketConn) error
 }
 
+// PacketConn is ...
 type PacketConn interface {
 	LocalAddr() net.Addr
 	RemoteAddr() net.Addr
@@ -62,14 +28,17 @@ type PacketConn interface {
 	Close() error
 }
 
+// CloseReader is ...
 type CloseReader interface {
 	CloseRead() error
 }
 
+// CloseWriter
 type CloseWriter interface {
 	CloseWrite() error
 }
 
+// DuplexConn
 type DuplexConn interface {
 	net.Conn
 	CloseReader
@@ -104,6 +73,7 @@ func (c duplexConn) CloseWrite() error {
 	return c.Conn.Close()
 }
 
+// Relay is ...
 func Relay(c, rc net.Conn) error {
 	l, ok := c.(DuplexConn)
 	if !ok {
@@ -147,6 +117,7 @@ func relay2(c, rc DuplexConn, errCh chan error) {
 	errCh <- err
 }
 
+// Copy is ...
 func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 	if c, ok := r.(duplexConn); ok {
 		r = c.Conn
@@ -163,9 +134,9 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 		}
 	}
 
-	slice := Get()
-	defer Put(slice)
-	b := slice.Get()
+	const MaxBufferSize = 16 << 10
+	sc, b := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	for {
 		nr, er := r.Read(b)

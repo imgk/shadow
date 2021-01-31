@@ -16,7 +16,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
 )
 
 type h2Handler struct {
@@ -143,6 +143,6 @@ func (h *h2Handler) Handle(conn net.Conn, tgt net.Addr) error {
 }
 
 // HandlePacket is ...
-func (h *h2Handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *h2Handler) HandlePacket(conn gonet.PacketConn) error {
 	return errors.New("http proxy does not support UDP")
 }

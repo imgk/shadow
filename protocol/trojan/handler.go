@@ -16,16 +16,17 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/xtaci/smux"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 )
 
 func init() {
-	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (netstack.Handler, error) {
+	protocol.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }
@@ -409,7 +410,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 	defer rc.Close()
 
-	if err := netstack.Relay(conn, rc); err != nil {
+	if err := gonet.Relay(conn, rc); err != nil {
 		if ne := net.Error(nil); errors.As(err, &ne) {
 			if ne.Timeout() {
 				return nil
@@ -424,7 +425,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	return nil
 }
 
-func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
 	rc, err := h.Dial(conn.LocalAddr(), cmdAssocaite)
@@ -436,9 +437,9 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	errCh := make(chan error, 1)
 	go copyWithChannel(conn, rc, h.timeout, errCh)
 
-	slice := netstack.Get()
-	defer netstack.Put(slice)
-	b := slice.Get()
+	const MaxBufferSize = 16 << 10
+	sc, b := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
@@ -508,10 +509,10 @@ func (h *Handler) HandlePacket(conn netstack.PacketConn) error {
 	return err
 }
 
-func copyWithChannel(conn netstack.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
-	slice := netstack.Get()
-	defer netstack.Put(slice)
-	b := slice.Get()
+func copyWithChannel(conn gonet.PacketConn, rc net.Conn, timeout time.Duration, errCh chan error) {
+	const MaxBufferSize = 16 << 10
+	sc, b := pool.Pool.Get(MaxBufferSize)
+	defer pool.Pool.Put(sc)
 
 	b[socks.MaxAddrLen+2], b[socks.MaxAddrLen+3] = 0x0d, 0x0a
 

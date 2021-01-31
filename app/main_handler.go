@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/gonet"
 )
 
-// netConn is methods shared by net.Conn and netstack.PacketConn
+// netConn is methods shared by net.Conn and gonet.PacketConn
 type netConn interface {
 	io.Closer
 	LocalAddr() net.Addr
@@ -25,12 +25,12 @@ type netConn interface {
 	SetWriteDeadline(time.Time) error
 }
 
-// Reader implements net.Conn.Read and netstack.PacketConn.ReadTo
+// Reader implements net.Conn.Read and gonet.PacketConn.ReadTo
 // and record the number of bytes
 type Reader struct {
 	num     uint64
 	conn    net.Conn
-	pktConn netstack.PacketConn
+	pktConn gonet.PacketConn
 }
 
 func (r *Reader) Read(b []byte) (n int, err error) {
@@ -40,7 +40,7 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 }
 
 func (r *Reader) Close() error {
-	if closer, ok := r.conn.(netstack.CloseReader); ok {
+	if closer, ok := r.conn.(gonet.CloseReader); ok {
 		return closer.CloseRead()
 	}
 	r.conn.SetReadDeadline(time.Now())
@@ -57,12 +57,12 @@ func (r *Reader) ByteNum() uint64 {
 	return atomic.LoadUint64(&r.num)
 }
 
-// Writer implements net.Conn.Write and netstack.PacketConn.WriteFrom
+// Writer implements net.Conn.Write and gonet.PacketConn.WriteFrom
 // and record the number of bytes
 type Writer struct {
 	num     uint64
 	conn    net.Conn
-	pktConn netstack.PacketConn
+	pktConn gonet.PacketConn
 }
 
 func (w *Writer) Write(b []byte) (n int, err error) {
@@ -72,7 +72,7 @@ func (w *Writer) Write(b []byte) (n int, err error) {
 }
 
 func (w *Writer) Close() error {
-	if closer, ok := w.conn.(netstack.CloseWriter); ok {
+	if closer, ok := w.conn.(gonet.CloseWriter); ok {
 		return closer.CloseWrite()
 	}
 	w.conn.SetWriteDeadline(time.Now())
@@ -89,7 +89,7 @@ func (w *Writer) ByteNum() uint64 {
 	return atomic.LoadUint64(&w.num)
 }
 
-// Conn implements net.Conn and netstack.PacketConn
+// Conn implements net.Conn and gonet.PacketConn
 // and record the number of bytes it reads and writes
 type Conn struct {
 	netConn
@@ -128,7 +128,7 @@ func NewConnFromConn(conn net.Conn, addr net.Addr) (c *Conn) {
 	return
 }
 
-func NewConnFromPacketConn(conn netstack.PacketConn) (c *Conn) {
+func NewConnFromPacketConn(conn gonet.PacketConn) (c *Conn) {
 	c = &Conn{
 		netConn: conn,
 		Reader: Reader{
@@ -197,16 +197,16 @@ func (c *Conn) Nums() (rb uint64, rs uint64, wb uint64, ws uint64) {
 	return
 }
 
-// Handler implements netstack.Handler which can record all active
+// Handler implements gonet.Handler which can record all active
 // connections
 type Handler struct {
-	netstack.Handler
+	gonet.Handler
 
 	mu    sync.RWMutex
 	conns map[uint32]*Conn
 }
 
-func NewHandler(h netstack.Handler) *Handler {
+func NewHandler(h gonet.Handler) *Handler {
 	hd := &Handler{
 		Handler: h,
 		conns:   make(map[uint32]*Conn),
@@ -231,7 +231,7 @@ func (h *Handler) Handle(conn net.Conn, addr net.Addr) (err error) {
 	return
 }
 
-func (h *Handler) HandlePacket(conn netstack.PacketConn) (err error) {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) (err error) {
 	key := rand.Uint32()
 	conn = NewConnFromPacketConn(conn)
 
