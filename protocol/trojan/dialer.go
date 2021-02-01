@@ -83,7 +83,7 @@ type TLSDialer struct {
 	// Addr is ...
 	Addr string
 	// Config is ...
-	Config *tls.Config
+	Config tls.Config
 	// Header is ...
 	Header [HeaderLen + 2]byte
 }
@@ -94,8 +94,11 @@ func (d *TLSDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn = tls.Client(conn, d.Config)
-	err = WriteHeaderAddr(conn, d.Header[:], cmd, addr)
+	conn = tls.Client(conn, &d.Config)
+	if err = WriteHeaderAddr(conn, d.Header[:], cmd, addr); err != nil {
+		conn.Close()
+		return nil, err
+	}
 	return conn, nil
 }
 
@@ -118,7 +121,10 @@ func (d *WebSocketDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 		return nil, err
 	}
 	conn := &wsConn{Conn: wc, Reader: &emptyReader{}}
-	err = WriteHeaderAddr(conn, d.Header[:], cmd, addr)
+	if err := WriteHeaderAddr(conn, d.Header[:], cmd, addr); err != nil {
+		conn.Close()
+		return nil, err
+	}
 	return conn, nil
 }
 
@@ -149,7 +155,7 @@ func ConfigureMux(d Dialer, ver byte) Dialer {
 	// smux version 1
 	cmd := 0x7f
 	if ver == 2 {
-		// smxu version 2
+		// smux version 2
 		cmd = 0x8f
 	}
 	dialer := &MuxDialer{
@@ -232,25 +238,25 @@ func (d *MuxDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func(conn net.Conn) {
-		if err != nil {
-			conn.Close()
-		}
-	}(conn)
 
 	sess, err := smux.Client(conn, &d.Config)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	stream, err := sess.OpenStream()
 	if err != nil {
 		sess.Close()
+		conn.Close()
 		return nil, err
 	}
 
 	err = WriteAddr(stream, cmd, addr)
 	if err != nil {
+		stream.Close()
+		sess.Close()
+		conn.Close()
 		return nil, err
 	}
 

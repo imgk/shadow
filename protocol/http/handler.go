@@ -38,18 +38,57 @@ type rawConn struct {
 }
 
 // Read is ...
-func (conn *rawConn) Read(b []byte) (int, error) {
-	if conn.Reader == nil {
-		return conn.Conn.Read(b)
+func (c *rawConn) Read(b []byte) (int, error) {
+	if c.Reader == nil {
+		return c.Conn.Read(b)
 	}
-	n, err := conn.Reader.Read(b)
+	n, err := c.Reader.Read(b)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			conn.Reader = nil
+			c.Reader = nil
 			err = nil
 		}
 	}
 	return n, err
+}
+
+// Dialer is ...
+type Dialer interface {
+	// Dial is ...
+	Dial(string, string) (net.Conn, error)
+}
+
+// NetDialer is ...
+type NetDialer struct {
+	// Dialer is ...
+	Dialer net.Dialer
+	// Addr is ...
+	Addr string
+}
+
+// Dial is ...
+func (d *NetDialer) Dial(network, addr string) (net.Conn, error) {
+	return d.Dialer.Dial(network, d.Addr)
+}
+
+// TLSDialer is ...
+type TLSDialer struct {
+	// Dialer is ...
+	Dialer net.Dialer
+	// Config is ...
+	Config tls.Config
+	// Addr is ...
+	Addr string
+}
+
+// DialTLS is ...
+func (d *TLSDialer) Dial(network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial(network, d.Addr)
+	if err != nil {
+		return nil, err
+	}
+	conn = tls.Client(conn, &d.Config)
+	return conn, nil
 }
 
 // Handler is ...
@@ -72,29 +111,19 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}
 	switch scheme {
 	case "http":
-		handler.Dial = func(network, addr string) (net.Conn, error) {
-			return net.Dial(network, server)
+		dialer := &NetDialer{
+			Addr: server,
 		}
+		handler.Dial = dialer.Dial
 	case "https":
-		cfg := &tls.Config{
-			ServerName:         domain,
-			ClientSessionCache: tls.NewLRUClientSessionCache(32),
+		dialer := &TLSDialer{
+			Config: tls.Config{
+				ServerName:         domain,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			},
+			Addr: server,
 		}
-		handler.Dial = func(network, addr string) (net.Conn, error) {
-			conn, err := net.Dial("tcp", server)
-			if err != nil {
-				return nil, err
-			}
-			if nc, ok := conn.(*net.TCPConn); ok {
-				nc.SetKeepAlive(true)
-			}
-			conn = tls.Client(conn, cfg)
-			if err := conn.(*tls.Conn).Handshake(); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			return conn, nil
-		}
+		handler.Dial = dialer.Dial
 	}
 
 	return handler, nil
@@ -109,7 +138,7 @@ func (*Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	rc, err := func(network, addr string) (conn net.Conn, err error) {
+	rc, err := func(network, addr, proxyAuth string) (conn net.Conn, err error) {
 		conn, err = h.Dial(network, addr)
 		if err != nil {
 			return
@@ -125,8 +154,8 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 			return
 		}
 		req.Host = addr
-		if h.proxyAuth != "" {
-			req.Header.Add("Proxy-Authorization", h.proxyAuth)
+		if proxyAuth != "" {
+			req.Header.Add("Proxy-Authorization", proxyAuth)
 		}
 		err = req.Write(conn)
 		if err != nil {
@@ -134,12 +163,12 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 		}
 
 		reader := bufio.NewReader(conn)
-		res, err := http.ReadResponse(reader, req)
+		r, err := http.ReadResponse(reader, req)
 		if err != nil {
 			return
 		}
-		if res.StatusCode != http.StatusOK {
-			err = errors.New(fmt.Sprintf("http response code error: %v", res.StatusCode))
+		if r.StatusCode != http.StatusOK {
+			err = errors.New(fmt.Sprintf("http response code error: %v", r.StatusCode))
 			return
 		}
 		if n := reader.Buffered(); n > 0 {
@@ -151,7 +180,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 		}
 
 		return
-	}("tcp", tgt.String())
+	}("tcp", tgt.String(), h.proxyAuth)
 	if err != nil {
 		return err
 	}

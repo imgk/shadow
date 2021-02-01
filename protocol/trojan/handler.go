@@ -64,12 +64,6 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		return buff
 	}(password)
 
-	// tls.Config
-	tlsConfig := &tls.Config{
-		ServerName:         domain,
-		ClientSessionCache: tls.NewLRUClientSessionCache(32),
-	}
-
 	handler := &Handler{
 		Addr:    proxyAddr.String(),
 		timeout: timeout,
@@ -77,8 +71,11 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	switch transport {
 	case "tls":
 		handler.Dialer = &TLSDialer{
-			Addr:   handler.Addr,
-			Config: tlsConfig,
+			Addr: handler.Addr,
+			Config: tls.Config{
+				ServerName:         domain,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			},
 			Header: header,
 		}
 	case "websocket":
@@ -90,9 +87,12 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			Header: header,
 		}
 		dialer.Dialer = websocket.Dialer{
-			NetDial:         dialer.NetDialer.Dial,
-			NetDialContext:  dialer.NetDialer.DialContext,
-			TLSClientConfig: tlsConfig,
+			NetDial:        dialer.NetDialer.Dial,
+			NetDialContext: dialer.NetDialer.DialContext,
+			TLSClientConfig: &tls.Config{
+				ServerName:         domain,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			},
 		}
 		handler.Dialer = dialer
 	default:
