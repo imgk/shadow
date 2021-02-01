@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -28,7 +29,11 @@ func main() {
 	flag.DurationVar(&conf.Timeout, "t", time.Minute, "timeout")
 	flag.Parse()
 
-	app, err := app.NewApp(conf.FilePath, conf.Timeout, conf.Verbose)
+	w := io.Writer(nil)
+	if conf.Verbose {
+		w = os.Stdout
+	}
+	app, err := app.NewApp(conf.FilePath, conf.Timeout, w)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -1,7 +1,6 @@
-package tls
+package shadowsocks
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
@@ -12,20 +11,24 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"reflect"
 	"strconv"
 	"time"
+	"unsafe"
+
+	"github.com/imgk/shadow/pkg/gonet"
 )
 
-// transfer shadowsocks data over tcp and tls with HTTP CONNECT tunnel
-type Dialer struct {
+// TLSDialer transfer shadowsocks data over tcp and tls with HTTP CONNECT tunnel
+type TLSDialer struct {
 	proxyIP   net.IP
 	proxyPort int
 	proxyAuth string
 	tlsConfig *tls.Config
 }
 
-// NewClient replace original NewClient to support new protocol
-func NewDialer(server string, password string) (*Dialer, error) {
+// NewTLSDialer replace original NewClient to support new protocol
+func NewTLSDialer(server string, password string) (*TLSDialer, error) {
 	host, portString, err := net.SplitHostPort(server)
 	if err != nil {
 		return nil, err
@@ -38,15 +41,15 @@ func NewDialer(server string, password string) (*Dialer, error) {
 		return nil, errors.New("port number error")
 	}
 
-	proxyIP, err := net.ResolveIPAddr("ip", host)
+	proxyAddr, err := net.ResolveIPAddr("ip", host)
 	if err != nil {
 		return nil, errors.New("Failed to resolve proxy address")
 	}
 	sum := sha256.Sum224([]byte(password))
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
-	client := &Dialer{
-		proxyIP:   proxyIP.IP,
+	client := &TLSDialer{
+		proxyIP:   proxyAddr.IP,
 		proxyPort: port,
 		proxyAuth: proxyAuth,
 	}
@@ -60,58 +63,47 @@ func NewDialer(server string, password string) (*Dialer, error) {
 }
 
 // Dial gives a net.Conn
-func (c *Dialer) Dial(network, addr string) (net.Conn, error) {
-	proxyAddr := &net.TCPAddr{IP: c.proxyIP, Port: c.proxyPort}
+func (d *TLSDialer) Dial(network, addr string) (net.Conn, error) {
+	proxyAddr := &net.TCPAddr{IP: d.proxyIP, Port: d.proxyPort}
 	proxyConn, err := net.DialTCP("tcp", nil, proxyAddr)
 	if err != nil {
 		return nil, err
 	}
 	proxyConn.SetKeepAlive(true)
 
-	conn := NewConn(proxyConn, c.proxyAuth, c.tlsConfig)
+	conn := NewConn(proxyConn, d.proxyAuth, d.tlsConfig)
 	return conn, nil
 }
 
 // ListenPacket gives a net.PacketConn
-func (c *Dialer) ListenPacket(network, addr string) (net.PacketConn, error) {
-	proxyAddr := &net.TCPAddr{IP: c.proxyIP, Port: c.proxyPort}
+func (d *TLSDialer) ListenPacket(network, addr string) (net.PacketConn, error) {
+	proxyAddr := &net.TCPAddr{IP: d.proxyIP, Port: d.proxyPort}
 	proxyConn, err := net.DialTCP("tcp", nil, proxyAddr)
 	if err != nil {
 		return nil, err
 	}
 	proxyConn.SetKeepAlive(true)
 
-	conn := NewPacketConn(proxyConn, c.proxyAuth, c.tlsConfig)
+	conn := NewPacketConn(proxyConn, d.proxyAuth, d.tlsConfig)
 	return conn, nil
 }
 
 var (
-	_ DuplexConn     = (*Conn)(nil)
-	_ net.Conn       = (*Conn)(nil)
-	_ net.PacketConn = (*PacketConn)(nil)
+	_ gonet.DuplexConn = (*Conn)(nil)
+	_ net.Conn         = (*Conn)(nil)
+	_ net.PacketConn   = (*PacketConn)(nil)
 )
-
-type CloseReader interface {
-	CloseRead() error
-}
-
-type CloseWriter interface {
-	CloseWrite() error
-}
-
-// DuplexConn supports CloseRead and CloseWrite
-type DuplexConn interface {
-	net.Conn
-	CloseReader
-	CloseWriter
-}
 
 // Conn supports net.Conn
 type Conn struct {
+	// Conn is ...
 	net.Conn
+	// Reader is ...
 	Reader io.Reader
+	// Writer is ...
 	Writer io.Writer
 
+	// local address
 	nAddr net.Addr
 
 	proxyAuth string
@@ -136,7 +128,9 @@ func NewConn(nc *net.TCPConn, proxyAuth string, cfg *tls.Config) net.Conn {
 
 // NewConn gives a new net.PacketConn
 type PacketConn struct {
+	// Conn is ...
 	Conn
+	// remote address
 	nAddr net.Addr
 }
 
@@ -165,35 +159,43 @@ func (c *Conn) LocalAddr() net.Addr {
 	return c.nAddr
 }
 
-// CloseRead CloseReader
+// CloseRead is gonet.CloseReader
 func (c *Conn) CloseRead() error {
-	if closer, ok := c.Conn.(CloseReader); ok {
+	if closer, ok := c.Conn.(gonet.CloseReader); ok {
 		return closer.CloseRead()
 	}
 	c.Conn.SetReadDeadline(time.Now())
 	return c.Conn.Close()
 }
 
-// CloseWrite CloseWriter
+// CloseWrite is gonet.CloseWriter
 func (c *Conn) CloseWrite() error {
-	if closer, ok := c.Conn.(CloseWriter); ok {
+	if closer, ok := c.Conn.(gonet.CloseWriter); ok {
 		return closer.CloseWrite()
 	}
 	c.Conn.SetWriteDeadline(time.Now())
 	return c.Conn.Close()
 }
 
-var response = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
+// Equal is ...
+func Equal(b []byte, s string) bool {
+	bb := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	ss := *(*string)(unsafe.Pointer(&reflect.StringHeader{
+		Data: bb.Data,
+		Len:  bb.Len,
+	}))
+	return s == ss
+}
 
-// Read io.Reader
+// Read is io.Reader
 func (c *Conn) Read(b []byte) (int, error) {
+	const Response = "HTTP/1.1 200 Connection Established\r\n\r\n"
 	if c.Reader == nil {
-		// "HTTP/1.1 200 Connection Established\r\n\r\n"
-		bb := make([]byte, len(response))
+		bb := make([]byte, len(Response))
 		if _, err := io.ReadFull(c.Conn, bb); err != nil {
 			return 0, err
 		}
-		if !bytes.Equal(bb, response) {
+		if Equal(bb, Response) {
 			return 0, errors.New("response error")
 		}
 		c.Reader = c.Conn
@@ -201,7 +203,7 @@ func (c *Conn) Read(b []byte) (int, error) {
 	return c.Reader.Read(b)
 }
 
-// Write io.Writer
+// Write is io.Writer
 func (c *Conn) Write(b []byte) (int, error) {
 	if c.Writer == nil {
 		if conn, ok := c.Conn.(*tls.Conn); ok {
@@ -223,7 +225,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	return c.Writer.Write(b)
 }
 
-// Read net.Conn.Read
+// Read is net.Conn.Read
 func (c *PacketConn) Read(b []byte) (int, error) {
 	if _, err := io.ReadFull(io.Reader(&c.Conn), b[:2]); err != nil {
 		return 0, err
@@ -235,13 +237,13 @@ func (c *PacketConn) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-// ReadFrom net.PacketConn.ReadFrom
+// ReadFrom is net.PacketConn.ReadFrom
 func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, err := c.Read(b)
 	return n, c.nAddr, err
 }
 
-// Write net.Conn.Write
+// Write is net.Conn.Write
 func (c *PacketConn) Write(b []byte) (int, error) {
 	bb := make([]byte, 2)
 	bb[0] = byte(len(b) >> 8)
@@ -252,7 +254,7 @@ func (c *PacketConn) Write(b []byte) (int, error) {
 	return c.Conn.Write(b)
 }
 
-// WriteTo net.PacketConn.WriteTo
+// WriteTo is net.PacketConn.WriteTo
 func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	return c.Write(b)
 }

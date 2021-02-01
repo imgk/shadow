@@ -1,4 +1,4 @@
-package shadowsocks
+package http2
 
 import (
 	"errors"

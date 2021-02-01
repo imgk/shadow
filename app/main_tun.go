@@ -12,6 +12,7 @@ import (
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/proxy"
 )
 
 func (app *App) RunWithDevice(dev *tun.Device) (err error) {
@@ -92,7 +93,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 			return err
 		}
 
-		server := newProxyServer(ln, app.Logger, handler, tree, router)
+		server := proxy.NewProxyServer(ln, app.Logger, handler, tree, router)
 		app.attachCloser(server)
 		go server.Serve()
 	}

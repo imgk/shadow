@@ -13,20 +13,21 @@ import (
 
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/protocol/http/http2"
 )
 
 func init() {
 	protocol.RegisterHandler("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return newHandler(s, timeout)
+		return NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return newHandler(s, timeout)
+		return NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return newH2Handler(s, timeout)
+		return http2.NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return newH2Handler(s, timeout)
+		return http2.NewHandler(s, timeout)
 	})
 }
 
@@ -51,8 +52,8 @@ func (conn *rawConn) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// handler is ...
-type handler struct {
+// Handler is ...
+type Handler struct {
 	// Dial is to dial new net.TCPConn or tls.Conn
 	Dial func(string, string) (net.Conn, error)
 
@@ -60,13 +61,13 @@ type handler struct {
 }
 
 // NewHandler is ...
-func newHandler(s string, timeout time.Duration) (*handler, error) {
+func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	auth, server, domain, scheme, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
 
-	handler := &handler{
+	handler := &Handler{
 		proxyAuth: auth,
 	}
 	switch scheme {
@@ -100,12 +101,12 @@ func newHandler(s string, timeout time.Duration) (*handler, error) {
 }
 
 // Close is ...
-func (*handler) Close() error {
+func (*Handler) Close() error {
 	return nil
 }
 
 // Handle is ...
-func (h *handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
 	rc, err := func(network, addr string) (conn net.Conn, err error) {
@@ -172,6 +173,6 @@ func (h *handler) Handle(conn net.Conn, tgt net.Addr) error {
 }
 
 // HandlePacket is ...
-func (h *handler) HandlePacket(conn gonet.PacketConn) error {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	return errors.New("http proxy does not support UDP")
 }

@@ -8,9 +8,10 @@ import (
 	"sync"
 )
 
+var zerononce = [128]byte{}
+
 // ErrShortPacket is ...
 var ErrShortPacket = errors.New("short packet")
-var zerononce = [128]byte{}
 
 // Pool is ...
 var Pool = sync.Pool{
@@ -41,24 +42,26 @@ type lazySlice struct {
 // PacketConn is ...
 type PacketConn struct {
 	net.PacketConn
-	Cipher Cipher
+	Cipher *Cipher
 }
 
-func NewPacketConn(pc net.PacketConn, ciph Cipher) net.PacketConn {
-	if _, ok := ciph.(dummy); ok {
+// NewPacketConn is ...
+func NewPacketConn(pc net.PacketConn, cipher *Cipher) net.PacketConn {
+	if cipher.NewAEAD == nil {
 		return pc
 	}
-	return &PacketConn{PacketConn: pc, Cipher: ciph}
+	return &PacketConn{PacketConn: pc, Cipher: cipher}
 }
 
-func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
-	saltSize := cipher.SaltSize()
+// Unpack is ...
+func Unpack(dst, pkt []byte, cipher *Cipher) ([]byte, error) {
+	saltSize := cipher.SaltSize
 	if len(pkt) < saltSize {
 		return nil, ErrShortPacket
 	}
 
 	salt := pkt[:saltSize]
-	aead, err := cipher.NewAead(salt)
+	aead, err := cipher.NewAEAD(salt)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +76,7 @@ func Unpack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 	return aead.Open(dst[:0], zerononce[:aead.NonceSize()], pkt[saltSize:], nil)
 }
 
+// ReadFrom is ...
 func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	sc, buff := Get()
 	defer Put(sc)
@@ -90,15 +94,16 @@ func (pc *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	return len(bb), addr, nil
 }
 
-func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
-	saltSize := cipher.SaltSize()
+// Pack is ...
+func Pack(dst, pkt []byte, cipher *Cipher) ([]byte, error) {
+	saltSize := cipher.SaltSize
 	salt := dst[:saltSize]
 	_, err := rand.Read(salt)
 	if err != nil {
 		return nil, err
 	}
 
-	aead, err := cipher.NewAead(salt)
+	aead, err := cipher.NewAEAD(salt)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +115,7 @@ func Pack(dst, pkt []byte, cipher Cipher) ([]byte, error) {
 	return aead.Seal(dst[:saltSize], zerononce[:aead.NonceSize()], pkt, nil), nil
 }
 
+// WriteTo is ...
 func (pc *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	sc, buff := Get()
 	defer Put(sc)

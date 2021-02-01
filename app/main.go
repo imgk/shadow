@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/suffixtree"
 )
 
@@ -90,7 +91,7 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 
 // shadow application
 type App struct {
-	Logger netstack.Logger
+	Logger logger.Logger
 	Conf   *Conf
 
 	timeout time.Duration
@@ -100,37 +101,33 @@ type App struct {
 }
 
 // new shadow app from config file
-func NewApp(file string, timeout time.Duration, verbose bool) (*App, error) {
+func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
 	conf := new(Conf)
 	if err := conf.ReadFromFile(file); err != nil {
 		return nil, err
 	}
 
-	return NewAppFromConf(conf, timeout, verbose), nil
+	return NewAppFromConf(conf, timeout, w), nil
 }
 
 // new shadow app from byte slice
-func NewAppFromByteSlice(b []byte, timeout time.Duration, verbose bool) (*App, error) {
+func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, error) {
 	conf := new(Conf)
 	if err := conf.ReadFromByteSlice(b); err != nil {
 		return nil, err
 	}
 
-	return NewAppFromConf(conf, timeout, verbose), nil
+	return NewAppFromConf(conf, timeout, w), nil
 }
 
 // new shadow app from *Conf
-func NewAppFromConf(conf *Conf, timeout time.Duration, verbose bool) *App {
+func NewAppFromConf(conf *Conf, timeout time.Duration, w io.Writer) *App {
 	app := &App{
+		Logger:  logger.NewLogger(w),
 		Conf:    conf,
 		timeout: timeout,
 		closed:  make(chan struct{}),
 		closers: []io.Closer{},
-	}
-	if verbose {
-		app.Logger = NewLogger(os.Stdout)
-	} else {
-		app.Logger = &emptyLogger{}
 	}
 	return app
 }

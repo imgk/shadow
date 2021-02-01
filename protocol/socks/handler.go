@@ -18,22 +18,22 @@ import (
 
 func init() {
 	protocol.RegisterHandler("socks", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return newHandler(s, timeout)
+		return NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("socks5", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return newHandler(s, timeout)
+		return NewHandler(s, timeout)
 	})
 }
 
-// handler is ...
-type handler struct {
+// Handler is ...
+type Handler struct {
 	Auth    *proxy.Auth
 	server  string
 	timeout time.Duration
 }
 
-// newHandler is ...
-func newHandler(s string, timeout time.Duration) (*handler, error) {
+// NewHandler is ...
+func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	auth, server, err := ParseURL(s)
 	if err != nil {
 		return nil, err
@@ -43,20 +43,21 @@ func newHandler(s string, timeout time.Duration) (*handler, error) {
 		return nil, err
 	}
 
-	return &handler{
+	handler := &Handler{
 		Auth:    auth,
 		server:  server,
 		timeout: timeout,
-	}, nil
+	}
+	return handler, nil
 }
 
 // Close is ...
-func (*handler) Close() error {
+func (*Handler) Close() error {
 	return nil
 }
 
 // Dial is ...
-func (h *handler) Dial(tgt net.Addr, cmd byte) (net.Conn, socks.Addr, error) {
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, socks.Addr, error) {
 	conn, err := net.Dial("tcp", h.server)
 	if err != nil {
 		return nil, nil, err
@@ -74,7 +75,7 @@ func (h *handler) Dial(tgt net.Addr, cmd byte) (net.Conn, socks.Addr, error) {
 }
 
 // Handle is ...
-func (h *handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
 	rc, _, err := h.Dial(tgt, socks.CmdConnect)
@@ -99,7 +100,7 @@ func (h *handler) Handle(conn net.Conn, tgt net.Addr) error {
 }
 
 // HandlePacket is ...
-func (h *handler) HandlePacket(conn gonet.PacketConn) error {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
 	c, rc, err := func(tgt net.Addr) (c net.Conn, rc *net.UDPConn, err error) {
@@ -147,22 +148,23 @@ func (h *handler) HandlePacket(conn gonet.PacketConn) error {
 		return err
 	}
 
+	const MaxBufferSize = 16 << 10
+
 	// from local to remote
 	errCh := make(chan error, 1)
 	go func(conn gonet.PacketConn, rc *net.UDPConn, timeout time.Duration, errCh chan error) (err error) {
-		const MaxBufferSize = 16 << 10
 		sc, b := pool.Pool.Get(MaxBufferSize)
 		defer func() {
 			pool.Pool.Put(sc)
+			if errors.Is(err, io.EOF) || errors.Is(err, os.ErrDeadlineExceeded) {
+				err = nil
+			}
 			errCh <- err
 		}()
 
 		for {
 			n, tgt, er := conn.ReadTo(b[3+socks.MaxAddrLen:])
 			if er != nil {
-				if errors.Is(er, os.ErrDeadlineExceeded) {
-					break
-				}
 				err = er
 				break
 			}
@@ -207,11 +209,11 @@ func (h *handler) HandlePacket(conn gonet.PacketConn) error {
 				break
 			}
 		}
+		rc.SetReadDeadline(time.Now())
 		return
 	}(conn, rc, h.timeout, errCh)
 
 	// from remote to local
-	const MaxBufferSize = 16 << 10
 	sc, b := pool.Pool.Get(MaxBufferSize)
 	defer pool.Pool.Put(sc)
 
@@ -219,16 +221,13 @@ func (h *handler) HandlePacket(conn gonet.PacketConn) error {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
 		n, er := rc.Read(b)
 		if er != nil {
-			if errors.Is(er, os.ErrDeadlineExceeded) {
-				break
-			}
 			err = er
 			break
 		}
 
 		raddr, er := socks.ParseAddr(b[3:n])
 		if er != nil {
-			err = fmt.Errorf("parse addr error: %w", er)
+			err = er
 			break
 		}
 
@@ -240,9 +239,10 @@ func (h *handler) HandlePacket(conn gonet.PacketConn) error {
 	c.SetReadDeadline(time.Now())
 	conn.SetReadDeadline(time.Now())
 
-	if err != nil {
+	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, os.ErrDeadlineExceeded) {
+		err = <-errCh
+	} else {
 		<-errCh
-		return err
 	}
-	return <-errCh
+	return err
 }

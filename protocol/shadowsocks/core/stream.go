@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// MaxPacketSize is ...
 const MaxPacketSize = 16384
 
 func increment(b []byte) {
@@ -22,21 +23,27 @@ func increment(b []byte) {
 	}
 }
 
+// CloseReader is ...
 type CloseReader interface {
 	CloseRead() error
 }
 
+// Reader is ...
 type Reader struct {
+	// Reader is ...
 	Reader io.ReadCloser
-	Cipher Cipher
-	AEAD   cipher.AEAD
+	// Cipher is ...
+	Cipher *Cipher
+	// AEAD is ...
+	AEAD cipher.AEAD
 
 	nonce []byte
 	buff  []byte
 	left  []byte
 }
 
-func NewReader(r io.ReadCloser, cipher Cipher) *Reader {
+// NewReader is ...
+func NewReader(r io.ReadCloser, cipher *Cipher) *Reader {
 	return &Reader{
 		Reader: r,
 		Cipher: cipher,
@@ -44,12 +51,12 @@ func NewReader(r io.ReadCloser, cipher Cipher) *Reader {
 }
 
 func (r *Reader) init() (err error) {
-	salt := make([]byte, r.Cipher.SaltSize())
+	salt := make([]byte, r.Cipher.SaltSize)
 	if _, err := io.ReadFull(r.Reader, salt); err != nil {
 		return fmt.Errorf("init Reader error: %v", err)
 	}
 
-	r.AEAD, err = r.Cipher.NewAead(salt)
+	r.AEAD, err = r.Cipher.NewAEAD(salt)
 	if err != nil {
 		return
 	}
@@ -59,6 +66,7 @@ func (r *Reader) init() (err error) {
 	return
 }
 
+// Close is ...
 func (r *Reader) Close() (err error) {
 	if closer, ok := r.Reader.(CloseReader); ok {
 		err = closer.CloseRead()
@@ -70,6 +78,7 @@ func (r *Reader) Close() (err error) {
 	return r.Reader.Close()
 }
 
+// read one packet
 func (r *Reader) read() (int, error) {
 	buf := r.buff[:2+r.AEAD.Overhead()]
 	if _, err := io.ReadFull(r.Reader, buf); err != nil {
@@ -92,6 +101,7 @@ func (r *Reader) read() (int, error) {
 	return len(buf) - r.AEAD.Overhead(), nil
 }
 
+// Read is ...
 func (r *Reader) Read(b []byte) (int, error) {
 	if r.AEAD == nil {
 		if err := r.init(); err != nil {
@@ -114,6 +124,7 @@ func (r *Reader) Read(b []byte) (int, error) {
 	return nr, err
 }
 
+// WriteTo is ...
 func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	if r.AEAD == nil {
 		if err := r.init(); err != nil {
@@ -156,23 +167,27 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	return n, err
 }
 
+// CloseWriter is ...
 type CloseWriter interface {
 	CloseWrite() error
 }
 
+// Writer is ...
 type Writer struct {
+	// Writer is ...
 	Writer io.WriteCloser
-	Cipher Cipher
-	AEAD   cipher.AEAD
-
-	reader *bytes.Reader
+	// Cipehr is ...
+	Cipher *Cipher
+	// AEAD is ...
+	AEAD cipher.AEAD
 
 	nonce   []byte
 	buff    []byte
 	payload []byte
 }
 
-func NewWriter(w io.WriteCloser, cipher Cipher) *Writer {
+// NewWriter is ...
+func NewWriter(w io.WriteCloser, cipher *Cipher) *Writer {
 	return &Writer{
 		Writer: w,
 		Cipher: cipher,
@@ -180,19 +195,17 @@ func NewWriter(w io.WriteCloser, cipher Cipher) *Writer {
 }
 
 func (w *Writer) init() error {
-	salt := make([]byte, w.Cipher.SaltSize())
+	salt := make([]byte, w.Cipher.SaltSize)
 
 	_, err := rand.Read(salt)
 	if err != nil {
 		return err
 	}
 
-	w.AEAD, err = w.Cipher.NewAead(salt)
+	w.AEAD, err = w.Cipher.NewAEAD(salt)
 	if err != nil {
 		return err
 	}
-
-	w.reader = bytes.NewReader(nil)
 
 	w.nonce = make([]byte, w.AEAD.NonceSize())
 	w.buff = make([]byte, 2+w.AEAD.Overhead()+MaxPacketSize+w.AEAD.Overhead())
@@ -202,6 +215,7 @@ func (w *Writer) init() error {
 	return err
 }
 
+// Close is ...
 func (w *Writer) Close() (err error) {
 	if closer, ok := w.Writer.(CloseWriter); ok {
 		err = closer.CloseWrite()
@@ -213,6 +227,7 @@ func (w *Writer) Close() (err error) {
 	return w.Writer.Close()
 }
 
+// Write is ...
 func (w *Writer) Write(b []byte) (int, error) {
 	if w.AEAD == nil {
 		if err := w.init(); err != nil {
@@ -220,11 +235,11 @@ func (w *Writer) Write(b []byte) (int, error) {
 		}
 	}
 
-	w.reader.Reset(b)
-	n, err := w.readFrom(w.reader)
+	n, err := w.readFrom(bytes.NewReader(b))
 	return int(n), err
 }
 
+// ReadFrom is ...
 func (w *Writer) ReadFrom(r io.Reader) (int64, error) {
 	if w.AEAD == nil {
 		if err := w.init(); err != nil {
@@ -235,6 +250,7 @@ func (w *Writer) ReadFrom(r io.Reader) (int64, error) {
 	return w.readFrom(r)
 }
 
+// readFrom all bytes
 func (w *Writer) readFrom(r io.Reader) (n int64, err error) {
 	for {
 		nr, er := r.Read(w.payload)
@@ -267,36 +283,42 @@ func (w *Writer) readFrom(r io.Reader) (n int64, err error) {
 	return n, err
 }
 
+// Conn is ...
 type Conn struct {
+	// Conn is ...
 	net.Conn
-	Reader Reader
-	Writer Writer
+	// Reader is ...
+	r Reader
+	// Writer is ...
+	w Writer
 }
 
-func NewConn(conn net.Conn, cipher Cipher) net.Conn {
-	if _, ok := cipher.(dummy); ok {
+// NewConn is ...
+func NewConn(conn net.Conn, cipher *Cipher) net.Conn {
+	if cipher.NewAEAD == nil {
 		return conn
 	}
 
-	return &Conn{
+	conn = &Conn{
 		Conn: conn,
-		Reader: Reader{
+		r: Reader{
 			Reader: conn,
 			Cipher: cipher,
 		},
-		Writer: Writer{
+		w: Writer{
 			Writer: conn,
 			Cipher: cipher,
 		},
 	}
+	return conn
 }
 
-func (c *Conn) Read(b []byte) (int, error)          { return c.Reader.Read(b) }
-func (c *Conn) WriteTo(w io.Writer) (int64, error)  { return c.Reader.WriteTo(w) }
-func (c *Conn) Write(b []byte) (int, error)         { return c.Writer.Write(b) }
-func (c *Conn) ReadFrom(r io.Reader) (int64, error) { return c.Writer.ReadFrom(r) }
-func (c *Conn) CloseRead() error                    { return c.Reader.Close() }
-func (c *Conn) CloseWrite() error                   { return c.Writer.Close() }
+func (c *Conn) Read(b []byte) (int, error)          { return c.r.Read(b) }
+func (c *Conn) WriteTo(w io.Writer) (int64, error)  { return c.r.WriteTo(w) }
+func (c *Conn) Write(b []byte) (int, error)         { return c.w.Write(b) }
+func (c *Conn) ReadFrom(r io.Reader) (int64, error) { return c.w.ReadFrom(r) }
+func (c *Conn) CloseRead() error                    { return c.r.Close() }
+func (c *Conn) CloseWrite() error                   { return c.w.Close() }
 
 var (
 	_ CloseReader = (*Conn)(nil)

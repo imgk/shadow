@@ -1,4 +1,4 @@
-package httptunnel
+package http2
 
 import (
 	"crypto/cipher"
@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,11 +26,16 @@ import (
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
 )
 
+var zerononce = [128]byte{}
+
 // Handler is ...
 type Handler struct {
+	// NewReqeust is ...
 	NewRequest func(string, io.ReadCloser) *http.Request
 
-	Cipher core.Cipher
+	// Cipher is ...
+	Cipher *core.Cipher
+	// Client is ...
 	Client http.Client
 
 	proxyAuth string
@@ -40,7 +44,7 @@ type Handler struct {
 
 // MewHandler is ...
 func NewHandler(s string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseUrl(s)
+	server, cipher, password, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +111,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 
 // NewQUCIHandler is ...
 func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseUrl(s)
+	server, cipher, password, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +181,7 @@ func (h *Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req := h.NewRequest("tcp.imgk.cc", ioutil.NopCloser(NewReader(h.Cipher, conn, tgt)))
+	req := h.NewRequest("tcp.imgk.cc", NewReader(h.Cipher, conn, tgt))
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -194,13 +198,11 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	return nil
 }
 
-var zerononce = [128]byte{}
-
 // HandlePacket is ...
 func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
-	req := h.NewRequest("udp.imgk.cc", ioutil.NopCloser(NewPacketReader(h.Cipher, conn, h.timeout)))
+	req := h.NewRequest("udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout))
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -230,14 +232,14 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				return fmt.Errorf("read packet error: %v", err)
 			}
 
-			bb, err := func(pkt []byte, cipher core.Cipher) ([]byte, error) {
-				saltSize := cipher.SaltSize()
+			bb, err := func(pkt []byte, cipher *core.Cipher) ([]byte, error) {
+				saltSize := cipher.SaltSize
 				if len(pkt) < saltSize {
 					return nil, core.ErrShortPacket
 				}
 
 				salt := pkt[:saltSize]
-				aead, err := cipher.NewAead(salt)
+				aead, err := cipher.NewAEAD(salt)
 				if err != nil {
 					return nil, err
 				}
@@ -280,9 +282,12 @@ func increment(b []byte) {
 
 // Reader is ...
 type Reader struct {
+	// AEAD is ...
 	cipher.AEAD
 
-	core.Cipher
+	// Cipher is ...
+	Cipher *core.Cipher
+	// Reader is ...
 	Reader io.Reader
 
 	tgt   net.Addr
@@ -290,13 +295,18 @@ type Reader struct {
 }
 
 // NewReader is ...
-func NewReader(ciph core.Cipher, rc io.ReadCloser, tgt net.Addr) *Reader {
+func NewReader(cipher *core.Cipher, rc io.ReadCloser, tgt net.Addr) *Reader {
 	r := &Reader{
-		Cipher: ciph,
+		Cipher: cipher,
 		Reader: rc,
 		tgt:    tgt,
 	}
 	return r
+}
+
+// Close is ...
+func (r *Reader) Close() error {
+	return nil
 }
 
 // Read is ...
@@ -332,7 +342,7 @@ func (r *Reader) Read(b []byte) (int, error) {
 }
 
 func (r *Reader) init(b []byte) (int, error) {
-	saltSize := r.Cipher.SaltSize()
+	saltSize := r.Cipher.SaltSize
 	if len(b) < saltSize {
 		return 0, io.ErrShortBuffer
 	}
@@ -343,7 +353,7 @@ func (r *Reader) init(b []byte) (int, error) {
 		return 0, err
 	}
 
-	r.AEAD, err = r.Cipher.NewAead(salt)
+	r.AEAD, err = r.Cipher.NewAEAD(salt)
 	if err != nil {
 		return 0, err
 	}
@@ -398,19 +408,27 @@ func (r *Reader) init(b []byte) (int, error) {
 
 // PacketReader is ...
 type PacketReader struct {
-	core.Cipher
-	Reader  gonet.PacketConn
+	// Cipher is ...
+	Cipher *core.Cipher
+	// Reader is ...
+	Reader gonet.PacketConn
+
 	timeout time.Duration
 }
 
 // NewPacketReader is ...
-func NewPacketReader(ciph core.Cipher, conn gonet.PacketConn, timeout time.Duration) *PacketReader {
+func NewPacketReader(cipher *core.Cipher, conn gonet.PacketConn, timeout time.Duration) *PacketReader {
 	r := &PacketReader{
-		Cipher:  ciph,
+		Cipher:  cipher,
 		Reader:  conn,
 		timeout: timeout,
 	}
 	return r
+}
+
+// Close is ...
+func (r *PacketReader) Close() error {
+	return nil
 }
 
 // Read is ...
@@ -460,15 +478,15 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 
-	buf, err := func(dst, pkt []byte, cipher core.Cipher) ([]byte, error) {
-		saltSize := cipher.SaltSize()
+	buf, err := func(dst, pkt []byte, cipher *core.Cipher) ([]byte, error) {
+		saltSize := cipher.SaltSize
 		salt := dst[:saltSize]
 		_, err := rand.Read(salt)
 		if err != nil {
 			return nil, err
 		}
 
-		aead, err := cipher.NewAead(salt)
+		aead, err := cipher.NewAEAD(salt)
 		if err != nil {
 			return nil, err
 		}

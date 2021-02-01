@@ -1,6 +1,7 @@
 package gonet
 
 import (
+	"errors"
 	"io"
 	"net"
 	"time"
@@ -45,19 +46,27 @@ type DuplexConn interface {
 	CloseWriter
 }
 
+// WrapDuplexConn is ...
+func WrapDuplexConn(conn net.Conn) DuplexConn {
+	if c, ok := conn.(DuplexConn); ok {
+		return c
+	}
+	return &duplexConn{Conn: conn}
+}
+
 type duplexConn struct {
 	net.Conn
 }
 
-func (c duplexConn) ReadFrom(r io.Reader) (int64, error) {
+func (c *duplexConn) ReadFrom(r io.Reader) (int64, error) {
 	return Copy(c.Conn, r)
 }
 
-func (c duplexConn) WriteTo(w io.Writer) (int64, error) {
+func (c *duplexConn) WriteTo(w io.Writer) (int64, error) {
 	return Copy(w, c.Conn)
 }
 
-func (c duplexConn) CloseRead() error {
+func (c *duplexConn) CloseRead() error {
 	if close, ok := c.Conn.(CloseReader); ok {
 		return close.CloseRead()
 	}
@@ -65,7 +74,7 @@ func (c duplexConn) CloseRead() error {
 	return c.Conn.Close()
 }
 
-func (c duplexConn) CloseWrite() error {
+func (c *duplexConn) CloseWrite() error {
 	if close, ok := c.Conn.(CloseWriter); ok {
 		return close.CloseWrite()
 	}
@@ -77,12 +86,12 @@ func (c duplexConn) CloseWrite() error {
 func Relay(c, rc net.Conn) error {
 	l, ok := c.(DuplexConn)
 	if !ok {
-		l = duplexConn{Conn: c}
+		l = &duplexConn{Conn: c}
 	}
 
 	r, ok := rc.(DuplexConn)
 	if !ok {
-		r = duplexConn{Conn: rc}
+		r = &duplexConn{Conn: rc}
 	}
 
 	return relay(l, r)
@@ -90,7 +99,18 @@ func Relay(c, rc net.Conn) error {
 
 func relay(c, rc DuplexConn) error {
 	errCh := make(chan error, 1)
-	go relay2(c, rc, errCh)
+	go func(c, rc DuplexConn, errCh chan error) {
+		_, err := Copy(rc, c)
+		if err != nil {
+			rc.Close()
+			c.Close()
+		} else {
+			rc.CloseWrite()
+			c.CloseRead()
+		}
+
+		errCh <- err
+	}(c, rc, errCh)
 
 	_, err := Copy(c, rc)
 	if err != nil {
@@ -102,19 +122,6 @@ func relay(c, rc DuplexConn) error {
 	}
 
 	return xerror.CombineError(err, <-errCh)
-}
-
-func relay2(c, rc DuplexConn, errCh chan error) {
-	_, err := Copy(rc, c)
-	if err != nil {
-		rc.Close()
-		c.Close()
-	} else {
-		rc.CloseWrite()
-		c.CloseRead()
-	}
-
-	errCh <- err
 }
 
 // Copy is ...
@@ -155,7 +162,7 @@ func Copy(w io.Writer, r io.Reader) (n int64, err error) {
 			}
 		}
 		if er != nil {
-			if er != io.EOF {
+			if !errors.Is(er, io.EOF) {
 				err = er
 			}
 			break

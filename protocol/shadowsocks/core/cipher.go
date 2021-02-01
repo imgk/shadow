@@ -13,79 +13,72 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-func hkdfSHA1(secret, salt, outkey []byte) {
-	r := hkdf.New(sha1.New, secret, salt, []byte("ss-subkey"))
-	if _, err := io.ReadFull(r, outkey); err != nil {
-		panic(err)
-	}
+// Cipher is ...
+type Cipher struct {
+	// KeySize is ...
+	KeySize int
+	// SaltSize is ...
+	SaltSize int
+	// NewAEAD is ...
+	NewAEAD func([]byte) (cipher.AEAD, error)
 }
 
-type Cipher interface {
-	KeySize() int
-	SaltSize() int
-	NewAead([]byte) (cipher.AEAD, error)
-}
+// NewCipher is ...
+func NewCipher(method, password string) (*Cipher, error) {
+	const KeySize = 32
+	const SaltSize = 32
 
-type aes256gcm struct {
-	psk []byte
-}
+	key := func(password string, keyLen int) []byte {
+		buff := []byte{}
+		prev := []byte{}
+		hash := md5.New()
+		for len(buff) < keyLen {
+			hash.Write(prev)
+			hash.Write([]byte(password))
+			buff = hash.Sum(buff)
+			prev = buff[len(buff)-hash.Size():]
+			hash.Reset()
+		}
+		return buff[:keyLen]
+	}(password, KeySize)
 
-func (aes256gcm) KeySize() int  { return 32 }
-func (aes256gcm) SaltSize() int { return 32 }
-
-func (a aes256gcm) NewAead(salt []byte) (cipher.AEAD, error) {
-	subkey := make([]byte, a.KeySize())
-	hkdfSHA1(a.psk, salt, subkey)
-	block, err := aes.NewCipher(subkey)
-	if err != nil {
-		return nil, err
-	}
-
-	return cipher.NewGCM(block)
-}
-
-type chacha20ietfpoly1305 struct {
-	psk []byte
-}
-
-func (chacha20ietfpoly1305) KeySize() int  { return 32 }
-func (chacha20ietfpoly1305) SaltSize() int { return 32 }
-
-func (c chacha20ietfpoly1305) NewAead(salt []byte) (cipher.AEAD, error) {
-	subkey := make([]byte, c.KeySize())
-	hkdfSHA1(c.psk, salt, subkey)
-
-	return chacha20poly1305.New(subkey)
-}
-
-type dummy struct{}
-
-func (dummy) KeySize() int                          { return 0 }
-func (dummy) SaltSize() int                         { return 0 }
-func (dummy) NewAead(_ []byte) (cipher.AEAD, error) { return nil, nil }
-
-func NewCipher(method, password string) (Cipher, error) {
 	switch strings.ToUpper(method) {
 	case "AES-256-GCM", "AEAD_AES_256_GCM":
-		return aes256gcm{psk: kdf(password, 32)}, nil
+		cipher := &Cipher{
+			KeySize:  KeySize,
+			SaltSize: SaltSize,
+			NewAEAD: func(salt []byte) (cipher.AEAD, error) {
+				subkey := make([]byte, KeySize)
+				hkdfSHA1(key, salt, subkey)
+				block, err := aes.NewCipher(subkey)
+				if err != nil {
+					return nil, err
+				}
+				return cipher.NewGCM(block)
+			},
+		}
+		return cipher, nil
 	case "CHACHA20-IETF-POLY1305", "AEAD_CHACHA20_POLY1305":
-		return chacha20ietfpoly1305{psk: kdf(password, 32)}, nil
+		cipher := &Cipher{
+			KeySize:  KeySize,
+			SaltSize: SaltSize,
+			NewAEAD: func(salt []byte) (cipher.AEAD, error) {
+				subkey := make([]byte, KeySize)
+				hkdfSHA1(key, salt, subkey)
+				return chacha20poly1305.New(subkey)
+			},
+		}
+		return cipher, nil
 	case "DUMMY":
-		return dummy{}, nil
+		return &Cipher{NewAEAD: nil}, nil
 	default:
 		return nil, errors.New("not support method")
 	}
 }
 
-func kdf(password string, keyLen int) []byte {
-	var b, prev []byte
-	h := md5.New()
-	for len(b) < keyLen {
-		h.Write(prev)
-		h.Write([]byte(password))
-		b = h.Sum(b)
-		prev = b[len(b)-h.Size():]
-		h.Reset()
+func hkdfSHA1(secret, salt, outkey []byte) {
+	r := hkdf.New(sha1.New, secret, salt, []byte("ss-subkey"))
+	if _, err := io.ReadFull(r, outkey); err != nil {
+		panic(err)
 	}
-	return b[:keyLen]
 }

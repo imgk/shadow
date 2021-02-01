@@ -29,7 +29,7 @@ func NewAllocator() *Allocator {
 			b := make([]byte, 1<<uint32(i))
 			// Return a *[]byte instead of []byte ensures that
 			// the []byte is not copied, which would cause a heap
-			// allocation on every call to sync.pool.Pool.Put
+			// allocation on every call to sync.Pool.Put
 			return &b
 		}
 	}
@@ -37,13 +37,17 @@ func NewAllocator() *Allocator {
 }
 
 // Get a []byte from pool with most appropriate cap
-func (alloc *Allocator) Get(size int) (lazySlice, []byte) {
-	if size <= 0 || size > 65536 {
+func (alloc *Allocator) Get(n int) (lazySlice, []byte) {
+	if n <= 0 {
 		return lazySlice{}, nil
 	}
+	if n > 65536 {
+		b := make([]byte, n)
+		return lazySlice{Pointer: &b}, b
+	}
 
-	bits := msb(size)
-	if size == 1<<bits {
+	bits := msb(n)
+	if n == 1<<bits {
 		p := alloc.buffers[bits].Get().(*[]byte)
 		return lazySlice{Pointer: p}, *p
 	} else {

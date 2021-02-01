@@ -19,17 +19,23 @@ import (
 	"github.com/imgk/shadow/protocol"
 )
 
-type OnlineHandler struct {
+// Handler is ...
+type Handler struct {
+	// Handler is ...
 	Handler gonet.Handler
-	URL     string
+	// URL is ...
+	URL string
+
 	timeout time.Duration
-	limiter *rate.Limiter
+
 	mu      sync.Mutex
+	limiter *rate.Limiter
 	closed  chan struct{}
 }
 
-func NewOnlineHandler(s string, timeout time.Duration) (*OnlineHandler, error) {
-	handler := &OnlineHandler{timeout: timeout, closed: make(chan struct{})}
+// NewHandler is ...
+func NewHandler(s string, timeout time.Duration) (*Handler, error) {
+	handler := &Handler{timeout: timeout, closed: make(chan struct{})}
 	handler.limiter = rate.NewLimiter(rate.Every(time.Minute), 1)
 
 	uri, err := url.Parse(s)
@@ -44,7 +50,7 @@ func NewOnlineHandler(s string, timeout time.Duration) (*OnlineHandler, error) {
 	return handler, handler.renew()
 }
 
-func (h *OnlineHandler) renewLoop() {
+func (h *Handler) renewLoop() {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 
@@ -58,7 +64,7 @@ func (h *OnlineHandler) renewLoop() {
 	}
 }
 
-func (h *OnlineHandler) tryRenew() (err error) {
+func (h *Handler) tryRenew() (err error) {
 	defer func() {
 		if err != nil {
 			h.renew()
@@ -114,7 +120,7 @@ func (h *OnlineHandler) tryRenew() (err error) {
 	return
 }
 
-func (h *OnlineHandler) renew() error {
+func (h *Handler) renew() error {
 	type OnlineConfig struct {
 		Version int `json:"version"`
 		Servers []*struct {
@@ -179,12 +185,14 @@ func (h *OnlineHandler) renew() error {
 	return errors.New("no valiad server")
 }
 
-func (h *OnlineHandler) Close() error {
+// Close is ...
+func (h *Handler) Close() error {
 	close(h.closed)
 	return nil
 }
 
-func (h *OnlineHandler) Handle(conn net.Conn, tgt net.Addr) error {
+// Handle is ...
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	h.mu.Lock()
 	handler := h.Handler
 	h.mu.Unlock()
@@ -196,7 +204,8 @@ func (h *OnlineHandler) Handle(conn net.Conn, tgt net.Addr) error {
 	return err
 }
 
-func (h *OnlineHandler) HandlePacket(conn gonet.PacketConn) error {
+// HandlePacket i s...
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	h.mu.Lock()
 	handler := h.Handler
 	h.mu.Unlock()

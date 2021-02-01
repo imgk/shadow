@@ -71,7 +71,7 @@ const (
 	ErrAddressNotSupported = Error(8)
 )
 
-// Handshake (server side) is ...
+// Handshake (client side) is to talk to server
 func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *proxy.Auth) (Addr, error) {
 	b := make([]byte, 3+MaxAddrLen)
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/imgk/shadow/netstack/core"
 	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/pkg/socks"
@@ -27,11 +28,6 @@ var (
 type Device interface {
 	io.Closer
 	core.Device
-}
-
-// Logger is ...
-type Logger interface {
-	core.Logger
 }
 
 // FakeUDPConn is ...
@@ -128,8 +124,8 @@ func NewStack(handler gonet.Handler, resolver resolver.Resolver, tree *suffixtre
 }
 
 // Start is ...
-func (s *Stack) Start(dev Device, logger Logger) error {
-	return s.Stack.Start(dev.(core.Device), s, logger)
+func (s *Stack) Start(dev Device, lg logger.Logger) error {
+	return s.Stack.Start(dev.(core.Device), s, lg.(core.Logger))
 }
 
 // Handle handles net.Conn

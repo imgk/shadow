@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -13,10 +14,9 @@ import (
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/protocol"
 	"github.com/imgk/shadow/protocol/shadowsocks/core"
-	"github.com/imgk/shadow/protocol/shadowsocks/tls"
 
 	// other protocols
-	"github.com/imgk/shadow/protocol/shadowsocks/httptunnel"
+	"github.com/imgk/shadow/protocol/shadowsocks/http2"
 	"github.com/imgk/shadow/protocol/shadowsocks/online"
 )
 
@@ -34,45 +34,47 @@ func init() {
 		return NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return httptunnel.NewHandler(s, timeout)
+		return http2.NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return httptunnel.NewHandler(s, timeout)
+		return http2.NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return httptunnel.NewQUICHandler(s, timeout)
+		return http2.NewQUICHandler(s, timeout)
 	})
 	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return httptunnel.NewQUICHandler(s, timeout)
+		return http2.NewQUICHandler(s, timeout)
 	})
 	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return online.NewOnlineHandler(s, timeout)
+		return online.NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return online.NewOnlineHandler(s, timeout)
+		return online.NewHandler(s, timeout)
 	})
 	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return online.NewOnlineHandler(s, timeout)
+		return online.NewHandler(s, timeout)
 	})
 }
 
+// Dialer is ...
 type Dialer interface {
 	Dial(string, string) (net.Conn, error)
 	ListenPacket(string, string) (net.PacketConn, error)
 }
 
-func NewDialer(url, server, password string) (Dialer, error) {
-	if strings.HasPrefix(url, "ss-tls") || strings.HasPrefix(url, "shadowsocks-tls") {
-		return tls.NewDialer(server, password)
-	}
-
-	return &netDialer{}, nil
+// NewNetDialer is ...
+func NewNetDialer(server, password string) *NetDialer {
+	return &NetDialer{}
 }
 
-type netDialer struct{}
+// NewDialer is ...
+type NetDialer struct {
+	Dialer net.Dialer
+}
 
-func (d *netDialer) Dial(network, addr string) (net.Conn, error) {
-	conn, err := net.Dial(network, addr)
+// Dial is ...
+func (d *NetDialer) Dial(network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial(network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -82,19 +84,25 @@ func (d *netDialer) Dial(network, addr string) (net.Conn, error) {
 	return conn, nil
 }
 
-func (d *netDialer) ListenPacket(network, addr string) (net.PacketConn, error) {
+// ListenPacket
+func (d *NetDialer) ListenPacket(network, addr string) (net.PacketConn, error) {
 	return net.ListenPacket(network, addr)
 }
 
+// Handler is ...
 type Handler struct {
-	Dialer  Dialer
-	Cipher  core.Cipher
+	// Dialer is ...
+	Dialer Dialer
+	// Cipehr is ...
+	Cipher *core.Cipher
+
 	server  string
 	timeout time.Duration
 }
 
-func NewHandler(url string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseUrl(url)
+// NewHandler is ...
+func NewHandler(s string, timeout time.Duration) (handler *Handler, err error) {
+	server, method, password, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
@@ -103,28 +111,36 @@ func NewHandler(url string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	ciph, err := core.NewCipher(cipher, password)
+	cipher, err := core.NewCipher(method, password)
 	if err != nil {
 		return nil, err
 	}
 
-	dialer, err := NewDialer(url, server, password)
+	dialer := Dialer(nil)
+	if strings.HasPrefix(s, "ss-tls") || strings.HasPrefix(s, "shadowsocks-tls") {
+		dialer, err = NewTLSDialer(server, password)
+	} else {
+		dialer = NewNetDialer(server, password)
+	}
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return &Handler{
+	handler = &Handler{
 		Dialer:  dialer,
-		Cipher:  ciph,
+		Cipher:  cipher,
 		server:  server,
 		timeout: timeout,
-	}, nil
+	}
+	return
 }
 
+// Close is ...
 func (*Handler) Close() error {
 	return nil
 }
 
+// Handle is ...
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	defer conn.Close()
 
@@ -132,19 +148,19 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	if !ok {
 		addr, err = socks.ResolveAddrBuffer(tgt, make([]byte, socks.MaxAddrLen))
 		if err != nil {
-			return fmt.Errorf("resolve addr error: %v", err)
+			return fmt.Errorf("resolve addr error: %w", err)
 		}
 	}
 
 	rc, err := h.Dialer.Dial("tcp", h.server)
 	if err != nil {
-		return fmt.Errorf("dial server %v error: %v", h.server, err)
+		return fmt.Errorf("dial server %v error: %w", h.server, err)
 	}
 	rc = core.NewConn(rc, h.Cipher)
 	defer rc.Close()
 
 	if _, err := rc.Write(addr); err != nil {
-		return fmt.Errorf("write to server %v error: %v", h.server, err)
+		return fmt.Errorf("write to server %v error: %w", h.server, err)
 	}
 
 	if err := gonet.Relay(conn, rc); err != nil {
@@ -157,18 +173,19 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 			return nil
 		}
 
-		return fmt.Errorf("relay error: %v", err)
+		return fmt.Errorf("relay error: %w", err)
 	}
 
 	return nil
 }
 
+// HandlePacket is ...
 func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
 	raddr, err := net.ResolveUDPAddr("udp", h.server)
 	if err != nil {
-		return fmt.Errorf("parse udp address %v error: %v", h.server, err)
+		return fmt.Errorf("parse udp address %v error: %w", h.server, err)
 	}
 
 	rc, err := h.Dialer.ListenPacket("udp", ":")
@@ -178,17 +195,78 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	}
 	rc = core.NewPacketConn(rc, h.Cipher)
 
-	errCh := make(chan error, 1)
-	go copyWithChannel(conn, rc, h.timeout, raddr, errCh)
-
 	const MaxBufferSize = 16 << 10
+
+	errCh := make(chan error, 1)
+	go func(conn gonet.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) (err error) {
+		sc, b := pool.Pool.Get(MaxBufferSize)
+		defer func() {
+			pool.Pool.Put(sc)
+			errCh <- err
+		}()
+
+		for {
+			nr, tgt, er := conn.ReadTo(b[socks.MaxAddrLen:])
+			if err != nil {
+				if errors.Is(er, io.EOF) || errors.Is(er, os.ErrDeadlineExceeded) {
+					break
+				}
+				err = er
+				break
+			}
+
+			offset, er := func(addr net.Addr, b []byte) (offset int, err error) {
+				if addr, ok := addr.(socks.Addr); ok {
+					offset = socks.MaxAddrLen - len(addr)
+					copy(b[offset:], addr)
+					return
+				}
+				if nAddr, ok := addr.(*net.UDPAddr); ok {
+					if ipv4 := nAddr.IP.To4(); ipv4 != nil {
+						offset = socks.MaxAddrLen - 1 - net.IPv4len - 2
+						b = b[offset:]
+						b[0] = socks.AddrTypeIPv4
+						copy(b[1:], ipv4)
+						b[1+net.IPv4len] = byte(nAddr.Port >> 8)
+						b[1+net.IPv4len+1] = byte(nAddr.Port)
+					} else {
+						ipv6 := nAddr.IP.To16()
+						offset = socks.MaxAddrLen - 1 - net.IPv6len - 2
+						b = b[offset:]
+						b[0] = socks.AddrTypeIPv6
+						copy(b[1:], ipv6)
+						b[1+net.IPv6len] = byte(nAddr.Port >> 8)
+						b[1+net.IPv6len+1] = byte(nAddr.Port)
+					}
+					return
+				}
+				err = errors.New("addr type error")
+				return
+			}(tgt, b[:socks.MaxAddrLen])
+			if er != nil {
+				err = er
+				break
+			}
+
+			if _, ew := rc.WriteTo(b[offset:socks.MaxAddrLen+nr], raddr); ew != nil {
+				err = ew
+				break
+			}
+		}
+		rc.SetReadDeadline(time.Now())
+		return
+	}(conn, rc, h.timeout, raddr, errCh)
+
 	sc, b := pool.Pool.Get(MaxBufferSize)
 	defer pool.Pool.Put(sc)
 
 	for {
 		rc.SetReadDeadline(time.Now().Add(h.timeout))
-		n, _, er := rc.ReadFrom(b)
+		nr, _, er := rc.ReadFrom(b)
 		if er != nil {
+			if errors.Is(er, os.ErrDeadlineExceeded) {
+				break
+			}
 			if ne := net.Error(nil); errors.As(err, &ne) {
 				if ne.Timeout() {
 					break
@@ -198,63 +276,24 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 			break
 		}
 
-		raddr, er := socks.ParseAddr(b[:n])
+		raddr, er := socks.ParseAddr(b[:nr])
 		if er != nil {
 			err = fmt.Errorf("parse addr error: %v", er)
 			break
 		}
 
-		_, er = conn.WriteFrom(b[len(raddr):n], raddr)
-		if er != nil {
-			err = fmt.Errorf("write packet error: %v", er)
+		if _, ew := conn.WriteFrom(b[len(raddr):nr], raddr); ew != nil {
+			err = fmt.Errorf("write packet error: %v", ew)
 			break
 		}
 	}
+	conn.SetReadDeadline(time.Now())
 
-	conn.Close()
-	rc.Close()
-
-	if err != nil {
+	if err == nil {
+		err = <-errCh
+	} else {
 		<-errCh
-		return err
 	}
 
-	return <-errCh
-}
-
-func copyWithChannel(conn gonet.PacketConn, rc net.PacketConn, timeout time.Duration, raddr net.Addr, errCh chan error) {
-	const MaxBufferSize = 16 << 10
-	sc, b := pool.Pool.Get(MaxBufferSize)
-	defer pool.Pool.Put(sc)
-
-	buf := [socks.MaxAddrLen]byte{}
-	for {
-		n, tgt, err := conn.ReadTo(b[socks.MaxAddrLen:])
-		if err != nil {
-			if err == io.EOF {
-				errCh <- nil
-				break
-			}
-			errCh <- err
-			break
-		}
-
-		addr, ok := tgt.(socks.Addr)
-		if !ok {
-			addr, err = socks.ResolveAddrBuffer(tgt, buf[:])
-			if err != nil {
-				errCh <- fmt.Errorf("resolve addr error: %w", err)
-				break
-			}
-		}
-
-		copy(b[socks.MaxAddrLen-len(addr):], addr)
-
-		rc.SetWriteDeadline(time.Now().Add(timeout))
-		_, err = rc.WriteTo(b[socks.MaxAddrLen-len(addr):socks.MaxAddrLen+n], raddr)
-		if err != nil {
-			errCh <- err
-			break
-		}
-	}
+	return err
 }

@@ -1,4 +1,4 @@
-package app
+package proxy
 
 import (
 	"bytes"
@@ -13,17 +13,12 @@ import (
 
 	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/pkg/suffixtree"
 	"github.com/imgk/shadow/pkg/xerror"
 )
-
-type cmdError byte
-
-func (e cmdError) Error() string {
-	return fmt.Sprintf("socks cmd error: %v", byte(e))
-}
 
 // fake net.Listener
 type fakeListener struct {
@@ -154,7 +149,7 @@ func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) 
 
 // a combined socks5/http proxy server
 type proxyServer struct {
-	Logger netstack.Logger
+	Logger logger.Logger
 	router *http.ServeMux
 
 	// Convert fake IP and handle connections
@@ -169,7 +164,7 @@ type proxyServer struct {
 	closed chan struct{}
 }
 
-func newProxyServer(ln net.Listener, logger netstack.Logger, handler gonet.Handler, tree *suffixtree.DomainTree, router *http.ServeMux) *proxyServer {
+func NewProxyServer(ln net.Listener, logger logger.Logger, handler gonet.Handler, tree *suffixtree.DomainTree, router *http.ServeMux) *proxyServer {
 	s := &proxyServer{
 		Logger:     logger,
 		router:     router,
@@ -306,7 +301,7 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 			}
 		}(pc)
 	default:
-		err = cmdError(b[1])
+		err = errors.New(fmt.Sprintf("socks cmd error: %v", b[1]))
 		return
 	}
 

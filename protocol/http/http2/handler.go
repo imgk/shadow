@@ -1,11 +1,10 @@
-package http
+package http2
 
 import (
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,7 +18,8 @@ import (
 	"github.com/imgk/shadow/pkg/gonet"
 )
 
-type h2Handler struct {
+// Hander is ...
+type Handler struct {
 	// give new http.MethocConnect http.Request
 	NewRequest func(string, io.ReadCloser) *http.Request
 
@@ -29,14 +29,15 @@ type h2Handler struct {
 	proxyAuth string
 }
 
-func newH2Handler(s string, timeout time.Duration) (*h2Handler, error) {
+// NewHandler is ...
+func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	auth, server, domain, scheme, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
 
 	if scheme == "http2" {
-		handler := &h2Handler{
+		handler := &Handler{
 			NewRequest: func(addr string, body io.ReadCloser) *http.Request {
 				r := &http.Request{
 					Method: http.MethodConnect,
@@ -76,7 +77,7 @@ func newH2Handler(s string, timeout time.Duration) (*h2Handler, error) {
 		return handler, nil
 	}
 
-	handler := &h2Handler{
+	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser) *http.Request {
 			r := &http.Request{
 				Method: http.MethodConnect,
@@ -113,19 +114,15 @@ func newH2Handler(s string, timeout time.Duration) (*h2Handler, error) {
 }
 
 // Close is ...
-func (h *h2Handler) Close() error {
+func (h *Handler) Close() error {
 	return nil
 }
 
 // Handle is ...
-func (h *h2Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	type Reader struct {
-		io.Reader
-	}
-
-	req := h.NewRequest(tgt.String(), ioutil.NopCloser(&Reader{Reader: conn}))
+	req := h.NewRequest(tgt.String(), &Reader{Reader: conn})
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -143,6 +140,16 @@ func (h *h2Handler) Handle(conn net.Conn, tgt net.Addr) error {
 }
 
 // HandlePacket is ...
-func (h *h2Handler) HandlePacket(conn gonet.PacketConn) error {
+func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	return errors.New("http proxy does not support UDP")
+}
+
+// Reader is ...
+type Reader struct {
+	io.Reader
+}
+
+// Close is ...
+func (r *Reader) Close() error {
+	return nil
 }
