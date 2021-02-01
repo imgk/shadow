@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/imgk/shadow/pkg/socks"
+	"github.com/imgk/shadow/pkg/suffixtree"
 )
 
 // LookupAddr converts fake ip to real domain address
@@ -50,7 +51,7 @@ func (s *Stack) LookupIP(addr net.IP) (socks.Addr, error) {
 		}
 
 		if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
-			de := opt.(*DomainEntry)
+			de := opt.(*suffixtree.DomainEntry)
 
 			b := make([]byte, socks.MaxAddrLen)
 			b[0] = socks.AddrTypeDomain
@@ -63,20 +64,6 @@ func (s *Stack) LookupIP(addr net.IP) (socks.Addr, error) {
 	return nil, ErrNotFake
 }
 
-// DomainEntry stores domain info
-type DomainEntry struct {
-	Rule string
-
-	// dns typeA record
-	A dns.A
-
-	// dns typeAAAA record
-	AAAA dns.AAAA
-
-	// dns typePTR record
-	PTR dns.PTR
-}
-
 // HandleMessage handles dns.Msg
 func (s *Stack) HandleMessage(m *dns.Msg) {
 	opt := s.tree.Load(m.Question[0].Name)
@@ -84,7 +71,7 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 		return
 	}
 
-	de := opt.(*DomainEntry)
+	de := opt.(*suffixtree.DomainEntry)
 	switch m.Question[0].Qtype {
 	case dns.TypeA:
 		if de.A.Hdr.Ttl == 1 {
@@ -95,7 +82,7 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 			case "PROXY":
 				s.counter++
 
-				entry := &DomainEntry{
+				entry := &suffixtree.DomainEntry{
 					PTR: dns.PTR{
 						Hdr: dns.RR_Header{
 							Name:   fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", uint8(s.counter), uint8(s.counter>>8)),
@@ -108,7 +95,7 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 				}
 				s.tree.Store(entry.PTR.Hdr.Name, entry)
 
-				entry = &DomainEntry{
+				entry = &suffixtree.DomainEntry{
 					Rule: "PROXY",
 					A: dns.A{
 						Hdr: dns.RR_Header{
@@ -125,7 +112,7 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 				m.MsgHdr.Rcode = dns.RcodeSuccess
 				m.Answer = append(m.Answer[:0], &entry.A)
 			case "BLOCKED":
-				entry := &DomainEntry{
+				entry := &suffixtree.DomainEntry{
 					Rule: "BLOCKED",
 					A: dns.A{
 						Hdr: dns.RR_Header{
@@ -163,7 +150,7 @@ func (s *Stack) HandleMessage(m *dns.Msg) {
 			case "PROXY":
 				m.MsgHdr.Rcode = dns.RcodeRefused
 			case "BLOCKED":
-				entry := &DomainEntry{
+				entry := &suffixtree.DomainEntry{
 					Rule: "BLOCKED",
 					A: dns.A{
 						Hdr: dns.RR_Header{

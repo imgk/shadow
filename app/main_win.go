@@ -16,9 +16,9 @@ import (
 	"github.com/imgk/shadow/device/windivert"
 	"github.com/imgk/shadow/device/windivert/filter"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/proxy"
 )
 
 func (app *App) Run() (err error) {

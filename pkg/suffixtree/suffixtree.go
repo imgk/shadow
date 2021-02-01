@@ -3,7 +3,23 @@ package suffixtree
 import (
 	"strings"
 	"sync"
+
+	"github.com/miekg/dns"
 )
+
+// DomainEntry stores domain info
+type DomainEntry struct {
+	Rule string
+
+	// dns typeA record
+	A dns.A
+
+	// dns typeAAAA record
+	AAAA dns.AAAA
+
+	// dns typePTR record
+	PTR dns.PTR
+}
 
 // DomainTree is ....
 type DomainTree struct {

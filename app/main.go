@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/suffixtree"
 )
@@ -159,13 +158,13 @@ func (app *App) newDomainTree() (*suffixtree.DomainTree, error) {
 	tree := suffixtree.NewDomainTree(".")
 	tree.Lock()
 	for _, domain := range app.Conf.DomainRules.Proxy {
-		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "PROXY"})
+		tree.UnsafeStore(domain, &suffixtree.DomainEntry{Rule: "PROXY"})
 	}
 	for _, domain := range app.Conf.DomainRules.Direct {
-		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "DIRECT"})
+		tree.UnsafeStore(domain, &suffixtree.DomainEntry{Rule: "DIRECT"})
 	}
 	for _, domain := range app.Conf.DomainRules.Blocked {
-		tree.UnsafeStore(domain, &netstack.DomainEntry{Rule: "BLOCKED"})
+		tree.UnsafeStore(domain, &suffixtree.DomainEntry{Rule: "BLOCKED"})
 	}
 	tree.Unlock()
 	return tree, nil

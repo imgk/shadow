@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/pool"
@@ -241,14 +240,14 @@ func (s *proxyServer) Close() (err error) {
 
 func (s *proxyServer) lookupIP(ip net.IP, b []byte) (socks.Addr, error) {
 	if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
-		de := opt.(*netstack.DomainEntry)
+		de := opt.(*suffixtree.DomainEntry)
 
 		b[0] = socks.AddrTypeDomain
 		b[1] = byte(len(de.PTR.Ptr))
 		n := copy(b[2:], de.PTR.Ptr[:])
 		return b[:2+n+2], nil
 	}
-	return nil, netstack.ErrNotFound
+	return nil, errors.New("not found")
 }
 
 // handshake
