@@ -31,7 +31,7 @@ var zerononce = [128]byte{}
 // Handler is ...
 type Handler struct {
 	// NewReqeust is ...
-	NewRequest func(string, io.ReadCloser) *http.Request
+	NewRequest func(string, io.ReadCloser, string) *http.Request
 
 	// Cipher is ...
 	Cipher *core.Cipher
@@ -44,7 +44,7 @@ type Handler struct {
 
 // MewHandler is ...
 func NewHandler(s string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseURL(s)
+	server, method, password, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	ciph, err := core.NewCipher(cipher, password)
+	cipher, err := core.NewCipher(method, password)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
 	return &Handler{
-		NewRequest: func(addr string, body io.ReadCloser) (r *http.Request) {
+		NewRequest: func(addr string, body io.ReadCloser, auth string) (r *http.Request) {
 			r = &http.Request{
 				Method: http.MethodConnect,
 				Host:   addr,
@@ -84,10 +84,10 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				Header:     make(http.Header),
 			}
 			r.Header.Set("Accept-Encoding", "identity")
-			r.Header.Add("Proxy-Authorization", proxyAuth)
+			r.Header.Add("Proxy-Authorization", auth)
 			return
 		},
-		Cipher: ciph,
+		Cipher: cipher,
 		Client: http.Client{
 			Transport: &http2.Transport{
 				DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
@@ -111,7 +111,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 
 // NewQUCIHandler is ...
 func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
-	server, cipher, password, err := ParseURL(s)
+	server, method, password, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	ciph, err := core.NewCipher(cipher, password)
+	cipher, err := core.NewCipher(method, password)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
 	return &Handler{
-		NewRequest: func(addr string, body io.ReadCloser) (r *http.Request) {
+		NewRequest: func(addr string, body io.ReadCloser, auth string) (r *http.Request) {
 			r = &http.Request{
 				Method: http.MethodConnect,
 				Host:   addr,
@@ -151,10 +151,10 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 				Header:     make(http.Header),
 			}
 			r.Header.Set("Accept-Encoding", "identity")
-			r.Header.Add("Proxy-Authorization", proxyAuth)
+			r.Header.Add("Proxy-Authorization", auth)
 			return
 		},
-		Cipher: ciph,
+		Cipher: cipher,
 		Client: http.Client{
 			Transport: &http3.RoundTripper{
 				Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
@@ -181,7 +181,7 @@ func (h *Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req := h.NewRequest("tcp.imgk.cc", NewReader(h.Cipher, conn, tgt))
+	req := h.NewRequest("tcp.imgk.cc", NewReader(h.Cipher, conn, tgt), h.proxyAuth)
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -202,7 +202,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
-	req := h.NewRequest("udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout))
+	req := h.NewRequest("udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout), h.proxyAuth)
 
 	r, err := h.Client.Do(req)
 	if err != nil {

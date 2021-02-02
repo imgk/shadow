@@ -6,7 +6,7 @@ import (
 )
 
 // ParseURL is ...
-func ParseURL(s string) (server, cipher, password string, err error) {
+func ParseURL(s string) (server, method, password string, err error) {
 	u, er := url.Parse(s)
 	if err != nil {
 		err = er
@@ -19,7 +19,7 @@ func ParseURL(s string) (server, cipher, password string, err error) {
 		return
 	}
 
-	cipher = u.User.Username()
+	method = u.User.Username()
 
 	if s, ok := u.User.Password(); ok {
 		password = s

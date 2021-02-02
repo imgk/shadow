@@ -25,22 +25,30 @@ type Cipher struct {
 
 // NewCipher is ...
 func NewCipher(method, password string) (*Cipher, error) {
+	return NewCipherFromKey(method, password, nil)
+}
+
+// NewCipherFromKey is ...
+func NewCipherFromKey(method, password string, key []byte) (*Cipher, error) {
 	const KeySize = 32
 	const SaltSize = 32
 
-	key := func(password string, keyLen int) []byte {
-		buff := []byte{}
-		prev := []byte{}
-		hash := md5.New()
-		for len(buff) < keyLen {
-			hash.Write(prev)
-			hash.Write([]byte(password))
-			buff = hash.Sum(buff)
-			prev = buff[len(buff)-hash.Size():]
-			hash.Reset()
-		}
-		return buff[:keyLen]
-	}(password, KeySize)
+	if key == nil || len(key) < KeySize {
+		key = func(password []byte, keyLen int) []byte {
+			buff := []byte{}
+			prev := []byte{}
+			hash := md5.New()
+			for len(buff) < keyLen {
+				hash.Write(prev)
+				hash.Write(password)
+				buff = hash.Sum(buff)
+				prev = buff[len(buff)-hash.Size():]
+				hash.Reset()
+			}
+			return buff[:keyLen]
+		}([]byte(password), KeySize)
+	}
+	key = key[:KeySize]
 
 	switch strings.ToUpper(method) {
 	case "AES-256-GCM", "AEAD_AES_256_GCM":

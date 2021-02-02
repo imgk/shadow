@@ -27,7 +27,9 @@ func init() {
 
 // Handler is ...
 type Handler struct {
-	Auth    *proxy.Auth
+	// Auth is ...
+	Auth *proxy.Auth
+
 	server  string
 	timeout time.Duration
 }
@@ -108,11 +110,11 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 		if err != nil {
 			return
 		}
-		defer func() {
+		defer func(conn net.Conn) {
 			if err != nil {
 				c.Close()
 			}
-		}()
+		}(c)
 
 		raddr, err := socks.ResolveUDPAddr(addr)
 		if err != nil {

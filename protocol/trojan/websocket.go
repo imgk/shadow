@@ -8,9 +8,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-//emptyReader is ...
+// emptyReader is ...
 type emptyReader struct{}
 
+// Read is ...
 func (*emptyReader) Read(b []byte) (int, error) {
 	return 0, io.EOF
 }
@@ -60,9 +61,9 @@ func (c *wsConn) SetDeadline(t time.Time) error {
 }
 
 // Close is ...
-func (c *wsConn) Close() (err error) {
+func (c *wsConn) Close() error {
 	msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-	err = c.Conn.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second*5))
+	err := c.Conn.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second*5))
 	if err != nil {
 		c.Conn.Close()
 		return err

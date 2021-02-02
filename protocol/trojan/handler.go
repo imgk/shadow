@@ -39,8 +39,8 @@ type Handler struct {
 	// Addr is ...
 	Addr string
 
-	timeout time.Duration
 	server  string
+	timeout time.Duration
 }
 
 // NewHandler is ...
@@ -66,6 +66,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 
 	handler := &Handler{
 		Addr:    proxyAddr.String(),
+		server:  server,
 		timeout: timeout,
 	}
 	switch transport {
@@ -100,9 +101,11 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 
 	switch mux {
 	case "v1":
-		handler.Dialer = ConfigureMux(handler.Dialer, 1)
+		dialer := &MuxDialer{}
+		handler.Dialer = dialer.Configure(handler.Dialer, 1)
 	case "v2":
-		handler.Dialer = ConfigureMux(handler.Dialer, 2)
+		dialer := &MuxDialer{}
+		handler.Dialer = dialer.Configure(handler.Dialer, 2)
 	default:
 	}
 
@@ -210,6 +213,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 			}
 
 			if _, ew := rc.Write(b[offset : socks.MaxAddrLen+4+n]); ew != nil {
+				err = ew
 				break
 			}
 		}

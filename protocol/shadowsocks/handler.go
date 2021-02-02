@@ -62,14 +62,14 @@ type Dialer interface {
 	ListenPacket(string, string) (net.PacketConn, error)
 }
 
-// NewNetDialer is ...
-func NewNetDialer(server, password string) *NetDialer {
-	return &NetDialer{}
-}
-
 // NetDialer is ...
 type NetDialer struct {
 	Dialer net.Dialer
+}
+
+// NewNetDialer is ...
+func NewNetDialer(server, password string) *NetDialer {
+	return &NetDialer{}
 }
 
 // Dial is ...

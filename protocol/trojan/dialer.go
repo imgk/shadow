@@ -146,23 +146,23 @@ type MuxDialer struct {
 	closed chan struct{}
 }
 
-// ConfigureMux is ...
-func ConfigureMux(d Dialer, ver byte) Dialer {
-	if _, ok := d.(*MuxDialer); ok {
-		return d
+// Configure is ...
+func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
+	if dialer, ok := d.(*MuxDialer); ok {
+		return dialer
 	}
 
 	// smux version 1
-	cmd := 0x7f
+	cmd := byte(0x7f)
 	if ver == 2 {
 		// smux version 2
 		cmd = 0x8f
 	}
-	dialer := &MuxDialer{
+	*dialer = MuxDialer{
 		Dialer: d,
 		Ticker: time.NewTicker(time.Minute * 3),
 		Config: smux.Config{
-			Version:           int(ver),
+			Version:           ver,
 			KeepAliveInterval: 10 * time.Second,
 			KeepAliveTimeout:  30 * time.Second,
 			MaxFrameSize:      32768,
@@ -170,7 +170,7 @@ func ConfigureMux(d Dialer, ver byte) Dialer {
 			MaxStreamBuffer:   65536,
 		},
 		MaxConn:   8,
-		EmptyAddr: [...]byte{byte(cmd), byte(socks.AddrTypeIPv4), 0, 0, 0, 0, 0, 0, 0x0d, 0x0a},
+		EmptyAddr: [...]byte{cmd, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a},
 		conns:     make(map[*smux.Session]struct{}),
 		closed:    make(chan struct{}),
 	}
@@ -200,6 +200,16 @@ func ConfigureMux(d Dialer, ver byte) Dialer {
 		}
 	}(dialer)
 	return dialer
+}
+
+// Close is ...
+func (d *MuxDialer) Close() error {
+	select {
+	case <-d.closed:
+	default:
+		close(d.closed)
+	}
+	return nil
 }
 
 // Dial is ...

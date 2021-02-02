@@ -10,6 +10,9 @@
 # go mod vendor
 vendor
 
+# protocol
+main_protocol.go
+
 # Thumbnails
 ._*
 
