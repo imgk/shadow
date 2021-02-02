@@ -5,21 +5,37 @@ A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
 ## How to build
 
 ```
+# close this repo
+git clone https://github.com/imgk/shadow.git
+
+# move to this repo dir
+cd shadow
+
+# import one or more protocols
+cat <<EOF > main_protocol.go
+package main
+
+import _ "github.com/imgk/shadow/protocol/shadowsocks"
+
+EOF
+
 # linux darwin windows,wintun
-go get -v -ldflags="-s -w" -trimpath github.com/imgk/shadow
+go get -v -ldflags="-s -w" -trimpath
 
 # windows,windivert
-go get -v -ldflags="-s -w" -trimpath -tags=shadow_divert github.com/imgk/shadow
+go get -v -ldflags="-s -w" -trimpath -tags=shadow_divert
 ```
 
 ## How to use it
 
 ```
-->  ~ go/bin/shadow -h
-Usage of go/bin/shadow:
+->  ~ go/bin/shadow -h                  
+Usage of /home/admin/go/bin/shadow:
   -c string
-    	config file (default "config.json")
-  -v	enable verbose mode
+        config file (default "config.json")
+  -t duration
+        timeout (default 1m0s)
+  -v    enable verbose mode
 ```
 
 ### Windows
@@ -53,4 +69,4 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 
 ## Config
 
-Please read [CONFIG.md](https://github.com/imgk/shadow/blob/master/CONFIG.md)
+Please read [config.md](https://github.com/imgk/shadow/blob/master/config.md)
