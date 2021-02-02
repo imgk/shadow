@@ -95,7 +95,7 @@ func (d *TLSDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 		return nil, err
 	}
 	conn = tls.Client(conn, &d.Config)
-	if err = WriteHeaderAddr(conn, d.Header[:], cmd, addr); err != nil {
+	if err := WriteHeaderAddr(conn, d.Header[:], cmd, addr); err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -158,22 +158,21 @@ func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
 		// smux version 2
 		cmd = 0x8f
 	}
-	*dialer = MuxDialer{
-		Dialer: d,
-		Ticker: time.NewTicker(time.Minute * 3),
-		Config: smux.Config{
-			Version:           ver,
-			KeepAliveInterval: 10 * time.Second,
-			KeepAliveTimeout:  30 * time.Second,
-			MaxFrameSize:      32768,
-			MaxReceiveBuffer:  4194304,
-			MaxStreamBuffer:   65536,
-		},
-		MaxConn:   8,
-		EmptyAddr: [...]byte{cmd, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a},
-		conns:     make(map[*smux.Session]struct{}),
-		closed:    make(chan struct{}),
+
+	dialer.Dialer = d
+	dialer.Ticker = time.NewTicker(time.Minute * 3)
+	dialer.Config = smux.Config{
+		Version:           ver,
+		KeepAliveInterval: 10 * time.Second,
+		KeepAliveTimeout:  30 * time.Second,
+		MaxFrameSize:      32768,
+		MaxReceiveBuffer:  4194304,
+		MaxStreamBuffer:   65536,
 	}
+	dialer.MaxConn = 8
+	dialer.EmptyAddr = [...]byte{cmd, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a}
+	dialer.conns = make(map[*smux.Session]struct{})
+	dialer.closed = make(chan struct{})
 
 	go func(d *MuxDialer) {
 	LOOP:
@@ -258,15 +257,11 @@ func (d *MuxDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 	stream, err := sess.OpenStream()
 	if err != nil {
 		sess.Close()
-		conn.Close()
 		return nil, err
 	}
 
-	err = WriteAddr(stream, cmd, addr)
-	if err != nil {
-		stream.Close()
+	if err := WriteAddr(stream, cmd, addr); err != nil {
 		sess.Close()
-		conn.Close()
 		return nil, err
 	}
 
