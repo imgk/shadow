@@ -1,4 +1,4 @@
-// +build trojan all
+// +build all trojan
 
 package main
 

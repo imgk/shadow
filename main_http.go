@@ -1,4 +1,4 @@
-// +build http all
+// +build all http
 
 package main
 

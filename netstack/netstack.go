@@ -89,8 +89,8 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 
 // WriteFrom is ...
 func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
-	if saddr, ok := addr.(socks.Addr); ok {
-		target, err := socks.ResolveUDPAddr(saddr)
+	if nAddr, ok := addr.(*socks.Addr); ok {
+		target, err := socks.ResolveUDPAddr(nAddr)
 		if err != nil {
 			return 0, fmt.Errorf("resolve udp addr error: %w", err)
 		}

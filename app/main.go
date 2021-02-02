@@ -16,7 +16,7 @@ import (
 	"github.com/imgk/shadow/pkg/suffixtree"
 )
 
-// shadow application configuration
+// Conf is shadow application configuration
 type Conf struct {
 	// Server Config
 	Server      string `json:"server"`
@@ -50,7 +50,7 @@ type Conf struct {
 	} `json:"domain_rules"`
 }
 
-// read config from file
+// ReadFromFile is to read config from file
 func (c *Conf) ReadFromFile(file string) error {
 	file, err := filepath.Abs(file)
 	if err != nil {
@@ -73,7 +73,7 @@ func (c *Conf) ReadFromFile(file string) error {
 	return c.ReadFromByteSlice(b)
 }
 
-// load config from byte slice
+// ReadFromByteSlice is to load config from byte slice
 func (c *Conf) ReadFromByteSlice(b []byte) error {
 	if err := json.Unmarshal(b, c); err != nil {
 		return err
@@ -88,7 +88,7 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 	return nil
 }
 
-// shadow application
+// App is shadow application
 type App struct {
 	Logger logger.Logger
 	Conf   *Conf
@@ -99,7 +99,7 @@ type App struct {
 	closers []io.Closer
 }
 
-// new shadow app from config file
+// NewApp is new shadow app from config file
 func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
 	conf := new(Conf)
 	if err := conf.ReadFromFile(file); err != nil {
@@ -109,7 +109,7 @@ func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
 	return NewAppFromConf(conf, timeout, w), nil
 }
 
-// new shadow app from byte slice
+// NewAppFromByteSlice is new shadow app from byte slice
 func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, error) {
 	conf := new(Conf)
 	if err := conf.ReadFromByteSlice(b); err != nil {
@@ -119,7 +119,7 @@ func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, er
 	return NewAppFromConf(conf, timeout, w), nil
 }
 
-// new shadow app from *Conf
+// NewAppFromConf is new shadow app from *Conf
 func NewAppFromConf(conf *Conf, timeout time.Duration, w io.Writer) *App {
 	app := &App{
 		Logger:  logger.NewLogger(w),
@@ -135,12 +135,12 @@ func (app *App) attachCloser(closer io.Closer) {
 	app.closers = append(app.closers, closer)
 }
 
-// done channel
+// Done is to give done channel
 func (app *App) Done() chan struct{} {
 	return app.closed
 }
 
-// shutdown application
+// Close is shutdown application
 func (app *App) Close() error {
 	select {
 	case <-app.closed:
@@ -154,7 +154,8 @@ func (app *App) Close() error {
 	return nil
 }
 
-func (app *App) newDomainTree() (*suffixtree.DomainTree, error) {
+// NewDomainTree is ...
+func NewDomainTree(app *App) (*suffixtree.DomainTree, error) {
 	tree := suffixtree.NewDomainTree(".")
 	tree.Lock()
 	for _, domain := range app.Conf.DomainRules.Proxy {

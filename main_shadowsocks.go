@@ -1,4 +1,4 @@
-// +build shadowsocks all
+// +build all shadowsocks
 
 package main
 

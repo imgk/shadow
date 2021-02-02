@@ -72,7 +72,7 @@ const (
 )
 
 // Handshake (client side) is to talk to server
-func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *proxy.Auth) (Addr, error) {
+func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *proxy.Auth) (*Addr, error) {
 	b := make([]byte, 3+MaxAddrLen)
 
 	// send supported methods
@@ -124,9 +124,9 @@ func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *proxy.Auth) (Addr, e
 
 	// send target address
 	b[0], b[1], b[2] = 5, cmd, 0
-	if addr, ok := tgt.(Addr); ok {
-		copy(b[3:], addr)
-		if _, err := conn.Write(b[:3+len(addr)]); err != nil {
+	if addr, ok := tgt.(*Addr); ok {
+		copy(b[3:], addr.Addr)
+		if _, err := conn.Write(b[:3+len(addr.Addr)]); err != nil {
 			return nil, err
 		}
 	} else {
@@ -135,7 +135,7 @@ func Handshake(conn net.Conn, tgt net.Addr, cmd byte, auth *proxy.Auth) (Addr, e
 			return nil, fmt.Errorf("resolve addr error: %w", err)
 		}
 
-		if _, err := conn.Write(b[:3+len(addr)]); err != nil {
+		if _, err := conn.Write(b[:3+len(addr.Addr)]); err != nil {
 			return nil, err
 		}
 	}

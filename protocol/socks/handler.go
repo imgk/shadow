@@ -57,7 +57,7 @@ func (*Handler) Close() error {
 }
 
 // Dial is ...
-func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, socks.Addr, error) {
+func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, *socks.Addr, error) {
 	conn, err := net.Dial("tcp", h.server)
 	if err != nil {
 		return nil, nil, err
@@ -171,9 +171,9 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 
 			// parse remote address
 			offset, er := func(tgt net.Addr, b []byte) (offset int, err error) {
-				if addr, ok := tgt.(socks.Addr); ok {
-					offset = socks.MaxAddrLen - len(addr)
-					copy(b[offset+3:], addr)
+				if addr, ok := tgt.(*socks.Addr); ok {
+					offset = socks.MaxAddrLen - len(addr.Addr)
+					copy(b[offset+3:], addr.Addr)
 				}
 				if nAddr, ok := tgt.(*net.UDPAddr); ok {
 					if ipv4 := nAddr.IP.To4(); ipv4 != nil {
@@ -231,7 +231,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 			break
 		}
 
-		if _, ew := conn.WriteFrom(b[3+len(raddr):n], raddr); ew != nil {
+		if _, ew := conn.WriteFrom(b[3+len(raddr.Addr):n], raddr); ew != nil {
 			err = ew
 			break
 		}

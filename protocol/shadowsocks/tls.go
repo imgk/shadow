@@ -126,7 +126,7 @@ func NewConn(nc *net.TCPConn, proxyAuth string, cfg *tls.Config) net.Conn {
 	return conn
 }
 
-// NewConn gives a new net.PacketConn
+// PacketConn is to gives a new net.PacketConn
 type PacketConn struct {
 	// Conn is ...
 	Conn
@@ -179,8 +179,13 @@ func (c *Conn) CloseWrite() error {
 
 // Equal is ...
 func Equal(b []byte, s string) bool {
+	type StringHeader struct {
+		Data uintptr
+		Len  int
+	}
+
 	bb := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	ss := *(*string)(unsafe.Pointer(&reflect.StringHeader{
+	ss := *(*string)(unsafe.Pointer(&StringHeader{
 		Data: bb.Data,
 		Len:  bb.Len,
 	}))

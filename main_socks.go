@@ -1,4 +1,4 @@
-// +build socks all
+// +build all socks
 
 package main
 

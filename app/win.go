@@ -3,6 +3,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,24 +17,26 @@ import (
 	"github.com/imgk/shadow/device/windivert"
 	"github.com/imgk/shadow/device/windivert/filter"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/handler/recorder"
 	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
 )
 
+// Run is ...
 func (app *App) Run() (err error) {
 	muName := windows.StringToUTF16Ptr("SHADOW-MUTEX")
 
 	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, muName)
 	if err == nil {
 		windows.CloseHandle(mutex)
-		return fmt.Errorf("shadow is already running")
+		return errors.New("shadow is already running")
 	}
 	mutex, err = windows.CreateMutex(nil, false, muName)
 	if err != nil {
 		return fmt.Errorf("create mutex error: %w", err)
 	}
-	app.attachCloser(mutexHandle(mutex))
+	app.attachCloser(&Mutex{Handle: mutex})
 	defer func() {
 		if err != nil {
 			for _, closer := range app.closers {
@@ -67,7 +70,7 @@ func (app *App) Run() (err error) {
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
-	handler = NewHandler(handler)
+	handler = recorder.NewHandler(handler)
 	app.attachCloser(handler)
 
 	router := http.NewServeMux()
@@ -76,16 +79,16 @@ func (app *App) Run() (err error) {
 	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	router.Handle("/admin/conns", http.Handler(handler.(*Handler)))
+	router.Handle("/admin/conns", http.Handler(handler.(*recorder.Handler)))
 	router.HandleFunc("/admin/proxy.pac", ServePAC)
 
 	// new application filter
-	appFilter, err := app.newAppFilter()
+	appFilter, err := NewAppFilter(app)
 	if err != nil {
 		return
 	}
 	// new ip filter
-	ipFilter, err := app.newIPFilter()
+	ipFilter, err := NewIPFilter(app)
 	if err != nil {
 		return
 	}
@@ -102,7 +105,7 @@ func (app *App) Run() (err error) {
 	app.attachCloser(dev)
 
 	// new fake ip tree
-	tree, err := app.newDomainTree()
+	tree, err := NewDomainTree(app)
 	if err != nil {
 		return
 	}
@@ -129,7 +132,8 @@ func (app *App) Run() (err error) {
 	return nil
 }
 
-func (app *App) newIPFilter() (*filter.IPFilter, error) {
+// NewIPFilter is ...
+func NewIPFilter(app *App) (*filter.IPFilter, error) {
 	filter := filter.NewIPFilter()
 
 	filter.Lock()
@@ -145,13 +149,8 @@ func (app *App) newIPFilter() (*filter.IPFilter, error) {
 	return filter, err
 }
 
-type pidError string
-
-func (e pidError) Error() string {
-	return fmt.Sprintf("Pid strconv error: %v", string(e))
-}
-
-func (app *App) newAppFilter() (*filter.AppFilter, error) {
+// NewAppFilter is ...
+func NewAppFilter(app *App) (*filter.AppFilter, error) {
 	env := os.Getenv("SHADOW_PIDS")
 	if env == "" && len(app.Conf.AppRules.Proxy) == 0 {
 		return nil, nil
@@ -170,10 +169,8 @@ func (app *App) newAppFilter() (*filter.AppFilter, error) {
 		pids := make([]uint32, 0, len(ss))
 		for _, v := range ss {
 			i, err := strconv.Atoi(v)
-			if err != nil {
-				if v != "" {
-					return nil, pidError(v)
-				}
+			if err != nil && v != "" {
+				return nil, fmt.Errorf("strconv (%v) err: %w", v, err)
 			}
 			pids = append(pids, uint32(i))
 		}
@@ -182,10 +179,14 @@ func (app *App) newAppFilter() (*filter.AppFilter, error) {
 	return filter, nil
 }
 
-type mutexHandle windows.Handle
+// Mutex is ...
+type Mutex struct {
+	Handle windows.Handle
+}
 
-func (mu mutexHandle) Close() error {
-	windows.ReleaseMutex(windows.Handle(mu))
-	windows.CloseHandle(windows.Handle(mu))
+// Close is ...
+func (m *Mutex) Close() error {
+	windows.ReleaseMutex(m.Handle)
+	windows.CloseHandle(m.Handle)
 	return nil
 }

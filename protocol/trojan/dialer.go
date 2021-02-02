@@ -20,16 +20,16 @@ func WriteHeaderAddr(conn net.Conn, header []byte, cmd byte, tgt net.Addr) error
 	copy(buff, header)
 	buff[HeaderLen+2] = cmd
 
-	addr, ok := tgt.(socks.Addr)
+	addr, ok := tgt.(*socks.Addr)
 	if ok {
-		buff = append(buff[:HeaderLen+2+1], addr...)
+		buff = append(buff[:HeaderLen+2+1], addr.Addr...)
 		buff = append(buff, 0x0d, 0x0a)
 	} else {
 		addr, err := socks.ResolveAddrBuffer(tgt, buff[HeaderLen+2+1:])
 		if err != nil {
 			return err
 		}
-		buff = append(buff[:HeaderLen+2+1+len(addr)], 0x0d, 0x0a)
+		buff = append(buff[:HeaderLen+2+1+len(addr.Addr)], 0x0d, 0x0a)
 	}
 
 	_, err := conn.Write(buff)
@@ -41,14 +41,14 @@ func WriteAddr(conn net.Conn, cmd byte, tgt net.Addr) error {
 	buff := make([]byte, 1+socks.MaxAddrLen)
 	buff[0] = cmd
 
-	if addr, ok := tgt.(socks.Addr); ok {
-		buff = append(buff[:1], addr...)
+	if addr, ok := tgt.(*socks.Addr); ok {
+		buff = append(buff[:1], addr.Addr...)
 	} else {
 		addr, err := socks.ResolveAddrBuffer(tgt, buff[1:])
 		if err != nil {
 			return err
 		}
-		buff = buff[:1+len(addr)]
+		buff = buff[:1+len(addr.Addr)]
 	}
 
 	_, err := conn.Write(buff)
@@ -185,7 +185,7 @@ func ConfigureMux(d Dialer, ver byte) Dialer {
 			}
 
 			d.mu.Lock()
-			for sess, _ := range d.conns {
+			for sess := range d.conns {
 				if sess.IsClosed() {
 					delete(d.conns, sess)
 					continue
@@ -205,7 +205,7 @@ func ConfigureMux(d Dialer, ver byte) Dialer {
 // Dial is ...
 func (d *MuxDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 	d.mu.Lock()
-	for sess, _ := range d.conns {
+	for sess := range d.conns {
 		if sess.NumStreams() < d.MaxConn {
 			if sess.IsClosed() {
 				delete(d.conns, sess)
@@ -234,7 +234,7 @@ func (d *MuxDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 	}
 	d.mu.Unlock()
 
-	conn, err := d.Dialer.Dial(cmd, socks.Addr(d.EmptyAddr[:]))
+	conn, err := d.Dialer.Dial(cmd, &socks.Addr{Addr: d.EmptyAddr[:]})
 	if err != nil {
 		return nil, err
 	}

@@ -10,11 +10,13 @@ import (
 
 	"github.com/imgk/shadow/device/tun"
 	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/handler/recorder"
 	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
 )
 
+// RunWithDevice is ...
 func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	// new dns resolver
 	resolver, err := resolver.NewResolver(app.Conf.NameServer)
@@ -31,7 +33,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
-	handler = NewHandler(handler)
+	handler = recorder.NewHandler(handler)
 	app.attachCloser(handler)
 	defer func() {
 		if err != nil {
@@ -47,7 +49,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	router.Handle("/admin/conns", handler.(*Handler))
+	router.Handle("/admin/conns", http.Handler(handler.(*recorder.Handler)))
 	router.HandleFunc("/admin/proxy.pac", ServePAC)
 
 	// new tun device
@@ -74,7 +76,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 
 	// new fake ip tree
-	tree, err := app.newDomainTree()
+	tree, err := NewDomainTree(app)
 	if err != nil {
 		return
 	}
@@ -106,6 +108,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	return nil
 }
 
+// Run is ...
 func (app *App) Run() error {
 	return app.RunWithDevice(nil)
 }

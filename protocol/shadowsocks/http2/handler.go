@@ -259,7 +259,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				return fmt.Errorf("parse socks.Addr error: %v", err)
 			}
 
-			if _, err := conn.WriteFrom(bb[len(raddr):], raddr); err != nil {
+			if _, err := conn.WriteFrom(bb[len(raddr.Addr):], raddr); err != nil {
 				if errors.Is(err, io.EOF) {
 					return nil
 				}
@@ -368,9 +368,9 @@ func (r *Reader) init(b []byte) (int, error) {
 	buf := b[2+overhead:]
 
 	n, err := func(b []byte, tgt net.Addr) (int, error) {
-		if addr, ok := tgt.(socks.Addr); ok {
-			copy(b, addr)
-			return len(addr), nil
+		if addr, ok := tgt.(*socks.Addr); ok {
+			copy(b, addr.Addr)
+			return len(addr.Addr), nil
 		}
 		if addr, ok := tgt.(*net.TCPAddr); ok {
 			if ipv4 := addr.IP.To4(); ipv4 != nil {
@@ -379,14 +379,13 @@ func (r *Reader) init(b []byte) (int, error) {
 				b[1+net.IPv4len] = byte(addr.Port >> 8)
 				b[1+net.IPv4len+1] = byte(addr.Port)
 				return 1 + net.IPv4len + 2, nil
-			} else {
-				ipv6 := addr.IP.To16()
-				b[0] = socks.AddrTypeIPv6
-				copy(b[:1], ipv6)
-				b[1+net.IPv6len] = byte(addr.Port >> 8)
-				b[1+net.IPv6len+1] = byte(addr.Port)
-				return 1 + net.IPv6len + 2, nil
 			}
+			ipv6 := addr.IP.To16()
+			b[0] = socks.AddrTypeIPv6
+			copy(b[:1], ipv6)
+			b[1+net.IPv6len] = byte(addr.Port >> 8)
+			b[1+net.IPv6len+1] = byte(addr.Port)
+			return 1 + net.IPv6len + 2, nil
 		}
 		return 0, errors.New("addr type error")
 	}(buf, r.tgt)
@@ -447,9 +446,9 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	offset, err := func(b []byte, tgt net.Addr) (int, error) {
-		if addr, ok := tgt.(socks.Addr); ok {
-			offset := len(b) - len(addr)
-			copy(b[offset:], addr)
+		if addr, ok := tgt.(*socks.Addr); ok {
+			offset := len(b) - len(addr.Addr)
+			copy(b[offset:], addr.Addr)
 			return offset, nil
 		}
 		if addr, ok := tgt.(*net.UDPAddr); ok {
@@ -461,16 +460,15 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 				b[1+net.IPv4len] = byte(addr.Port >> 8)
 				b[1+net.IPv4len+1] = byte(addr.Port)
 				return offset, nil
-			} else {
-				ipv6 := addr.IP.To16()
-				offset := len(b) - 1 - net.IPv6len - 2
-				b = b[offset:]
-				b[0] = socks.AddrTypeIPv6
-				copy(b[1:], ipv6)
-				b[1+net.IPv6len] = byte(addr.Port >> 8)
-				b[1+net.IPv6len+1] = byte(addr.Port)
-				return offset, nil
 			}
+			ipv6 := addr.IP.To16()
+			offset := len(b) - 1 - net.IPv6len - 2
+			b = b[offset:]
+			b[0] = socks.AddrTypeIPv6
+			copy(b[1:], ipv6)
+			b[1+net.IPv6len] = byte(addr.Port >> 8)
+			b[1+net.IPv6len+1] = byte(addr.Port)
+			return offset, nil
 		}
 		return 0, errors.New("addr type error")
 	}(b[:headerLen], addr)

@@ -127,8 +127,8 @@ func (pc *fakePacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	if err != nil {
 		return
 	}
-	addr = socks.Addr(append(make([]byte, 0, len(tgt)), tgt...))
-	n = copy(b, buf[3+len(tgt):n])
+	addr = &socks.Addr{Addr: append(make([]byte, 0, len(tgt.Addr)), tgt.Addr...)}
+	n = copy(b, buf[3+len(tgt.Addr):n])
 	return
 }
 
@@ -141,8 +141,8 @@ func (pc *fakePacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) 
 	if err != nil {
 		return
 	}
-	n = copy(buf[3+len(src):], b)
-	_, err = pc.PacketConn.WriteTo(buf[:3+len(src)+n], pc.addr)
+	n = copy(buf[3+len(src.Addr):], b)
+	_, err = pc.PacketConn.WriteTo(buf[:3+len(src.Addr)+n], pc.addr)
 	return
 }
 
@@ -163,6 +163,7 @@ type proxyServer struct {
 	closed chan struct{}
 }
 
+// NewProxyServer is ...
 func NewProxyServer(ln net.Listener, logger logger.Logger, handler gonet.Handler, tree *suffixtree.DomainTree, router *http.ServeMux) *proxyServer {
 	s := &proxyServer{
 		Logger:     logger,
@@ -196,7 +197,7 @@ func (s *proxyServer) Serve() {
 				return
 			}
 			if ok {
-				s.proxySocks(c, pc, b)
+				s.proxySocks(c, pc, &socks.Addr{Addr: b})
 				return
 			}
 			s.listener.Receive(newFakeConn(c, io.MultiReader(bytes.NewReader(b), c)))
@@ -238,14 +239,14 @@ func (s *proxyServer) Close() (err error) {
 	return
 }
 
-func (s *proxyServer) lookupIP(ip net.IP, b []byte) (socks.Addr, error) {
+func (s *proxyServer) lookupIP(ip net.IP, b []byte) (*socks.Addr, error) {
 	if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
 		de := opt.(*suffixtree.DomainEntry)
 
 		b[0] = socks.AddrTypeDomain
 		b[1] = byte(len(de.PTR.Ptr))
 		n := copy(b[2:], de.PTR.Ptr[:])
-		return b[:2+n+2], nil
+		return &socks.Addr{Addr: b[:2+n+2]}, nil
 	}
 	return nil, errors.New("not found")
 }
@@ -300,30 +301,33 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 			}
 		}(pc)
 	default:
-		err = errors.New(fmt.Sprintf("socks cmd error: %v", b[1]))
+		err = fmt.Errorf("socks cmd error: %v", b[1])
 		return
 	}
 
 	bb := make([]byte, socks.MaxAddrLen)
-	tgt, err = socks.ReadAddrBuffer(conn, bb)
+	addr, err := socks.ReadAddrBuffer(conn, bb)
 	if err != nil {
 		return
 	}
+	tgt = addr.Addr
 	if bb[0] == socks.AddrTypeIPv4 {
 		if bb[1] == 198 && bb[2] == 18 {
 			p1 := bb[1+net.IPv4len]
 			p2 := bb[1+net.IPv4len+1]
-			tgt, err = s.lookupIP(net.IP(bb[1:1+net.IPv4len]), bb)
-			if err != nil {
+			addr, er := s.lookupIP(net.IP(bb[1:1+net.IPv4len]), bb)
+			if er != nil {
+				err = er
 				return
 			}
+			tgt = addr.Addr
 			tgt[len(tgt)-2] = p1
 			tgt[len(tgt)-1] = p2
 		}
 	}
 
 	// write back address
-	addr := socks.Addr{}
+	addr = &socks.Addr{}
 	switch b[1] {
 	case 0x01:
 		addr, err = socks.ResolveAddrBuffer(conn.LocalAddr(), b[3:])
@@ -334,12 +338,12 @@ func (s *proxyServer) handshake(conn net.Conn) (pc net.PacketConn, tgt []byte, o
 		return
 	}
 	b[1] = 0x00
-	_, err = conn.Write(b[:3+len(addr)])
+	_, err = conn.Write(b[:3+len(addr.Addr)])
 	return
 }
 
 // handle socks5 proxy
-func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr socks.Addr) {
+func (s *proxyServer) proxySocks(conn net.Conn, pc net.PacketConn, addr *socks.Addr) {
 	defer conn.Close()
 
 	if pc != nil {
@@ -463,12 +467,14 @@ func (s *proxyServer) proxyConnect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *proxyServer) parseAddr(host, port string, b []byte) (socks.Addr, error) {
+func (s *proxyServer) parseAddr(host, port string, b []byte) (*socks.Addr, error) {
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return nil, err
 	}
-	if ip := net.ParseIP(host); ip == nil {
+
+	ip := net.ParseIP(host)
+	if ip == nil {
 		if host == "" {
 			return nil, errEmptyAddress
 		}
@@ -478,28 +484,29 @@ func (s *proxyServer) parseAddr(host, port string, b []byte) (socks.Addr, error)
 		n := 1 + 1 + len(host)
 		b[n] = byte(p >> 8)
 		b[n+1] = byte(p)
-		return b[:n+2], nil
-	} else {
-		if ipv4 := ip.To4(); ipv4 == nil {
-			ipv6 := ip.To16()
-			b[0] = socks.AddrTypeIPv6
-			copy(b, ipv6)
-			b[1+net.IPv6len] = byte(p >> 8)
-			b[1+net.IPv6len+1] = byte(p)
-			return b[:1+net.IPv6len+2], nil
-		} else {
-			if ipv4[0] == 198 && ipv4[1] == 18 {
-				addr, err := s.lookupIP(ipv4, b[:])
-				addr[len(addr)-2] = byte(p >> 8)
-				addr[len(addr)-1] = byte(p)
-				return addr, err
-			}
-
-			b[0] = socks.AddrTypeIPv4
-			copy(b, ipv4)
-			b[1+net.IPv4len] = byte(p >> 8)
-			b[1+net.IPv4len+1] = byte(p)
-			return b[:1+net.IPv4len+2], nil
-		}
+		return &socks.Addr{Addr: b[:n+2]}, nil
 	}
+
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		ipv6 := ip.To16()
+		b[0] = socks.AddrTypeIPv6
+		copy(b, ipv6)
+		b[1+net.IPv6len] = byte(p >> 8)
+		b[1+net.IPv6len+1] = byte(p)
+		return &socks.Addr{Addr: b[:1+net.IPv6len+2]}, nil
+	}
+
+	if ipv4[0] == 198 && ipv4[1] == 18 {
+		addr, err := s.lookupIP(ipv4, b[:])
+		addr.Addr[len(addr.Addr)-2] = byte(p >> 8)
+		addr.Addr[len(addr.Addr)-1] = byte(p)
+		return addr, err
+	}
+
+	b[0] = socks.AddrTypeIPv4
+	copy(b, ipv4)
+	b[1+net.IPv4len] = byte(p >> 8)
+	b[1+net.IPv4len+1] = byte(p)
+	return &socks.Addr{Addr: b[:1+net.IPv4len+2]}, nil
 }

@@ -67,7 +67,7 @@ func NewNetDialer(server, password string) *NetDialer {
 	return &NetDialer{}
 }
 
-// NewDialer is ...
+// NetDialer is ...
 type NetDialer struct {
 	Dialer net.Dialer
 }
@@ -84,7 +84,7 @@ func (d *NetDialer) Dial(network, addr string) (net.Conn, error) {
 	return conn, nil
 }
 
-// ListenPacket
+// ListenPacket is ...
 func (d *NetDialer) ListenPacket(network, addr string) (net.PacketConn, error) {
 	return net.ListenPacket(network, addr)
 }
@@ -144,7 +144,7 @@ func (*Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	defer conn.Close()
 
-	addr, ok := tgt.(socks.Addr)
+	addr, ok := tgt.(*socks.Addr)
 	if !ok {
 		addr, err = socks.ResolveAddrBuffer(tgt, make([]byte, socks.MaxAddrLen))
 		if err != nil {
@@ -159,7 +159,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
 	rc = core.NewConn(rc, h.Cipher)
 	defer rc.Close()
 
-	if _, err := rc.Write(addr); err != nil {
+	if _, err := rc.Write(addr.Addr); err != nil {
 		return fmt.Errorf("write to server %v error: %w", h.server, err)
 	}
 
@@ -216,9 +216,9 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 			}
 
 			offset, er := func(addr net.Addr, b []byte) (offset int, err error) {
-				if addr, ok := addr.(socks.Addr); ok {
-					offset = socks.MaxAddrLen - len(addr)
-					copy(b[offset:], addr)
+				if addr, ok := addr.(*socks.Addr); ok {
+					offset = socks.MaxAddrLen - len(addr.Addr)
+					copy(b[offset:], addr.Addr)
 					return
 				}
 				if nAddr, ok := addr.(*net.UDPAddr); ok {
@@ -282,7 +282,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 			break
 		}
 
-		if _, ew := conn.WriteFrom(b[len(raddr):nr], raddr); ew != nil {
+		if _, ew := conn.WriteFrom(b[len(raddr.Addr):nr], raddr); ew != nil {
 			err = fmt.Errorf("write packet error: %v", ew)
 			break
 		}
