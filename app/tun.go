@@ -95,7 +95,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 			return err
 		}
 
-		server := proxy.NewProxyServer(ln, app.Logger, handler, tree, router)
+		server := proxy.NewServer(ln, app.Logger, handler, tree, router)
 		app.attachCloser(server)
 		go server.Serve()
 	}

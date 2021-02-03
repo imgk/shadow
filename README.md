@@ -30,7 +30,7 @@ go get -v -ldflags="-s -w" -trimpath -tags=shadow_divert
 
 ```
 ->  ~ go/bin/shadow -h
-Usage of /home/admin/go/bin/shadow:
+Usage of go/bin/shadow:
   -c string
         config file (default "config.json")
   -t duration

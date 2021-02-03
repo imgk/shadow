@@ -262,6 +262,7 @@ func NewDomainTree(conf *Conf) (*suffixtree.DomainTree, error) {
 }
 
 // PAC is ...
+// serve proxy pac file
 type PAC struct {
 	// Format is ...
 	Format string
