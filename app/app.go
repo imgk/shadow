@@ -90,8 +90,8 @@ type Conf struct {
 // prepare is ...
 func (c *Conf) prepare() error {
 	const Filter44 = "outbound and (ipv6 or (ip and ip.DstAddr != %s and ip.DstAddr != %s))"
-	const Filter46 = "outbound and ((ipv6 and ip.DstAddr != %s) or (ip and ip.DstAddr != %s))"
-	const Filter66 = "outbound and ((ipv6 and ip.DstAddr != %s and ip.DstAddr != %s) or ip)"
+	const Filter64 = "outbound and ((ipv6 and ipv6.DstAddr != %s) or (ip and ip.DstAddr != %s))"
+	const Filter66 = "outbound and ((ipv6 and ipv6.DstAddr != %s and ipv6.DstAddr != %s) or ip)"
 
 	// ResovleIP is to resovle ip from url
 	ResolveIP := func(s string) (net.IP, error) {
@@ -127,11 +127,11 @@ func (c *Conf) prepare() error {
 		return nil
 	}
 	if len(proxyIP) == net.IPv4len && len(dnsIP) == net.IPv6len {
-		c.FilterString = fmt.Sprintf(Filter46, dnsIP, proxyIP)
+		c.FilterString = fmt.Sprintf(Filter64, dnsIP, proxyIP)
 		return nil
 	}
 	if len(proxyIP) == net.IPv6len && len(dnsIP) == net.IPv4len {
-		c.FilterString = fmt.Sprintf(Filter46, proxyIP, dnsIP)
+		c.FilterString = fmt.Sprintf(Filter64, proxyIP, dnsIP)
 		return nil
 	}
 	c.FilterString = fmt.Sprintf(Filter66, proxyIP, dnsIP)
