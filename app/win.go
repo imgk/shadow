@@ -26,7 +26,7 @@ import (
 // Run is ...
 func (app *App) Run() (err error) {
 	muName := windows.StringToUTF16Ptr("SHADOW-MUTEX")
-
+	// prevent openning more that one instance
 	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, muName)
 	if err == nil {
 		windows.CloseHandle(mutex)
@@ -79,16 +79,16 @@ func (app *App) Run() (err error) {
 	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	router.Handle("/admin/conns", http.Handler(handler.(*recorder.Handler)))
-	router.HandleFunc("/admin/proxy.pac", ServePAC)
+	router.Handle("/admin/conns", handler.(*recorder.Handler))
+	router.Handle("/admin/proxy.pac", NewPACForSocks5())
 
 	// new application filter
-	appFilter, err := NewAppFilter(app)
+	appFilter, err := NewAppFilter(app.Conf)
 	if err != nil {
 		return
 	}
 	// new ip filter
-	ipFilter, err := NewIPFilter(app)
+	ipFilter, err := NewIPFilter(app.Conf)
 	if err != nil {
 		return
 	}
@@ -105,7 +105,7 @@ func (app *App) Run() (err error) {
 	app.attachCloser(dev)
 
 	// new fake ip tree
-	tree, err := NewDomainTree(app)
+	tree, err := NewDomainTree(app.Conf)
 	if err != nil {
 		return
 	}
@@ -133,33 +133,33 @@ func (app *App) Run() (err error) {
 }
 
 // NewIPFilter is ...
-func NewIPFilter(app *App) (*filter.IPFilter, error) {
+func NewIPFilter(conf *Conf) (*filter.IPFilter, error) {
 	filter := filter.NewIPFilter()
 
 	filter.Lock()
-	for _, item := range app.Conf.IPCIDRRules.Proxy {
+	for _, item := range conf.IPCIDRRules.Proxy {
 		filter.UnsafeAdd(item)
 	}
 	filter.Unlock()
 
-	if len(app.Conf.GeoIP.Proxy) == 0 && len(app.Conf.GeoIP.Bypass) == 0 {
+	if len(conf.GeoIP.Proxy) == 0 && len(conf.GeoIP.Bypass) == 0 {
 		return filter, nil
 	}
-	err := filter.SetGeoIP(app.Conf.GeoIP.File, app.Conf.GeoIP.Proxy, app.Conf.GeoIP.Bypass, app.Conf.GeoIP.Final == "proxy")
+	err := filter.SetGeoIP(conf.GeoIP.File, conf.GeoIP.Proxy, conf.GeoIP.Bypass, conf.GeoIP.Final == "proxy")
 	return filter, err
 }
 
 // NewAppFilter is ...
-func NewAppFilter(app *App) (*filter.AppFilter, error) {
+func NewAppFilter(conf *Conf) (*filter.AppFilter, error) {
 	env := os.Getenv("SHADOW_PIDS")
-	if env == "" && len(app.Conf.AppRules.Proxy) == 0 {
+	if env == "" && len(conf.AppRules.Proxy) == 0 {
 		return nil, nil
 	}
 
 	filter := filter.NewAppFilter()
 
 	filter.Lock()
-	for _, item := range app.Conf.AppRules.Proxy {
+	for _, item := range conf.AppRules.Proxy {
 		filter.UnsafeAdd(item)
 	}
 	filter.Unlock()

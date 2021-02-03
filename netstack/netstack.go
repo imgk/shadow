@@ -125,7 +125,15 @@ func NewStack(handler gonet.Handler, resolver resolver.Resolver, tree *suffixtre
 
 // Start is ...
 func (s *Stack) Start(dev Device, lg logger.Logger) error {
-	return s.Stack.Start(dev.(core.Device), s, lg.(core.Logger))
+	device, ok := dev.(core.Device)
+	if !ok {
+		return errors.New("device type error")
+	}
+	logg, ok := lg.(core.Logger)
+	if !ok {
+		return errors.New("logger type error")
+	}
+	return s.Stack.Start(device, s, logg)
 }
 
 // Handle handles net.Conn
@@ -248,7 +256,7 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 					break
 				}
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			s.Error("read dns error: %v", err)
@@ -270,7 +278,7 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 		if m.MsgHdr.Response {
 			bb, err := m.PackBuffer(b[2:])
 			if err != nil {
-				s.Error("append message error: " + err.Error())
+				s.Error("append message error: %v", err)
 				continue
 			}
 			n = len(bb)
@@ -282,14 +290,14 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 						continue
 					}
 				}
-				s.Error("resolve dns error: " + err.Error())
+				s.Error("resolve dns error: %v", err)
 				continue
 			}
 			n = nr
 		}
 
 		if _, err := conn.WriteFrom(b[2:2+n], addr); err != nil {
-			s.Error("write dns error: " + err.Error())
+			s.Error("write dns error: %v", err)
 			break
 		}
 	}

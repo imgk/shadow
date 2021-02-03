@@ -24,13 +24,21 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
-// Stack is
+// Stack is ...
+// pure go netstack provided by gvisor.dev
 type Stack struct {
+	// Logger is ...
 	Logger
-	Device  Device
+	// Device is ...
+	// layer 2 device for reading and writing packets
+	Device Device
+	// Handler is ...
+	// handle tcp and udp connections
 	Handler Handler
-	Stack   *stack.Stack
+	// Stack is ...
+	Stack *stack.Stack
 
+	// UDP Table
 	mu    sync.RWMutex
 	conns map[string]*UDPConn
 }
@@ -59,6 +67,7 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error)
 		}
 	}(s.Stack)
 
+	// set NICID to 1
 	const NICID = tcpip.NICID(1)
 
 	// WithDefaultTTL sets the default TTL used by stack.
@@ -315,6 +324,7 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 		return true
 	}
 
+	// get route
 	netHdr := pkt.Network()
 	route, tcperr := s.Stack.FindRoute(
 		pkt.NICID,
@@ -359,7 +369,11 @@ func (s *Stack) Close() error {
 
 // Packet is ...
 type Packet struct {
+	// Addr is ...
+	// target address
 	Addr *net.UDPAddr
+	// Byte is ...
+	// packet payload
 	Byte []byte
 }
 

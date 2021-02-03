@@ -1,7 +1,6 @@
 package netstack
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -14,28 +13,29 @@ import (
 
 // LookupAddr converts fake ip to real domain address
 func (s *Stack) LookupAddr(addr net.Addr) (net.Addr, error) {
-	switch addr.(type) {
-	case *net.TCPAddr:
-		nAddr, err := s.LookupIP(addr.(*net.TCPAddr).IP)
+	if nAddr, ok := addr.(*net.TCPAddr); ok {
+		sAddr, err := s.LookupIP(nAddr.IP)
 		if err != nil {
 			return addr, err
 		}
-		buf := nAddr.Addr
-		binary.BigEndian.PutUint16(buf[len(buf)-2:], uint16(addr.(*net.TCPAddr).Port))
-		return nAddr, nil
-	case *net.UDPAddr:
-		nAddr, err := s.LookupIP(addr.(*net.UDPAddr).IP)
-		if err != nil {
-			return addr, err
-		}
-		buf := nAddr.Addr
-		binary.BigEndian.PutUint16(buf[len(buf)-2:], uint16(addr.(*net.UDPAddr).Port))
-		return nAddr, nil
-	case *socks.Addr:
-		return addr, nil
-	default:
-		return addr, errors.New("address not support")
+		sAddr.Addr = append(sAddr.Addr, byte(nAddr.Port>>8), byte(nAddr.Port))
+		return sAddr, nil
 	}
+
+	if nAddr, ok := addr.(*net.UDPAddr); ok {
+		sAddr, err := s.LookupIP(nAddr.IP)
+		if err != nil {
+			return addr, err
+		}
+		sAddr.Addr = append(sAddr.Addr, byte(nAddr.Port>>8), byte(nAddr.Port))
+		return sAddr, nil
+	}
+
+	if _, ok := addr.(*socks.Addr); ok {
+		return addr, nil
+	}
+
+	return addr, errors.New("address type not support")
 }
 
 var (
@@ -47,19 +47,14 @@ var (
 
 // LookupIP converts fake ip to real domain address
 func (s *Stack) LookupIP(addr net.IP) (*socks.Addr, error) {
-	if ip := addr.To4(); ip != nil {
-		if ip[0] != 198 || ip[1] != 18 {
+	if ipv4 := addr.To4(); ipv4 != nil {
+		if ipv4[0] != 198 || ipv4[1] != 18 {
 			return nil, ErrNotFake
 		}
-
-		if opt := s.tree.Load(fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ip[3], ip[2])); opt != nil {
-			de := opt.(*suffixtree.DomainEntry)
-
-			b := make([]byte, socks.MaxAddrLen)
-			b[0] = socks.AddrTypeDomain
-			b[1] = byte(len(de.PTR.Ptr))
-			n := copy(b[2:], de.PTR.Ptr[:])
-			return &socks.Addr{Addr: b[:2+n+2]}, nil
+		ss := fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ipv4[3], ipv4[2])
+		if de, ok := s.tree.Load(ss).(*suffixtree.DomainEntry); ok {
+			b := append(make([]byte, 0, socks.MaxAddrLen), socks.AddrTypeDomain, byte(len(de.PTR.Ptr)))
+			return &socks.Addr{Addr: append(b, de.PTR.Ptr[:]...)}, nil
 		}
 		return nil, ErrNotFound
 	}
@@ -68,12 +63,11 @@ func (s *Stack) LookupIP(addr net.IP) (*socks.Addr, error) {
 
 // HandleMessage handles dns.Msg
 func (s *Stack) HandleMessage(m *dns.Msg) {
-	opt := s.tree.Load(m.Question[0].Name)
-	if opt == nil {
+	de, ok := s.tree.Load(m.Question[0].Name).(*suffixtree.DomainEntry)
+	if !ok {
 		return
 	}
 
-	de := opt.(*suffixtree.DomainEntry)
 	switch m.Question[0].Qtype {
 	case dns.TypeA:
 		if de.A.Hdr.Ttl == 1 {

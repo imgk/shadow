@@ -49,8 +49,8 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	router.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	router.Handle("/admin/conns", http.Handler(handler.(*recorder.Handler)))
-	router.HandleFunc("/admin/proxy.pac", ServePAC)
+	router.Handle("/admin/conns", handler.(*recorder.Handler))
+	router.Handle("/admin/proxy.pac", NewPACForSocks5())
 
 	// new tun device
 	name := "utun"
@@ -76,7 +76,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 
 	// new fake ip tree
-	tree, err := NewDomainTree(app)
+	tree, err := NewDomainTree(app.Conf)
 	if err != nil {
 		return
 	}

@@ -7,6 +7,7 @@ import (
 )
 
 // Reader is for unix tun reading with 4 bytes prefix
+// for WinTun, there is no prefix
 type Reader interface {
 	Read([]byte, int) (int, error)
 }
@@ -31,6 +32,7 @@ func (e *timeoutError) Error() string   { return "i/o timeout" }
 func (e *timeoutError) Timeout() bool   { return true }
 func (e *timeoutError) Temporary() bool { return true }
 
+// deadlineTimer is ...
 type deadlineTimer struct {
 	// mu protects the fields below.
 	mu sync.Mutex
