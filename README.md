@@ -1,6 +1,6 @@
 # Shadow
 
-A shadowsocks, trojan and socks5 client for Windows, Linux and macOS.
+A shadowsocks, trojan, socks5 and http proxy client for Windows, Linux and macOS.
 
 ## How to build
 
@@ -29,7 +29,7 @@ go get -v -ldflags="-s -w" -trimpath -tags=shadow_divert
 ## How to use it
 
 ```
-->  ~ go/bin/shadow -h                  
+->  ~ go/bin/shadow -h
 Usage of /home/admin/go/bin/shadow:
   -c string
         config file (default "config.json")
