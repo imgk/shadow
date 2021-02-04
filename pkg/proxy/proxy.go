@@ -36,6 +36,7 @@ type Server struct {
 	Handler gonet.Handler
 
 	// ln is ...
+	// accept *Conn
 	ln *Listener
 	// Convert fake IP and handle connections
 	tree *suffixtree.DomainTree
@@ -69,6 +70,8 @@ func (s *Server) Serve() {
 			return
 		}
 		go func(c net.Conn) {
+			// do socks5 handshake or
+			// return http net.Conn
 			uc, b, ok, err := s.Handshake(c)
 			if err != nil {
 				s.Logger.Error("handshake error: %v", err)
@@ -220,12 +223,13 @@ func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, buf []byte) {
 
 	raddr := &socks.Addr{Addr: buf}
 	if uc != nil {
+		// handle accociate
 		defer uc.Close()
 
-		go func(conn net.Conn, uc *net.UDPConn) {
+		go func(c net.Conn, uc *net.UDPConn) {
 			b := make([]byte, 1)
 			for {
-				_, err := conn.Read(b)
+				_, err := c.Read(b)
 				if errors.Is(err, os.ErrDeadlineExceeded) {
 					break
 				}
@@ -264,15 +268,13 @@ func (s *Server) ProxyGet(w http.ResponseWriter, r *http.Request) {
 
 	src, dst := net.Pipe()
 	t := http.Transport{
-		Dial: func(network, addr string) (net.Conn, error) {
-			return src, nil
-		},
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return src, nil
 		},
 	}
-	defer dst.Close()
+	defer src.Close()
 
+	// handle http.MethodGet request
 	s.Logger.Info("proxyd %v <-TCP-> %v", r.RemoteAddr, addr)
 	go func(conn net.Conn, addr net.Addr) {
 		if err := s.Handler.Handle(conn, addr); err != nil {
@@ -280,12 +282,15 @@ func (s *Server) ProxyGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}(dst, addr)
 
+	// request http.Response
 	resp, err := t.RoundTrip(r)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
+	// copy header
+	// write response
 	for k, v := range resp.Header {
 		for _, vv := range v {
 			w.Header().Add(k, vv)
@@ -293,6 +298,7 @@ func (s *Server) ProxyGet(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 
+	// copy http.Response.Body
 	if _, err := gonet.Copy(w, resp.Body); err != nil {
 		if errors.Is(err, io.EOF) {
 			return
@@ -317,13 +323,14 @@ func (s *Server) ProxyConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rw, ok := w.(http.Hijacker)
+	// hijack underlying net.Conn
+	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		s.Logger.Error("not a http.Hijacker")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	conn, _, err := rw.Hijack()
+	conn, _, err := hijacker.Hijack()
 	if err != nil {
 		s.Logger.Error("http hijack error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
