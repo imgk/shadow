@@ -6,9 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
+	"log"
 	"time"
-	"unsafe"
 
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -18,42 +17,38 @@ import (
 	"github.com/imgk/shadow/device/windivert/filter"
 )
 
-const (
-	ProtocolTCP = 6
-	ProtocolUDP = 17
-)
-
+// Device is ...
 type Device struct {
-	address *divert.Address
-	handle  *divert.Handle
-
-	appFilter *filter.AppFilter
-	ipFilter  *filter.IPFilter
-	hijack    bool
-
-	r *io.PipeReader
-	w *io.PipeWriter
-
-	TCP4Map [65536]uint8
-	UDP4Map [65536]uint8
-	TCP6Map [65536]uint8
-	UDP6Map [65536]uint8
+	// Address is ...
+	Address *divert.Address
+	// Handle is ...
+	Handle *divert.Handle
+	// Filter is ...
+	Filter *PacketFilter
+	// Pipe is ...
+	Pipe struct {
+		// PipeReader is ...
+		*io.PipeReader
+		// PipeWriter is ...
+		*io.PipeWriter
+		// Event is ...
+		Event chan struct{}
+	}
 
 	closed chan struct{}
-	event  chan struct{}
 }
 
+// NewDevice is ...
 func NewDevice(filter string, appFilter *filter.AppFilter, ipFilter *filter.IPFilter, hijack bool) (dev *Device, err error) {
-	ifIdx, subIfIdx, er := GetInterfaceIndex()
-	if er != nil {
-		err = er
+	ifIdx, subIfIdx, err := GetInterfaceIndex()
+	if err != nil {
 		return
 	}
 
-	filter = fmt.Sprintf("ifIdx = %d and ", ifIdx) + filter
-	hd, er := divert.Open(filter, divert.LayerNetwork, divert.PriorityDefault, divert.FlagDefault)
-	if er != nil {
-		err = fmt.Errorf("open handle error: %w", er)
+	filter = fmt.Sprintf("ifIdx = %d and %s", ifIdx, filter)
+	hd, err := divert.Open(filter, divert.LayerNetwork, divert.PriorityDefault, divert.FlagDefault)
+	if err != nil {
+		err = fmt.Errorf("open handle error: %w", err)
 		return
 	}
 	defer func(hd *divert.Handle) {
@@ -75,74 +70,75 @@ func NewDevice(filter string, appFilter *filter.AppFilter, ipFilter *filter.IPFi
 		return
 	}
 
-	r, w := io.Pipe()
 	dev = &Device{
-		address:   new(divert.Address),
-		handle:    hd,
-		appFilter: appFilter,
-		ipFilter:  ipFilter,
-		hijack:    hijack,
-		r:         r,
-		w:         w,
-		closed:    make(chan struct{}),
-		event:     make(chan struct{}, 1),
+		Address: new(divert.Address),
+		Handle:  hd,
+		Filter: &PacketFilter{
+			AppFilter: appFilter,
+			IPFilter:  ipFilter,
+			Hijack:    hijack,
+			TCP4Table: make([]byte, 64<<10),
+			UDP4Table: make([]byte, 64<<10),
+			TCP6Table: make([]byte, 64<<10),
+			UDP6Table: make([]byte, 64<<10),
+			buff:      make([]byte, 32<<10),
+		},
+		closed: make(chan struct{}),
 	}
+	dev.Pipe.PipeReader, dev.Pipe.PipeWriter = io.Pipe()
+	dev.Pipe.Event = make(chan struct{}, 1)
 
-	nw := dev.address.Network()
+	nw := dev.Address.Network()
 	nw.InterfaceIndex = ifIdx
 	nw.SubInterfaceIndex = subIfIdx
 
-	go dev.writeLoop()
+	go dev.loop()
 
 	return
 }
 
+// DeviceType is ...
 func (d *Device) DeviceType() string {
 	return "WinDivert"
 }
 
-func (d *Device) Close() (err error) {
+// Close is ...
+func (d *Device) Close() error {
 	select {
 	case <-d.closed:
 		return nil
 	default:
 		close(d.closed)
 	}
-	defer func() {
-		if er := d.handle.Close(); er != nil {
-			err = fmt.Errorf("close handle error: %w", er)
-		}
-	}()
 
-	d.ipFilter.Close()
-	d.r.Close()
-	d.w.Close()
+	// close mmdb file
+	d.Filter.IPFilter.Close()
+	// close io.PipeReader and io.PipeWriter
+	d.Pipe.PipeReader.Close()
+	d.Pipe.PipeWriter.Close()
 
-	if err := d.handle.Shutdown(divert.ShutdownBoth); err != nil {
+	// close divert.Handle
+	if err := d.Handle.Shutdown(divert.ShutdownBoth); err != nil {
+		d.Handle.Close()
 		return fmt.Errorf("shutdown handle error: %w", err)
 	}
-	return
+	if err := d.Handle.Close(); err != nil {
+		return fmt.Errorf("close handle error: %w", err)
+	}
+	return nil
 }
 
+// WriteTo is ...
 func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 	addr := make([]divert.Address, divert.BatchMax)
 	buff := make([]byte, 1500*divert.BatchMax)
 
 	const flags = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5) | uint8(0x01<<3)
-
-	defer func() {
-		select {
-		case <-d.closed:
-			err = nil
-		default:
-		}
-	}()
-
 	for {
-		nb, nx, er := d.handle.RecvEx(buff, addr)
+		nb, nx, er := d.Handle.RecvEx(buff, addr)
 		if er != nil {
-			err = er
-			return
+			err = fmt.Errorf("handle recv error: %w", er)
+			break
 		}
 		if nb < 1 || nx < 1 {
 			continue
@@ -155,10 +151,10 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 			switch bb[0] >> 4 {
 			case ipv4.Version:
 				l := int(bb[2])<<8 | int(bb[3])
-				if d.CheckIPv4(bb) {
+				if d.Filter.CheckIPv4(bb) {
 					if _, ew := w.Write(bb[:l]); ew != nil {
 						err = ew
-						return
+						break
 					}
 					// set address flag to NoChecksum to avoid calculate checksum
 					addr[i].Flags |= flags
@@ -168,10 +164,10 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 				bb = bb[l:]
 			case ipv6.Version:
 				l := int(bb[4])<<8 | int(bb[5]) + ipv6.HeaderLen
-				if d.CheckIPv6(bb) {
+				if d.Filter.CheckIPv6(bb) {
 					if _, ew := w.Write(bb[:l]); ew != nil {
 						err = ew
-						return
+						break
 					}
 					// set address flag to NoChecksum to avoid calculate checksum
 					addr[i].Flags |= flags
@@ -181,354 +177,105 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 				bb = bb[l:]
 			default:
 				err = errors.New("invalid ip version")
-				return
+				break
 			}
 		}
 
-		d.handle.Lock()
-		_, ew := d.handle.SendEx(buff[:nb], addr[:nx])
-		d.handle.Unlock()
+		d.Handle.Lock()
+		_, ew := d.Handle.SendEx(buff[:nb], addr[:nx])
+		d.Handle.Unlock()
 		if ew == nil || errors.Is(ew, divert.ErrHostUnreachable) {
 			continue
 		}
 		err = ew
-		return
-	}
-}
-
-const (
-	FIN = 1 << 0
-	SYN = 1 << 1
-	RST = 1 << 2
-	PSH = 1 << 3
-	ACK = 1 << 4
-	UGR = 1 << 5
-	ECE = 1 << 6
-	CWR = 1 << 7
-)
-
-func (d *Device) CheckIPv4(b []byte) bool {
-	switch b[9] {
-	case ProtocolTCP:
-		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
-		switch d.TCP4Map[p] {
-		case 0:
-			if b[ipv4.HeaderLen+13]&SYN != SYN {
-				d.TCP4Map[p] = 1
-				return false
-			}
-
-			if d.ipFilter.Lookup(net.IP(b[16:20])) {
-				d.TCP4Map[p] = 2
-				return true
-			}
-
-			if d.CheckTCP4ByPID(b) {
-				d.TCP4Map[p] = 2
-				return true
-			}
-
-			d.TCP4Map[p] = 1
-			return false
-		case 1:
-			if b[ipv4.HeaderLen+13]&FIN == FIN {
-				d.TCP4Map[p] = 0
-			}
-
-			return false
-		case 2:
-			if b[ipv4.HeaderLen+13]&FIN == FIN {
-				d.TCP4Map[p] = 0
-			}
-
-			return true
-		}
-	case ProtocolUDP:
-		p := uint32(b[ipv4.HeaderLen])<<8 | uint32(b[ipv4.HeaderLen+1])
-
-		switch d.UDP4Map[p] {
-		case 0:
-			fn := func() { d.UDP4Map[p] = 0 }
-
-			if d.ipFilter.Lookup(net.IP(b[16:20])) {
-				d.UDP4Map[p] = 2
-				time.AfterFunc(time.Minute, fn)
-				return true
-			}
-
-			if d.CheckUDP4ByPID(b) {
-				d.UDP4Map[p] = 2
-				time.AfterFunc(time.Minute, fn)
-				return true
-			}
-
-			if (uint32(b[ipv4.HeaderLen+2])<<8|uint32(b[ipv4.HeaderLen+3])) == 53 && d.hijack {
-				return true
-			}
-
-			d.UDP4Map[p] = 1
-			time.AfterFunc(time.Minute, fn)
-
-			return false
-		case 1:
-			return false
-		case 2:
-			return true
-		}
-	default:
-		return d.ipFilter.Lookup(net.IP(b[16:20]))
+		break
 	}
 
-	return false
-}
-
-func (d *Device) CheckTCP4ByPID(b []byte) bool {
-	if d.appFilter == nil {
-		return false
-	}
-
-	rs, err := filter.GetTCPTable()
 	if err != nil {
-		return false
-	}
-
-	p := uint32(b[ipv4.HeaderLen]) | uint32(b[ipv4.HeaderLen+1])<<8
-
-	for i := range rs {
-		if rs[i].LocalPort == p {
-			if *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr {
-				return d.appFilter.Lookup(rs[i].OwningPid)
-			}
+		select {
+		case <-d.closed:
+			err = nil
+		default:
 		}
 	}
-
-	return false
+	return
 }
 
-func (d *Device) CheckUDP4ByPID(b []byte) bool {
-	if d.appFilter == nil {
-		return false
-	}
-
-	rs, err := filter.GetUDPTable()
-	if err != nil {
-		return false
-	}
-
-	p := uint32(b[ipv4.HeaderLen]) | uint32(b[ipv4.HeaderLen+1])<<8
-
-	for i := range rs {
-		if rs[i].LocalPort == p {
-			if 0 == rs[i].LocalAddr || *(*uint32)(unsafe.Pointer(&b[12])) == rs[i].LocalAddr {
-				return d.appFilter.Lookup(rs[i].OwningPid)
-			}
-		}
-	}
-
-	return false
-}
-
-func (d *Device) CheckIPv6(b []byte) bool {
-	switch b[6] {
-	case ProtocolTCP:
-		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
-		switch d.TCP6Map[p] {
-		case 0:
-			if b[ipv6.HeaderLen+13]&SYN != SYN {
-				d.TCP6Map[p] = 1
-				return false
-			}
-
-			if d.ipFilter.Lookup(net.IP(b[24:40])) {
-				d.TCP6Map[p] = 2
-				return true
-			}
-
-			if d.CheckTCP6ByPID(b) {
-				d.TCP6Map[p] = 2
-				return true
-			}
-
-			d.TCP6Map[p] = 1
-			return false
-		case 1:
-			if b[ipv6.HeaderLen+13]&FIN == FIN {
-				d.TCP6Map[p] = 0
-			}
-
-			return false
-		case 2:
-			if b[ipv6.HeaderLen+13]&FIN == FIN {
-				d.TCP6Map[p] = 0
-			}
-
-			return true
-		}
-	case ProtocolUDP:
-		p := uint32(b[ipv6.HeaderLen])<<8 | uint32(b[ipv6.HeaderLen+1])
-
-		switch d.UDP6Map[p] {
-		case 0:
-			fn := func() { d.UDP6Map[p] = 0 }
-
-			if d.ipFilter.Lookup(net.IP(b[24:40])) {
-				d.UDP6Map[p] = 2
-				time.AfterFunc(time.Minute, fn)
-				return true
-			}
-
-			if d.CheckUDP6ByPID(b) {
-				d.UDP6Map[p] = 2
-				time.AfterFunc(time.Minute, fn)
-				return true
-			}
-
-			if (uint32(b[ipv6.HeaderLen+2])<<8|uint32(b[ipv6.HeaderLen+3])) == 53 && d.hijack {
-				return true
-			}
-
-			d.UDP6Map[p] = 1
-			time.AfterFunc(time.Minute, fn)
-			return false
-		case 1:
-			return false
-		case 2:
-			return true
-		}
-	default:
-		return d.ipFilter.Lookup(net.IP(b[24:40]))
-	}
-
-	return false
-}
-
-func (d *Device) CheckTCP6ByPID(b []byte) bool {
-	if d.appFilter == nil {
-		return false
-	}
-
-	rs, err := filter.GetTCP6Table()
-	if err != nil {
-		return false
-	}
-
-	p := uint32(b[ipv6.HeaderLen]) | uint32(b[ipv6.HeaderLen+1])<<8
-	a := *(*[4]uint32)(unsafe.Pointer(&b[8]))
-
-	for i := range rs {
-		if rs[i].LocalPort == p {
-			if a[0] == rs[i].LocalAddr[0] && a[1] == rs[i].LocalAddr[1] && a[2] == rs[i].LocalAddr[2] && a[3] == rs[i].LocalAddr[3] {
-				return d.appFilter.Lookup(rs[i].OwningPid)
-			}
-		}
-	}
-
-	return false
-}
-
-func (d *Device) CheckUDP6ByPID(b []byte) bool {
-	if d.appFilter == nil {
-		return false
-	}
-
-	rs, err := filter.GetUDP6Table()
-	if err != nil {
-		return false
-	}
-
-	p := uint32(b[ipv6.HeaderLen]) | uint32(b[ipv6.HeaderLen+1])<<8
-	a := *(*[4]uint32)(unsafe.Pointer(&b[0]))
-
-	for i := range rs {
-		if rs[i].LocalPort == p {
-			if (0 == rs[i].LocalAddr[0] && 0 == rs[i].LocalAddr[1] && 0 == rs[i].LocalAddr[2] && 0 == rs[i].LocalAddr[3]) || (a[0] == rs[i].LocalAddr[0] && a[1] == rs[i].LocalAddr[1] && a[2] == rs[i].LocalAddr[2] && a[3] == rs[i].LocalAddr[3]) {
-				return d.appFilter.Lookup(rs[i].OwningPid)
-			}
-		}
-	}
-
-	return false
-}
-
-func (d *Device) writeLoop() {
+// loop is ...
+func (d *Device) loop() (err error) {
 	t := time.NewTicker(time.Millisecond)
 	defer t.Stop()
 
-	const f = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5)
+	const flags = uint8(0x01<<7) | uint8(0x01<<6) | uint8(0x01<<5)
 
-	a := make([]divert.Address, divert.BatchMax)
-	b := make([]byte, 1500*divert.BatchMax)
+	addr := make([]divert.Address, divert.BatchMax)
+	buff := make([]byte, 1500*divert.BatchMax)
 
-	for i := range a {
-		a[i] = *d.address
-		a[i].Flags |= f
+	for i := range addr {
+		addr[i] = *d.Address
+		addr[i].Flags |= flags
 	}
 
-	n, m := 0, 0
+	nb, nx := 0, 0
+LOOP:
 	for {
 		select {
 		case <-t.C:
-			if m > 0 {
-				d.handle.Lock()
-				_, err := d.handle.SendEx(b[:n], a[:m])
-				d.handle.Unlock()
-				if err != nil {
-					select {
-					case <-d.closed:
-					default:
-						panic(fmt.Errorf("device writeLoop error: %v", err))
-					}
-
-					return
+			if nx > 0 {
+				d.Handle.Lock()
+				_, ew := d.Handle.SendEx(buff[:nb], addr[:nx])
+				d.Handle.Unlock()
+				if ew != nil {
+					err = fmt.Errorf("device loop error: %w", ew)
+					break LOOP
 				}
-
-				n, m = 0, 0
+				nb, nx = 0, 0
 			}
-		case <-d.event:
-			nr, err := d.r.Read(b[n:])
-			if err != nil {
-				select {
-				case <-d.closed:
-				default:
-					panic(fmt.Errorf("device writeLoop error: %v", err))
-				}
-
-				return
+		case <-d.Pipe.Event:
+			nr, er := d.Pipe.Read(buff[nb:])
+			if er != nil {
+				err = fmt.Errorf("device loop error: %w", er)
+				break LOOP
 			}
 
-			n += nr
-			m++
+			nb += nr
+			nx++
 
-			if m == divert.BatchMax {
-				d.handle.Lock()
-				_, err := d.handle.SendEx(b[:n], a[:m])
-				d.handle.Unlock()
-				if err != nil {
-					select {
-					case <-d.closed:
-					default:
-						panic(fmt.Errorf("device writeLoop error: %v", err))
-					}
-
-					return
-				}
-
-				n, m = 0, 0
+			if nx < divert.BatchMax {
+				continue
 			}
+
+			d.Handle.Lock()
+			_, ew := d.Handle.SendEx(buff[:nb], addr[:nx])
+			d.Handle.Unlock()
+			if ew != nil {
+				err = fmt.Errorf("device loop error: %w", ew)
+				break LOOP
+			}
+			nb, nx = 0, 0
 		case <-d.closed:
 			return
 		}
 	}
+	if err != nil {
+		select {
+		case <-d.closed:
+		default:
+			log.Panic(err)
+		}
+	}
+	return nil
 }
 
+// Write is ...
 func (d *Device) Write(b []byte) (int, error) {
 	select {
 	case <-d.closed:
 		return 0, io.EOF
-	case d.event <- struct{}{}:
+	case d.Pipe.Event <- struct{}{}:
 	}
 
-	n, err := d.w.Write(b)
+	n, err := d.Pipe.Write(b)
 	if err != nil {
 		select {
 		case <-d.closed:

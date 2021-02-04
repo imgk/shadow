@@ -15,28 +15,28 @@ var (
 	getExtendedUdpTable = iphlpapi.MustFindProc("GetExtendedUdpTable")
 )
 
-func GetTCPTable() ([]TCPRow, error) {
-	b, err := GetExtendedTcpTable(0, windows.AF_INET, 4 /* TCP_TABLE_OWNER_PID_CONNECTIONS */)
+// GetTCPTable is ...
+func GetTCPTable(buf []byte) ([]TCPRow, error) {
+	b, err := GetExtendedTcpTable(0, windows.AF_INET, 4 /* TCP_TABLE_OWNER_PID_CONNECTIONS */, buf)
 	if err != nil {
 		return nil, err
 	}
-
 	t := (*TCPTable)(unsafe.Pointer(&b[0]))
-
 	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.table)),
-		Len:  int(t.n),
-		Cap:  int(t.n),
+		Data: uintptr(unsafe.Pointer(&t.Table)),
+		Len:  int(t.Len),
+		Cap:  int(t.Len),
 	}
-
 	return *(*[]TCPRow)(unsafe.Pointer(h)), nil
 }
 
+// TCPTable is ...
 type TCPTable struct {
-	n     uint32
-	table [1]TCPRow
+	Len   uint32
+	Table [1]TCPRow
 }
 
+// TCPRow is ...
 type TCPRow struct {
 	State      uint32
 	LocalAddr  uint32
@@ -46,28 +46,28 @@ type TCPRow struct {
 	OwningPid  uint32
 }
 
-func GetTCP6Table() ([]TCP6Row, error) {
-	b, err := GetExtendedTcpTable(0, windows.AF_INET6, 4 /* TCP_TABLE_OWNER_PID_CONNECTIONS */)
+// GetTCP6Table is ...
+func GetTCP6Table(buf []byte) ([]TCP6Row, error) {
+	b, err := GetExtendedTcpTable(0, windows.AF_INET6, 4 /* TCP_TABLE_OWNER_PID_CONNECTIONS */, buf)
 	if err != nil {
 		return nil, err
 	}
-
 	t := (*TCP6Table)(unsafe.Pointer(&b[0]))
-
 	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.table)),
-		Len:  int(t.n),
-		Cap:  int(t.n),
+		Data: uintptr(unsafe.Pointer(&t.Table)),
+		Len:  int(t.Len),
+		Cap:  int(t.Len),
 	}
-
 	return *(*[]TCP6Row)(unsafe.Pointer(h)), nil
 }
 
+// TCP6Table is ...
 type TCP6Table struct {
-	n     uint32
-	table [1]TCP6Row
+	Len   uint32
+	Table [1]TCP6Row
 }
 
+// TCP6Row is ...
 type TCP6Row struct {
 	LocalAddr     [4]uint32
 	LocalScopeId  uint32
@@ -79,10 +79,10 @@ type TCP6Row struct {
 	OwningPid     uint32
 }
 
-func GetExtendedTcpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, error) {
-	var buffer []byte
-	var pTcpTable *byte
-	var dwSize uint32
+// GetExtendedTcpTable is ...
+func GetExtendedTcpTable(order uint32, ulAf uint32, tableClass uint32, buf []byte) ([]byte, error) {
+	pTcpTable := &buf[0]
+	dwSize := uint32(len(buf))
 
 	for {
 		// DWORD GetExtendedTcpTable(
@@ -105,68 +105,66 @@ func GetExtendedTcpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, 
 
 		if ret != windows.NO_ERROR {
 			if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
-				buffer = make([]byte, dwSize)
-				pTcpTable = &buffer[0]
+				buf = make([]byte, dwSize)
+				pTcpTable = &buf[0]
 				continue
 			}
-
 			return nil, errno
 		}
-
-		return buffer, nil
+		return buf, nil
 	}
 }
 
-func GetUDPTable() ([]UDPRow, error) {
-	b, err := GetExtendedUdpTable(0, windows.AF_INET, 1 /* UDP_TABLE_OWNER_PID */)
+// GetUDPTable is ...
+func GetUDPTable(buf []byte) ([]UDPRow, error) {
+	b, err := GetExtendedUdpTable(0, windows.AF_INET, 1 /* UDP_TABLE_OWNER_PID */, buf)
 	if err != nil {
 		return nil, err
 	}
-
 	t := (*UDPTable)(unsafe.Pointer(&b[0]))
-
 	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.table)),
-		Len:  int(t.n),
-		Cap:  int(t.n),
+		Data: uintptr(unsafe.Pointer(&t.Table)),
+		Len:  int(t.Len),
+		Cap:  int(t.Len),
 	}
-
 	return *(*[]UDPRow)(unsafe.Pointer(h)), nil
 }
 
+// UDPTable is ...
 type UDPTable struct {
-	n     uint32
-	table [1]UDPRow
+	Len   uint32
+	Table [1]UDPRow
 }
 
+// UDPRow is ...
 type UDPRow struct {
 	LocalAddr uint32
 	LocalPort uint32
 	OwningPid uint32
 }
 
-func GetUDP6Table() ([]UDP6Row, error) {
-	b, err := GetExtendedUdpTable(0, windows.AF_INET6, 1 /* UDP_TABLE_OWNER_PID */)
+// GetUDP6Table is ...
+func GetUDP6Table(buf []byte) ([]UDP6Row, error) {
+	b, err := GetExtendedUdpTable(0, windows.AF_INET6, 1 /* UDP_TABLE_OWNER_PID */, buf)
 	if err != nil {
 		return nil, err
 	}
-
 	t := (*UDP6Table)(unsafe.Pointer(&b[0]))
-
 	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.table)),
-		Len:  int(t.n),
-		Cap:  int(t.n),
+		Data: uintptr(unsafe.Pointer(&t.Table)),
+		Len:  int(t.Len),
+		Cap:  int(t.Len),
 	}
-
 	return *(*[]UDP6Row)(unsafe.Pointer(h)), nil
 }
 
+// UDP6Table is ...
 type UDP6Table struct {
-	n     uint32
-	table [1]UDP6Row
+	Len    uint32
+	Table [1]UDP6Row
 }
 
+// UDP6Row is ...
 type UDP6Row struct {
 	LocalAddr    [4]uint32
 	LocalScopeId uint32
@@ -174,10 +172,10 @@ type UDP6Row struct {
 	OwningPid    uint32
 }
 
-func GetExtendedUdpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, error) {
-	var buffer []byte
-	var pUdpTable *byte
-	var dwSize uint32
+// GetExtendedUdpTable is ...
+func GetExtendedUdpTable(order uint32, ulAf uint32, tableClass uint32, buf []byte) ([]byte, error) {
+	pUdpTable := &buf[0]
+	dwSize := uint32(len(buf))
 
 	for {
 		// DWORD GetExtendedUdpTable(
@@ -200,14 +198,12 @@ func GetExtendedUdpTable(order uint32, ulAf uint32, tableClass uint32) ([]byte, 
 
 		if ret != windows.NO_ERROR {
 			if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
-				buffer = make([]byte, dwSize)
-				pUdpTable = &buffer[0]
+				buf = make([]byte, dwSize)
+				pUdpTable = &buf[0]
 				continue
 			}
-
 			return nil, errno
 		}
-
-		return buffer, nil
+		return buf, nil
 	}
 }

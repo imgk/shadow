@@ -16,8 +16,8 @@ var (
 	queryFullProcessImageNameW = kernel32.MustFindProc("QueryFullProcessImageNameW")
 )
 
-func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, err error) {
-	b := make([]uint16, windows.MAX_PATH)
+// QueryFullProcessImageName is ...
+func QueryFullProcessImageName(process windows.Handle, flags uint32, b []uint16) (s string, err error) {
 	n := uint32(windows.MAX_PATH)
 
 	// BOOL QueryFullProcessImageNameA(
@@ -35,21 +35,21 @@ func QueryFullProcessImageName(process windows.Handle, flags uint32) (s string, 
 	)
 	if ret == 0 {
 		err = errno
+		return
 	}
-	if err == nil {
-		s = windows.UTF16ToString(b[:n])
-	}
+	s = windows.UTF16ToString(b[:n])
 	return
 }
 
-func QueryNameByPID(pid uint32) (string, error) {
-	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+// QueryNameByPID is ...
+func QueryNameByPID(id uint32, b []uint16) (string, error) {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, id)
 	if err != nil {
 		return "", fmt.Errorf("open process error: %w", err)
 	}
 	defer windows.CloseHandle(h)
 
-	path, err := QueryFullProcessImageName(h, 0)
+	path, err := QueryFullProcessImageName(h, 0, b)
 	if err != nil {
 		return "", fmt.Errorf("query full process name error: %w", err)
 	}
@@ -58,49 +58,61 @@ func QueryNameByPID(pid uint32) (string, error) {
 	return file, nil
 }
 
+// AppFilter is ...
 type AppFilter struct {
+	// RWMutex is ...
 	sync.RWMutex
-	pids map[uint32]struct{}
-	apps map[string]struct{}
+	// PIDs is ...
+	PIDs map[uint32]struct{}
+	// Apps
+	Apps map[string]struct{}
+
+	buff []uint16
 }
 
+// NewAppFilter is ...
 func NewAppFilter() *AppFilter {
 	f := &AppFilter{
 		RWMutex: sync.RWMutex{},
-		pids:    make(map[uint32]struct{}),
-		apps:    make(map[string]struct{}),
+		PIDs:    make(map[uint32]struct{}),
+		Apps:    make(map[string]struct{}),
+		buff:    make([]uint16, windows.MAX_PATH),
 	}
 	return f
 }
 
-func (f *AppFilter) SetPIDs(pids []uint32) {
+// SetPIDs is ...
+func (f *AppFilter) SetPIDs(ids []uint32) {
 	f.Lock()
-	for _, v := range pids {
-		f.pids[v] = struct{}{}
+	for _, v := range ids {
+		f.PIDs[v] = struct{}{}
 	}
 	f.Unlock()
 }
 
+// Add is ...
 func (f *AppFilter) Add(s string) {
 	f.Lock()
 	f.UnsafeAdd(s)
 	f.Unlock()
 }
 
+// UnsafeAdd is ...
 func (f *AppFilter) UnsafeAdd(s string) {
-	f.apps[s] = struct{}{}
+	f.Apps[s] = struct{}{}
 }
 
-func (f *AppFilter) Lookup(pid uint32) bool {
+// Lookup is ...
+func (f *AppFilter) Lookup(id uint32) bool {
 	f.RLock()
 	defer f.RUnlock()
 
-	if _, ok := f.pids[pid]; ok {
+	if _, ok := f.PIDs[id]; ok {
 		return true
 	}
 
-	file, _ := QueryNameByPID(pid)
-	if _, ok := f.apps[file]; ok {
+	file, _ := QueryNameByPID(id, f.buff)
+	if _, ok := f.Apps[file]; ok {
 		return true
 	}
 

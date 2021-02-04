@@ -102,6 +102,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 
 // Stack is core.Handler
 type Stack struct {
+	// Stack is ...
 	core.Stack
 	handler gonet.Handler
 
@@ -140,22 +141,17 @@ func (s *Stack) Start(dev Device, lg logger.Logger) error {
 func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 	addr, err := s.LookupAddr(target)
 	if err == ErrNotFake {
-		if ip := target.IP.To4(); ip != nil {
-			if (ip[0] == 224) ||
-				(ip[0] == 255 && ip[1] == 255 && ip[2] == 255 && ip[3] == 255) ||
-				(ip[0] == 239 && ip[1] == 255 && ip[2] == 255 && ip[3] == 250) ||
-				(ip[0] == 10) ||
-				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
-				(ip[0] == 192 && ip[1] == 168) ||
-				(ip[0] == 169 && ip[1] == 254) {
+		if ipv4 := target.IP.To4(); ipv4 != nil {
+			if ipv4[0] == 224 ||
+				(ipv4[0] == 255 && ipv4[1] == 255 && ipv4[2] == 255 && ipv4[3] == 255) ||
+				(ipv4[0] == 239 && ipv4[1] == 255 && ipv4[2] == 255 && ipv4[3] == 250) {
 				s.Info("ignore conns to %v", target)
 				conn.Close()
 				return
 			}
 		} else {
-			ip := target.IP.To16()
-			if ip[0] == 0xfe && ip[1] == 0x80 ||
-				(ip[0] == 0xff && ip[1] == 0x02) {
+			ipv6 := target.IP.To16()
+			if ipv6[0] == 0xff && ipv6[1] == 0x02 {
 				s.Info("ignore conns to %v", target)
 				conn.Close()
 				return
@@ -202,22 +198,17 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 			s.HandleQuery(conn)
 			return
 		}
-		if ip := target.IP.To4(); ip != nil {
-			if (ip[0] == 224) ||
-				(ip[0] == 255 && ip[1] == 255 && ip[2] == 255 && ip[3] == 255) ||
-				(ip[0] == 239 && ip[1] == 255 && ip[2] == 255 && ip[3] == 250) ||
-				(ip[0] == 10) ||
-				(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) ||
-				(ip[0] == 192 && ip[1] == 168) ||
-				(ip[0] == 169 && ip[1] == 254) {
+		if ipv4 := target.IP.To4(); ipv4 != nil {
+			if ipv4[0] == 224 ||
+				(ipv4[0] == 255 && ipv4[1] == 255 && ipv4[2] == 255 && ipv4[3] == 255) ||
+				(ipv4[0] == 239 && ipv4[1] == 255 && ipv4[2] == 255 && ipv4[3] == 250) {
 				s.Info("ignore packets to %v", target)
 				conn.Close()
 				return
 			}
 		} else {
-			ip := target.IP.To16()
-			if ip[0] == 0xfe && ip[1] == 0x80 ||
-				(ip[0] == 0xff && ip[1] == 0x02) {
+			ipv6 := target.IP.To16()
+			if ipv6[0] == 0xff && ipv6[1] == 0x02 {
 				s.Info("ignore packets to %v", target)
 				conn.Close()
 				return
