@@ -1,6 +1,6 @@
 // +build windows
 
-package windivert
+package divert
 
 import (
 	"net"
@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/imgk/shadow/device/windivert/filter"
+	"github.com/imgk/shadow/pkg/divert/filter"
 )
 
 const (

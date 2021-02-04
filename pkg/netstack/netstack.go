@@ -9,9 +9,9 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/imgk/shadow/netstack/core"
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/logger"
+	"github.com/imgk/shadow/pkg/netstack/core"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/pkg/socks"

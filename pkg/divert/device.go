@@ -1,6 +1,6 @@
 // +build windows
 
-package windivert
+package divert
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ import (
 
 	"github.com/imgk/divert-go"
 
-	"github.com/imgk/shadow/device/windivert/filter"
+	"github.com/imgk/shadow/pkg/divert/filter"
 )
 
 // Device is ...

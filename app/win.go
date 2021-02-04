@@ -14,10 +14,10 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/imgk/shadow/device/windivert"
-	"github.com/imgk/shadow/device/windivert/filter"
-	"github.com/imgk/shadow/netstack"
+	"github.com/imgk/shadow/pkg/divert"
+	"github.com/imgk/shadow/pkg/divert/filter"
 	"github.com/imgk/shadow/pkg/handler/recorder"
+	"github.com/imgk/shadow/pkg/netstack"
 	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/protocol"
@@ -98,7 +98,7 @@ func (app *App) Run() (err error) {
 		}
 	}()
 	// new windivert device
-	dev, err := windivert.NewDevice(app.Conf.FilterString, appFilter, ipFilter, true)
+	dev, err := divert.NewDevice(app.Conf.FilterString, appFilter, ipFilter, true)
 	if err != nil {
 		return fmt.Errorf("windivert error: %w", err)
 	}

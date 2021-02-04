@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/imgk/shadow/device/tun"
-	"github.com/imgk/shadow/netstack"
 	"github.com/imgk/shadow/pkg/handler/recorder"
+	"github.com/imgk/shadow/pkg/netstack"
 	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
+	"github.com/imgk/shadow/pkg/tun"
 	"github.com/imgk/shadow/protocol"
 )
 

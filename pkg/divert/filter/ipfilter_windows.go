@@ -9,7 +9,7 @@ import (
 
 	"github.com/oschwald/maxminddb-golang"
 
-	"github.com/imgk/shadow/device/windivert/filter/iptree"
+	"github.com/imgk/shadow/pkg/divert/filter/iptree"
 )
 
 // IPFilter is ...
