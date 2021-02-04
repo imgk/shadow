@@ -223,9 +223,10 @@ func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, buf []byte) {
 
 	raddr := &socks.Addr{Addr: buf}
 	if uc != nil {
-		// handle accociate
+		// handle associate
 		defer uc.Close()
 
+		// stop handle net.UDPConn if net.Conn is closed
 		go func(c net.Conn, uc *net.UDPConn) {
 			b := make([]byte, 1)
 			for {

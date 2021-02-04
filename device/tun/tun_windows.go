@@ -5,6 +5,7 @@ package tun
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"io"
 	"net"
 	"sort"
@@ -17,6 +18,8 @@ import (
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
 
+// determineGUID is ...
+// generate GUID from tun name
 func determineGUID(name string) *windows.GUID {
 	b := make([]byte, unsafe.Sizeof(windows.GUID{}))
 	if _, err := io.ReadFull(hkdf.New(md5.New, []byte(name), nil, nil), b); err != nil {
@@ -25,22 +28,35 @@ func determineGUID(name string) *windows.GUID {
 	return (*windows.GUID)(unsafe.Pointer(&b[0]))
 }
 
+// Device is ...
 type Device struct {
+	// NativeTun is ...
 	*tun.NativeTun
-	Name  string
-	MTU   int
+	// Name is ...
+	Name string
+	// MTU is ...
+	MTU int
+	// Conf4 is ...
 	Conf4 struct {
-		Addr    [4]byte
-		Mask    [4]byte
+		// Addr is ...
+		Addr [4]byte
+		// Mask is ...
+		Mask [4]byte
+		// Gateway is ...
 		Gateway [4]byte
 	}
+	// Conf6 is ...
 	Conf6 struct {
-		Addr    [16]byte
-		Mask    [16]byte
+		// Addr is ...
+		Addr [16]byte
+		// Mask is ...
+		Mask [16]byte
+		// Gateway is ...
 		Gateway [16]byte
 	}
 }
 
+// CreateTUN is ...
 func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	dev = &Device{}
 	device, err := tun.CreateTUNWithRequestedGUID(name, determineGUID(name), mtu)
@@ -57,14 +73,17 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 	return
 }
 
+// DeviceType is ...
 func (d *Device) DeviceType() string {
 	return "WinTun"
 }
 
+// Write is ...
 func (d *Device) Write(b []byte) (int, error) {
 	return d.NativeTun.Write(b, 0)
 }
 
+// cleanupAddressesOnDisconnectedInterfaces is ...
 //https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L22-L58
 func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, addresses []net.IPNet) {
 	if len(addresses) == 0 {
@@ -103,6 +122,7 @@ func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, add
 	}
 }
 
+// setInterfaceAddress4 is ...
 //https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L60-L168
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
@@ -113,7 +133,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 	})
 
 	err := luid.SetIPAddressesForFamily(windows.AF_INET, addresses)
-	if err == windows.ERROR_OBJECT_ALREADY_EXISTS {
+	if errors.Is(err, windows.ERROR_OBJECT_ALREADY_EXISTS) {
 		cleanupAddressesOnDisconnectedInterfaces(windows.AF_INET, addresses)
 		err = luid.SetIPAddressesForFamily(windows.AF_INET, addresses)
 	}
@@ -125,6 +145,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 	return err
 }
 
+// setInterfaceAddress6 is ...
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
@@ -134,7 +155,7 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	})
 
 	err := luid.SetIPAddressesForFamily(windows.AF_INET6, addresses)
-	if err == windows.ERROR_OBJECT_ALREADY_EXISTS {
+	if errors.Is(err, windows.ERROR_OBJECT_ALREADY_EXISTS) {
 		cleanupAddressesOnDisconnectedInterfaces(windows.AF_INET6, addresses)
 		err = luid.SetIPAddressesForFamily(windows.AF_INET6, addresses)
 	}
@@ -146,10 +167,12 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	return err
 }
 
+// Activate is ...
 func (d *Device) Activate() error {
 	return nil
 }
 
+// addRouteEntry is ...
 func (d *Device) addRouteEntry4(cidr []string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
@@ -186,6 +209,7 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	return luid.SetRoutesForFamily(windows.AF_INET, deduplicatedRoutes)
 }
 
+// addRouteEntry6 is ...
 func (d *Device) addRouteEntry6(cidr []string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 

@@ -12,6 +12,7 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 )
 
+// NewUnmonitoredDeviceFromFD is ...
 func NewUnmonitoredDeviceFromFD(fd int, mtu int) (dev *Device, err error) {
 	dev = &Device{}
 	device, _, err := tun.CreateUnmonitoredTUNFromFD(fd)
@@ -26,15 +27,17 @@ func NewUnmonitoredDeviceFromFD(fd int, mtu int) (dev *Device, err error) {
 	return
 }
 
+// in6_addr
 type in6_addr struct {
 	addr [16]byte
 }
 
+// setInterfaceAddress4 is ...
 // https://github.com/daaku/go.ip/blob/master/ip.go
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
-	d.Conf4.Addr = Parse4(addr)
-	d.Conf4.Mask = Parse4(mask)
-	d.Conf4.Gateway = Parse4(gateway)
+	d.Conf4.Addr = parse4(addr)
+	d.Conf4.Mask = parse4(mask)
+	d.Conf4.Gateway = parse4(gateway)
 
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
@@ -42,6 +45,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 	}
 	defer unix.Close(fd)
 
+	// ifreq_addr is ...
 	type ifreq_addr struct {
 		ifr_name [unix.IFNAMSIZ]byte
 		ifr_addr unix.RawSockaddrInet4
@@ -53,7 +57,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 			Family: unix.AF_INET,
 		},
 	}
-	copy(ifra.ifr_name[:], []byte(d.Name))
+	copy(ifra.ifr_name[:], d.Name[:])
 
 	ifra.ifr_addr.Addr = d.Conf4.Addr
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCSIFADDR, uintptr(unsafe.Pointer(&ifra))); errno != 0 {
@@ -68,10 +72,11 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 	return nil
 }
 
+// setInterfaceAddres6 is ...
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
-	d.Conf6.Addr = Parse6(addr)
-	d.Conf6.Mask = Parse6(mask)
-	d.Conf6.Gateway = Parse6(gateway)
+	d.Conf6.Addr = parse6(addr)
+	d.Conf6.Mask = parse6(mask)
+	d.Conf6.Gateway = parse6(gateway)
 
 	fd, err := unix.Socket(unix.AF_INET6, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
@@ -79,6 +84,7 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	}
 	defer unix.Close(fd)
 
+	// ifreq_ifindex is ...
 	type ifreq_ifindex struct {
 		ifr_name    [unix.IFNAMSIZ]byte
 		ifr_ifindex int32
@@ -86,12 +92,13 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	}
 
 	ifrf := ifreq_ifindex{}
-	copy(ifrf.ifr_name[:], []byte(d.Name))
+	copy(ifrf.ifr_name[:], d.Name[:])
 
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCGIFINDEX, uintptr(unsafe.Pointer(&ifrf))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCGIFINDEX", errno)
 	}
 
+	// in6_ifreq_addr is ...
 	type in6_ifreq_addr struct {
 		ifr6_addr      in6_addr
 		ifr6_prefixlen uint32
@@ -101,11 +108,13 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	ones, _ := net.IPMask(d.Conf6.Mask[:]).Size()
 
 	ifra := in6_ifreq_addr{
+		ifr6_addr: in6_addr{
+			addr: d.Conf6.Addr,
+		},
 		ifr6_prefixlen: uint32(ones),
 		ifr6_ifindex:   ifrf.ifr_ifindex,
 	}
 
-	ifra.ifr6_addr.addr = d.Conf6.Addr
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCSIFADDR, uintptr(unsafe.Pointer(&ifra))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCSIFADDR", errno)
 	}
@@ -113,6 +122,7 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	return nil
 }
 
+// Activate is ...
 func (d *Device) Activate() error {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
@@ -120,6 +130,7 @@ func (d *Device) Activate() error {
 	}
 	defer unix.Close(fd)
 
+	// ifreq_flags is ...
 	type ifreq_flags struct {
 		ifr_name  [unix.IFNAMSIZ]byte
 		ifr_flags uint16
@@ -127,7 +138,7 @@ func (d *Device) Activate() error {
 	}
 
 	ifrf := ifreq_flags{}
-	copy(ifrf.ifr_name[:], []byte(d.Name))
+	copy(ifrf.ifr_name[:], d.Name[:])
 
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCGIFFLAGS, uintptr(unsafe.Pointer(&ifrf))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCGIFFLAGS", errno)
@@ -141,6 +152,7 @@ func (d *Device) Activate() error {
 	return nil
 }
 
+// addRouteEntry4 is ...
 func (d *Device) addRouteEntry4(cidr []string) error {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
@@ -149,7 +161,7 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	defer unix.Close(fd)
 
 	nameBytes := [16]byte{}
-	copy(nameBytes[:], []byte(d.Name))
+	copy(nameBytes[:], d.Name[:])
 
 	route := rtentry{
 		rt_dst: unix.RawSockaddrInet4{
@@ -183,6 +195,7 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	return nil
 }
 
+// addRouteEntry6 is ...
 func (d *Device) addRouteEntry6(cidr []string) error {
 	fd, err := unix.Socket(unix.AF_INET6, unix.SOCK_DGRAM, unix.IPPROTO_IP)
 	if err != nil {
@@ -190,6 +203,7 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	}
 	defer unix.Close(fd)
 
+	// ifreq_ifindex is ...
 	type ifreq_ifindex struct {
 		ifr_name    [unix.IFNAMSIZ]byte
 		ifr_ifindex int32
@@ -197,7 +211,7 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	}
 
 	ifrf := ifreq_ifindex{}
-	copy(ifrf.ifr_name[:], []byte(d.Name))
+	copy(ifrf.ifr_name[:], d.Name[:])
 
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.SIOCGIFINDEX, uintptr(unsafe.Pointer(&ifrf))); errno != 0 {
 		return os.NewSyscallError("ioctl: SIOCGIFINDEX", errno)

@@ -3,9 +3,7 @@
 
 package tun
 
-import (
-	"golang.org/x/sys/unix"
-)
+import "golang.org/x/sys/unix"
 
 // https://github.com/torvalds/linux/blob/master/include/uapi/linux/route.h#L31-L48
 type rtentry struct {
