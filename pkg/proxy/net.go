@@ -80,10 +80,8 @@ type Conn struct {
 
 // NewConn is ...
 func NewConn(conn net.Conn, r *bytes.Reader) *Conn {
-	return &Conn{
-		Conn:   conn,
-		Reader: r,
-	}
+	c := &Conn{Conn: conn, Reader: r}
+	return c
 }
 
 // CloseRead is ...
@@ -120,16 +118,14 @@ func (c *Conn) Read(b []byte) (int, error) {
 // PacketConn is ...
 // gonet.PacketConn
 type PacketConn struct {
-	net.PacketConn
+	*net.UDPConn
 	addr net.Addr
 }
 
 // NewPacketConn is ...
-func NewPacketConn(src net.Addr, c net.PacketConn) *PacketConn {
-	return &PacketConn{
-		PacketConn: c,
-		addr:       src,
-	}
+func NewPacketConn(src net.Addr, conn *net.UDPConn) *PacketConn {
+	c := &PacketConn{UDPConn: conn, addr: src}
+	return c
 }
 
 // RemoteAddr is ...
@@ -143,7 +139,7 @@ func (c *PacketConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	sc, buf := pool.Pool.Get(MaxBufferSize)
 	defer pool.Pool.Put(sc)
 
-	n, _, err = c.PacketConn.ReadFrom(buf)
+	n, err = c.UDPConn.Read(buf)
 	if err != nil {
 		return
 	}
@@ -167,6 +163,6 @@ func (c *PacketConn) WriteFrom(b []byte, addr net.Addr) (n int, err error) {
 		return
 	}
 	n = copy(buf[3+len(src.Addr):], b)
-	_, err = c.PacketConn.WriteTo(buf[:3+len(src.Addr)+n], c.addr)
+	_, err = c.UDPConn.Write(buf[:3+len(src.Addr)+n])
 	return
 }

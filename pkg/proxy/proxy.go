@@ -28,14 +28,17 @@ type Server struct {
 	Router *http.ServeMux
 	// Server is ...
 	// serve http.Request
-	http.Server
+	Server http.Server
 	// Listener is ...
 	Lisener net.Listener
+	// Handler is ...
+	// gonet.Handler
+	Handler gonet.Handler
+
 	// ln is ...
 	ln *Listener
 	// Convert fake IP and handle connections
-	tree    *suffixtree.DomainTree
-	handler gonet.Handler
+	tree *suffixtree.DomainTree
 
 	closed chan struct{}
 }
@@ -46,9 +49,9 @@ func NewServer(ln net.Listener, lg logger.Logger, h gonet.Handler, t *suffixtree
 		Logger:  lg,
 		Router:  r,
 		Lisener: ln,
+		Handler: h,
 		ln:      NewListener(ln.Addr()),
 		tree:    t,
-		handler: h,
 		closed:  make(chan struct{}),
 	}
 	s.Server.Handler = http.Handler(s)
@@ -69,10 +72,11 @@ func (s *Server) Serve() {
 			uc, b, ok, err := s.Handshake(c)
 			if err != nil {
 				s.Logger.Error("handshake error: %v", err)
+				c.Close()
 				return
 			}
 			if ok {
-				s.ProxySocks(c, uc, &socks.Addr{Addr: b})
+				s.ProxySocks(c, uc, b)
 				return
 			}
 			s.ln.Receive(NewConn(c, bytes.NewReader(b)))
@@ -157,15 +161,6 @@ func (s *Server) Handshake(conn net.Conn) (uc *net.UDPConn, buf []byte, ok bool,
 	switch b[1] {
 	case socks.CmdConnect:
 	case socks.CmdAssociate:
-		uc, err = net.ListenUDP("udp", nil)
-		if err != nil {
-			return
-		}
-		defer func(c *net.UDPConn) {
-			if err != nil {
-				conn.Close()
-			}
-		}(uc)
 	default:
 		err = fmt.Errorf("socks cmd error: %v", b[1])
 		return
@@ -176,24 +171,38 @@ func (s *Server) Handshake(conn net.Conn) (uc *net.UDPConn, buf []byte, ok bool,
 	if err != nil {
 		return
 	}
-	buf = addr.Addr
-	if addr.Addr[0] == socks.AddrTypeIPv4 {
-		if addr.Addr[1] == 198 && addr.Addr[2] == 18 {
-			p1 := bb[1+net.IPv4len]
-			p2 := bb[1+net.IPv4len+1]
-			addr, err = s.LookupIP(net.IP(bb[1:1+net.IPv4len]), bb)
+
+	// write back address
+	switch b[1] {
+	case socks.CmdConnect:
+		buf = addr.Addr
+		if buf[0] == socks.AddrTypeIPv4 && buf[1] == 198 && buf[2] == 18 {
+			p1, p2 := buf[1+net.IPv4len], buf[1+net.IPv4len+1]
+			addr, err = s.LookupIP(net.IP(buf[1:1+net.IPv4len]), bb)
 			if err != nil {
 				return
 			}
 			buf = append(addr.Addr, p1, p2)
 		}
-	}
-
-	// write back address
-	switch b[1] {
-	case socks.CmdConnect:
 		addr, err = socks.ResolveAddrBuffer(conn.LocalAddr(), b[3:])
 	case socks.CmdAssociate:
+		buf = addr.Addr
+
+		raddr := (*net.UDPAddr)(nil)
+		raddr, err = socks.ResolveUDPAddr(addr)
+		if err != nil {
+			return
+		}
+
+		uc, err = net.DialUDP("udp", nil, raddr)
+		if err != nil {
+			return
+		}
+		defer func(c *net.UDPConn) {
+			if err != nil {
+				c.Close()
+			}
+		}(uc)
 		addr, err = socks.ResolveAddrBuffer(uc.LocalAddr(), b[3:])
 	}
 	if err != nil {
@@ -206,17 +215,12 @@ func (s *Server) Handshake(conn net.Conn) (uc *net.UDPConn, buf []byte, ok bool,
 
 // ProxySocks is ...
 // handle socks5 proxy
-func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, addr *socks.Addr) {
+func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, buf []byte) {
 	defer conn.Close()
 
+	raddr := &socks.Addr{Addr: buf}
 	if uc != nil {
 		defer uc.Close()
-
-		src, err := socks.ResolveUDPAddr(addr)
-		if err != nil {
-			s.Logger.Error("resolve udp addr error: %v", err)
-			return
-		}
 
 		go func(conn net.Conn, uc *net.UDPConn) {
 			b := make([]byte, 1)
@@ -230,20 +234,20 @@ func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, addr *socks.Addr) {
 						continue
 					}
 				}
-				uc.SetReadDeadline(time.Now())
 			}
+			uc.SetReadDeadline(time.Now())
 		}(conn, uc)
 
-		s.Logger.Info("proxyd %v <-UDP-> all", addr)
-		if err := s.handler.HandlePacket(NewPacketConn(src, uc)); err != nil {
+		s.Logger.Info("proxyd %v <-UDP-> all", raddr)
+		if err := s.Handler.HandlePacket(NewPacketConn(raddr, uc)); err != nil {
 			s.Logger.Error("handle udp error: %v", err)
 		}
 		conn.SetReadDeadline((time.Now()))
 		return
 	}
 
-	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
-	if err := s.handler.Handle(conn, addr); err != nil {
+	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), raddr)
+	if err := s.Handler.Handle(conn, raddr); err != nil {
 		s.Logger.Error("handle tcp error: %v", err)
 	}
 }
@@ -271,7 +275,7 @@ func (s *Server) ProxyGet(w http.ResponseWriter, r *http.Request) {
 
 	s.Logger.Info("proxyd %v <-TCP-> %v", r.RemoteAddr, addr)
 	go func(conn net.Conn, addr net.Addr) {
-		if err := s.handler.Handle(conn, addr); err != nil {
+		if err := s.Handler.Handle(conn, addr); err != nil {
 			s.Logger.Error("handle http conn error: %v", err)
 		}
 	}(dst, addr)
@@ -331,7 +335,7 @@ func (s *Server) ProxyConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
-	if err := s.handler.Handle(conn, addr); err != nil {
+	if err := s.Handler.Handle(conn, addr); err != nil {
 		s.Logger.Error("handle https conn error: %v", err)
 	}
 }

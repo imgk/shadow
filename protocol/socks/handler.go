@@ -105,31 +105,43 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
-	c, rc, err := func(tgt net.Addr) (c net.Conn, rc *net.UDPConn, err error) {
-		c, addr, err := h.Dial(tgt, socks.CmdAssociate)
+	c, rc, err := func() (c net.Conn, rc *net.UDPConn, err error) {
+		rc, err = net.ListenUDP("udp", nil)
 		if err != nil {
 			return
 		}
-		defer func(conn net.Conn) {
+		defer func(c *net.UDPConn) {
+			if err != nil {
+				c.Close()
+			}
+		}(rc)
+
+		addr := rc.LocalAddr().(*net.UDPAddr)
+		c, sAddr, err := h.Dial(addr, socks.CmdAssociate)
+		if err != nil {
+			return
+		}
+		defer func(c net.Conn) {
 			if err != nil {
 				c.Close()
 			}
 		}(c)
 
-		raddr, err := socks.ResolveUDPAddr(addr)
+		raddr, err := socks.ResolveUDPAddr(sAddr)
 		if err != nil {
 			return
 		}
 
-		rc, err = net.DialUDP("udp", nil, raddr)
+		rc.Close()
+		rc, err = net.DialUDP("udp", addr, raddr)
 		if err != nil {
 			return
 		}
 
-		go func(conn net.Conn, rc net.PacketConn) {
-			b := [8]byte{}
+		go func(conn net.Conn, rc *net.UDPConn) {
+			b := make([]byte, 1)
 			for {
-				if _, err := conn.Read(b[:]); err != nil {
+				if _, err := conn.Read(b); err != nil {
 					if errors.Is(err, os.ErrDeadlineExceeded) {
 						break
 					}
@@ -141,14 +153,15 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 					break
 				}
 			}
-			rc.Close()
-			conn.Close()
+			rc.SetReadDeadline(time.Now())
 		}(c, rc)
 		return
-	}(conn.LocalAddr())
+	}()
 	if err != nil {
 		return err
 	}
+	defer c.Close()
+	defer rc.Close()
 
 	const MaxBufferSize = 16 << 10
 
@@ -180,19 +193,19 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				if nAddr, ok := tgt.(*net.UDPAddr); ok {
 					if ipv4 := nAddr.IP.To4(); ipv4 != nil {
 						offset = socks.MaxAddrLen - 1 - net.IPv4len - 2
-						b = b[offset+3:]
-						b[0] = socks.AddrTypeIPv4
-						copy(b[1:], ipv4)
-						b[1+net.IPv4len] = byte(nAddr.Port >> 8)
-						b[1+net.IPv4len+1] = byte(nAddr.Port)
+						bb := b[offset+3:]
+						bb[0] = socks.AddrTypeIPv4
+						copy(bb[1:], ipv4)
+						bb[1+net.IPv4len] = byte(nAddr.Port >> 8)
+						bb[1+net.IPv4len+1] = byte(nAddr.Port)
 					} else {
 						ipv6 := nAddr.IP.To16()
 						offset = socks.MaxAddrLen - 1 - net.IPv6len - 2
-						b = b[offset+3:]
-						b[0] = socks.AddrTypeIPv6
-						copy(b[1:], ipv6)
-						b[1+net.IPv6len] = byte(nAddr.Port >> 8)
-						b[1+net.IPv6len+1] = byte(nAddr.Port)
+						bb := b[offset+3:]
+						bb[0] = socks.AddrTypeIPv6
+						copy(bb[1:], ipv6)
+						bb[1+net.IPv6len] = byte(nAddr.Port >> 8)
+						bb[1+net.IPv6len+1] = byte(nAddr.Port)
 					}
 				} else {
 					err = errors.New("addr type error")
@@ -200,7 +213,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				}
 				b[offset], b[offset+1], b[offset+2] = 0, 0, 0
 				return
-			}(tgt, b)
+			}(tgt, b[:3+socks.MaxAddrLen])
 			if er != nil {
 				err = er
 				break
