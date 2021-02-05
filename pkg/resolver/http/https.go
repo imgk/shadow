@@ -55,6 +55,14 @@ func NewResolver(baseURL, addr, domain, method string) *Resolver {
 	case http.MethodGet:
 		resolver.SendRequest = Get
 	}
+	resolver.Client.Transport = &http.Transport{
+		Dial:              resolver.Dialer.Dial,
+		DialContext:       resolver.Dialer.DialContext,
+		TLSClientConfig:   &resolver.Dialer.Config,
+		DialTLS:           resolver.Dialer.DialTLS,
+		DialTLSContext:    resolver.Dialer.DialTLSContext,
+		ForceAttemptHTTP2: true,
+	}
 	return resolver
 }
 

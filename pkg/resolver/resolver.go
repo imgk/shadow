@@ -2,18 +2,18 @@ package resolver
 
 import (
 	"context"
-	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/imgk/shadow/pkg/resolver/udp"
+	"github.com/imgk/shadow/pkg/resolver/http"
+	"github.com/imgk/shadow/pkg/resolver/quic"
 	"github.com/imgk/shadow/pkg/resolver/tcp"
-	tlsdns "github.com/imgk/shadow/pkg/resolver/tls"
-	httpdns "github.com/imgk/shadow/pkg/resolver/http"
+	"github.com/imgk/shadow/pkg/resolver/tls"
+	"github.com/imgk/shadow/pkg/resolver/udp"
 )
 
 // Resolver is ...
@@ -65,15 +65,7 @@ func NewResolver(s string) (Resolver, error) {
 		if u.Fragment != "" {
 			domain = u.Fragment
 		}
-		resolver := &tlsdns.Resolver{
-			Addr: addr.String(),
-			Config: tls.Config{
-				ServerName:         domain,
-				ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				InsecureSkipVerify: false,
-			},
-			Timeout: time.Second * 3,
-		}
+		resolver := tls.NewResolver(addr.String(), domain)
 		return resolver, nil
 	case "https":
 		addr, err := net.ResolveTCPAddr("tcp", u.Host)
@@ -87,18 +79,29 @@ func NewResolver(s string) (Resolver, error) {
 		}
 		if u.Fragment != "" {
 			domain = u.Fragment
+			s = strings.TrimSuffix(s, fmt.Sprintf("#%s", domain))
 		}
-		resolver := httpdns.NewResolver(strings.TrimSuffix(s, fmt.Sprintf("#%s", domain)), addr.String(), domain, http.MethodPost)
-		resolver.Client.Transport = &http.Transport{
-			Dial:              resolver.Dialer.Dial,
-			DialContext:       resolver.Dialer.DialContext,
-			TLSClientConfig:   &resolver.Dialer.Config,
-			DialTLS:           resolver.Dialer.DialTLS,
-			DialTLSContext:    resolver.Dialer.DialTLSContext,
-			ForceAttemptHTTP2: true,
+		resolver := http.NewResolver(s, addr.String(), domain, "POST")
+		return resolver, nil
+	case "quic":
+		addr, err := net.ResolveUDPAddr("udp", u.Host)
+		if err != nil {
+			return nil, err
+		}
+
+		domain, _, err := net.SplitHostPort(u.Host)
+		if err != nil {
+			return nil, err
+		}
+		if u.Fragment != "" {
+			domain = u.Fragment
+		}
+		resolver, err := quic.NewResolver(addr.String(), domain)
+		if err != nil {
+			return nil, fmt.Errorf("new quic resolver error: %w", err)
 		}
 		return resolver, nil
 	default:
-		return nil, fmt.Errorf("invalid dns protocol")
+		return nil, errors.New("invalid dns protocol")
 	}
 }

@@ -1,11 +1,11 @@
 module github.com/imgk/shadow
 
-go 1.16
+go 1.15
 
 require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/imgk/divert-go v0.0.0-20201220002345-9b9714564be9
-	github.com/lucas-clemente/quic-go v0.7.1-0.20210131023823-622ca23d4eb4
+	github.com/lucas-clemente/quic-go v0.19.3
 	github.com/miekg/dns v1.1.38
 	github.com/oschwald/maxminddb-golang v1.8.0
 	github.com/xtaci/smux v1.5.15

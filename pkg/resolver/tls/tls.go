@@ -20,6 +20,19 @@ type Resolver struct {
 	Timeout time.Duration
 }
 
+// NewResolver is ...
+func NewResolver(addr, domain string) *Resolver {
+	resolver := &Resolver{
+		Addr: addr,
+		Config: tls.Config{
+			ServerName:         domain,
+			ClientSessionCache: tls.NewLRUClientSessionCache(32),
+		},
+		Timeout: time.Second * 3,
+	}
+	return resolver
+}
+
 // Resolve is ...
 func (r *Resolver) Resolve(b []byte, n int) (int, error) {
 	conn, err := net.Dial("tcp", r.Addr)
