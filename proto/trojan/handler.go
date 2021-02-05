@@ -17,14 +17,14 @@ import (
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
-	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/proto"
 )
 
 func init() {
-	protocol.RegisterHandler("trojan", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("trojan", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }
@@ -203,7 +203,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 						b[1+net.IPv6len+1] = byte(nAddr.Port)
 					}
 				} else {
-					err = errors.New("addr type error")
+					err = errors.New("Torjan error: addr type error")
 				}
 				return
 			}(tgt, b[:socks.MaxAddrLen])

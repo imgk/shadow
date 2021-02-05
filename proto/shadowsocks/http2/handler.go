@@ -23,7 +23,7 @@ import (
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
-	"github.com/imgk/shadow/protocol/shadowsocks/core"
+	"github.com/imgk/shadow/proto/shadowsocks/core"
 )
 
 var zerononce = [128]byte{}

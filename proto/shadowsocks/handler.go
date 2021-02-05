@@ -12,46 +12,46 @@ import (
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
-	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/protocol/shadowsocks/core"
+	"github.com/imgk/shadow/proto"
+	"github.com/imgk/shadow/proto/shadowsocks/core"
 
 	// other protocols
-	"github.com/imgk/shadow/protocol/shadowsocks/http2"
-	"github.com/imgk/shadow/protocol/shadowsocks/online"
+	"github.com/imgk/shadow/proto/shadowsocks/http2"
+	"github.com/imgk/shadow/proto/shadowsocks/online"
 )
 
 func init() {
-	protocol.RegisterHandler("ss", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("ss", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewQUICHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewQUICHandler(s, timeout)
 	})
-	protocol.RegisterHandler("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewHandler(s, timeout)
 	})
 }

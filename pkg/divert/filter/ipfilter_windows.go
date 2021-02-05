@@ -20,9 +20,9 @@ type IPFilter struct {
 	Tree *iptree.Tree
 
 	// Rules is ...
-	Rules  map[string]bool
+	Rules map[string]bool
 	// Final is ...
-	Final  bool
+	Final bool
 
 	// Reader is ...
 	Reader *maxminddb.Reader

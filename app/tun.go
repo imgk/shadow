@@ -13,7 +13,7 @@ import (
 	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
 	"github.com/imgk/shadow/pkg/tun"
-	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/proto"
 )
 
 // RunWithDevice is ...
@@ -29,7 +29,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 
 	// new connection handler
-	handler, err := protocol.NewHandler(app.Conf.Server, app.timeout)
+	handler, err := proto.NewHandler(app.Conf.Server, app.Timeout)
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}

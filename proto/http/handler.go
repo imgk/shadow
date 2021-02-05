@@ -12,21 +12,21 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/pkg/gonet"
-	"github.com/imgk/shadow/protocol"
-	"github.com/imgk/shadow/protocol/http/http2"
+	"github.com/imgk/shadow/proto"
+	"github.com/imgk/shadow/proto/http/http2"
 )
 
 func init() {
-	protocol.RegisterHandler("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
 }

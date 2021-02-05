@@ -452,7 +452,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 
 	src, ok := addr.(*net.UDPAddr)
 	if !ok {
-		return 0, errors.New("addr type error")
+		return 0, errors.New("core.UDPConn.WriteFrom error: addr type error")
 	}
 
 	if ipv4 := src.IP.To4(); ipv4 != nil {

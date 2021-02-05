@@ -84,7 +84,7 @@ func (d *Device) Write(b []byte) (int, error) {
 }
 
 // cleanupAddressesOnDisconnectedInterfaces is ...
-//https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L22-L58
+// https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L22-L58
 func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, addresses []net.IPNet) {
 	if len(addresses) == 0 {
 		return
@@ -123,7 +123,7 @@ func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, add
 }
 
 // setInterfaceAddress4 is ...
-//https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L60-L168
+// https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L60-L168
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
@@ -141,7 +141,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 		return err
 	}
 
-	err = luid.SetDNSForFamily(windows.AF_INET, []net.IP{net.ParseIP(gateway).To4()})
+	err = luid.SetDNS(windows.AF_INET, []net.IP{net.ParseIP(gateway).To4()}, []string{})
 	return err
 }
 
@@ -163,7 +163,7 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 		return err
 	}
 
-	err = luid.SetDNSForFamily(windows.AF_INET6, []net.IP{net.ParseIP(gateway).To16()})
+	err = luid.SetDNS(windows.AF_INET6, []net.IP{net.ParseIP(gateway).To16()}, []string{})
 	return err
 }
 

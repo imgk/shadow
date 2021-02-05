@@ -13,14 +13,14 @@ import (
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
-	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/proto"
 )
 
 func init() {
-	protocol.RegisterHandler("socks", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("socks", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	protocol.RegisterHandler("socks5", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterHandler("socks5", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }
@@ -82,7 +82,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	rc, _, err := h.Dial(tgt, socks.CmdConnect)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial error: %w", err)
 	}
 	defer rc.Close()
 
@@ -189,6 +189,8 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				if addr, ok := tgt.(*socks.Addr); ok {
 					offset = socks.MaxAddrLen - len(addr.Addr)
 					copy(b[offset+3:], addr.Addr)
+					b[offset], b[offset+1], b[offset+2] = 0, 0, 0
+					return
 				}
 				if nAddr, ok := tgt.(*net.UDPAddr); ok {
 					if ipv4 := nAddr.IP.To4(); ipv4 != nil {
@@ -207,11 +209,10 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 						bb[1+net.IPv6len] = byte(nAddr.Port >> 8)
 						bb[1+net.IPv6len+1] = byte(nAddr.Port)
 					}
+					b[offset], b[offset+1], b[offset+2] = 0, 0, 0
 				} else {
-					err = errors.New("addr type error")
-					return
+					err = errors.New("Socks error: addr type error")
 				}
-				b[offset], b[offset+1], b[offset+2] = 0, 0, 0
 				return
 			}(tgt, b[:3+socks.MaxAddrLen])
 			if er != nil {

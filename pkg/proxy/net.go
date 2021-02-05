@@ -86,16 +86,16 @@ func NewConn(conn net.Conn, r *bytes.Reader) *Conn {
 
 // CloseRead is ...
 func (c *Conn) CloseRead() error {
-	if close, ok := c.Conn.(gonet.CloseReader); ok {
-		return close.CloseRead()
+	if closer, ok := c.Conn.(gonet.CloseReader); ok {
+		return closer.CloseRead()
 	}
 	return errors.New("not supported")
 }
 
 // CloseWrite is ...
 func (c *Conn) CloseWrite() error {
-	if close, ok := c.Conn.(gonet.CloseWriter); ok {
-		return close.CloseWrite()
+	if closer, ok := c.Conn.(gonet.CloseWriter); ok {
+		return closer.CloseWrite()
 	}
 	return errors.New("not supported")
 }

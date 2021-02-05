@@ -15,7 +15,7 @@ cd shadow
 cat <<EOF > main_protocol.go
 package main
 
-import _ "github.com/imgk/shadow/protocol/shadowsocks"
+import _ "github.com/imgk/shadow/proto/shadowsocks"
 
 EOF
 
@@ -69,4 +69,4 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 
 ## Config
 
-Please read [config.md](https://github.com/imgk/shadow/blob/master/config.md)
+Please read [configuration.md](https://github.com/imgk/shadow/blob/master/configuration.md)

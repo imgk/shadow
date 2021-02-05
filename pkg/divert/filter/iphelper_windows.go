@@ -160,7 +160,7 @@ func GetUDP6Table(buf []byte) ([]UDP6Row, error) {
 
 // UDP6Table is ...
 type UDP6Table struct {
-	Len    uint32
+	Len   uint32
 	Table [1]UDP6Row
 }
 

@@ -74,7 +74,7 @@ func (s *Server) Serve() {
 			// return http net.Conn
 			uc, b, ok, err := s.Handshake(c)
 			if err != nil {
-				s.Logger.Error("handshake error: %v", err)
+				s.Logger.Error("handshake from %v error: %v", conn.RemoteAddr(), err)
 				c.Close()
 				return
 			}

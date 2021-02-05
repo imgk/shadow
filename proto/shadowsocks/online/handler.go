@@ -16,7 +16,6 @@ import (
 
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/socks"
-	"github.com/imgk/shadow/protocol"
 )
 
 // Handler is ...
@@ -171,7 +170,7 @@ func (h *Handler) renew() error {
 		}
 		addr := fmt.Sprintf("%v://%v:%v@%v:%v", server.Protocol, server.Method, server.Password, server.Server, server.ServerPort)
 
-		handler, err := protocol.NewHandler(addr, h.timeout)
+		handler, err := NewHandler(addr, h.timeout)
 		if err != nil {
 			continue
 		}

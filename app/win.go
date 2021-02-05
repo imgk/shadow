@@ -20,7 +20,7 @@ import (
 	"github.com/imgk/shadow/pkg/netstack"
 	"github.com/imgk/shadow/pkg/proxy"
 	"github.com/imgk/shadow/pkg/resolver"
-	"github.com/imgk/shadow/protocol"
+	"github.com/imgk/shadow/proto"
 )
 
 // Run is ...
@@ -66,7 +66,7 @@ func (app *App) Run() (err error) {
 	}
 
 	// new connection handler
-	handler, err := protocol.NewHandler(app.Conf.Server, app.timeout)
+	handler, err := proto.NewHandler(app.Conf.Server, app.Timeout)
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
@@ -92,6 +92,7 @@ func (app *App) Run() (err error) {
 	if err != nil {
 		return
 	}
+	ipFilter.IgnorePrivate()
 	defer func() {
 		if err != nil {
 			ipFilter.Close()
@@ -166,15 +167,15 @@ func NewAppFilter(conf *Conf) (*filter.AppFilter, error) {
 
 	if env != "" {
 		ss := strings.Split(env, ",")
-		pids := make([]uint32, 0, len(ss))
+		ids := make([]uint32, 0, len(ss))
 		for _, v := range ss {
 			i, err := strconv.Atoi(v)
 			if err != nil && v != "" {
 				return nil, fmt.Errorf("strconv (%v) err: %w", v, err)
 			}
-			pids = append(pids, uint32(i))
+			ids = append(ids, uint32(i))
 		}
-		filter.SetPIDs(pids)
+		filter.SetPIDs(ids)
 	}
 	return filter, nil
 }

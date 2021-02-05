@@ -67,19 +67,17 @@ func (c *duplexConn) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *duplexConn) CloseRead() error {
-	if close, ok := c.Conn.(CloseReader); ok {
-		return close.CloseRead()
+	if closer, ok := c.Conn.(CloseReader); ok {
+		return closer.CloseRead()
 	}
-	c.Conn.SetReadDeadline(time.Now())
-	return c.Conn.Close()
+	return errors.New("not supported")
 }
 
 func (c *duplexConn) CloseWrite() error {
-	if close, ok := c.Conn.(CloseWriter); ok {
-		return close.CloseWrite()
+	if closer, ok := c.Conn.(CloseWriter); ok {
+		return closer.CloseWrite()
 	}
-	c.Conn.SetWriteDeadline(time.Now())
-	return c.Conn.Close()
+	return errors.New("not supported")
 }
 
 // Relay is ...

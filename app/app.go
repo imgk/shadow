@@ -87,8 +87,8 @@ type Conf struct {
 	} `json:"domain_rules"`
 }
 
-// prepare is ...
-func (c *Conf) prepare() error {
+// prepareFilterString is ...
+func (c *Conf) prepareFilterString() error {
 	const Filter44 = "outbound and (ipv6 or (ip and ip.DstAddr != %s and ip.DstAddr != %s))"
 	const Filter64 = "outbound and ((ipv6 and ipv6.DstAddr != %s) or (ip and ip.DstAddr != %s))"
 	const Filter66 = "outbound and ((ipv6 and ipv6.DstAddr != %s and ipv6.DstAddr != %s) or ip)"
@@ -99,16 +99,13 @@ func (c *Conf) prepare() error {
 		if err != nil {
 			return nil, err
 		}
-
 		addr, err := net.ResolveTCPAddr("tcp", u.Host)
 		if err != nil {
 			return nil, err
 		}
-
 		if ipv4 := addr.IP.To4(); ipv4 != nil {
 			return ipv4, nil
 		}
-
 		return addr.IP.To16(), nil
 	}
 
@@ -136,6 +133,17 @@ func (c *Conf) prepare() error {
 	}
 	c.FilterString = fmt.Sprintf(Filter66, proxyIP, dnsIP)
 	return nil
+}
+
+// prepareGeographicalIP is ...
+func (c *Conf) prepareGeographicalIP() {
+	for _, v := range c.GeoIP.Proxy {
+		c.GeoIP.Proxy = append(c.GeoIP.Proxy, strings.ToUpper(v))
+	}
+	for _, v := range c.GeoIP.Bypass {
+		c.GeoIP.Bypass = append(c.GeoIP.Bypass, strings.ToUpper(v))
+	}
+	c.GeoIP.Final = strings.ToLower(c.GeoIP.Final)
 }
 
 // ReadFromFile is to read config from file
@@ -166,13 +174,10 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 	if err := json.Unmarshal(b, c); err != nil {
 		return err
 	}
-	for _, v := range c.GeoIP.Proxy {
-		c.GeoIP.Proxy = append(c.GeoIP.Proxy, strings.ToUpper(v))
+	if c.FilterString == "" {
+		return c.prepareFilterString()
 	}
-	for _, v := range c.GeoIP.Bypass {
-		c.GeoIP.Bypass = append(c.GeoIP.Bypass, strings.ToUpper(v))
-	}
-	c.GeoIP.Final = strings.ToLower(c.GeoIP.Final)
+	c.prepareGeographicalIP()
 	return nil
 }
 
@@ -182,8 +187,9 @@ type App struct {
 	Logger logger.Logger
 	// Conf is ...
 	Conf *Conf
+	// Timeout is ...
+	Timeout time.Duration
 
-	timeout time.Duration
 	closed  chan struct{}
 	closers []io.Closer
 }
@@ -213,7 +219,7 @@ func NewAppFromConf(conf *Conf, timeout time.Duration, w io.Writer) *App {
 	app := &App{
 		Logger:  logger.NewLogger(w),
 		Conf:    conf,
-		timeout: timeout,
+		Timeout: timeout,
 		closed:  make(chan struct{}),
 		closers: []io.Closer{},
 	}
@@ -248,14 +254,15 @@ func (app *App) Close() error {
 func NewDomainTree(conf *Conf) (*suffixtree.DomainTree, error) {
 	tree := suffixtree.NewDomainTree(".")
 	tree.Lock()
-	for _, domain := range conf.DomainRules.Proxy {
-		tree.UnsafeStore(domain, &suffixtree.DomainEntry{Rule: "PROXY"})
-	}
-	for _, domain := range conf.DomainRules.Direct {
-		tree.UnsafeStore(domain, &suffixtree.DomainEntry{Rule: "DIRECT"})
-	}
-	for _, domain := range conf.DomainRules.Blocked {
-		tree.UnsafeStore(domain, &suffixtree.DomainEntry{Rule: "BLOCKED"})
+	for k, v := range map[string][]string{
+		"PROXY":   conf.DomainRules.Proxy,
+		"DIRECT":  conf.DomainRules.Direct,
+		"BLOCKED": conf.DomainRules.Blocked,
+	} {
+		r := &suffixtree.DomainEntry{Rule: k}
+		for _, vv := range v {
+			tree.UnsafeStore(vv, r)
+		}
 	}
 	tree.Unlock()
 	return tree, nil

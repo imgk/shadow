@@ -1,4 +1,4 @@
-package protocol
+package proto
 
 import (
 	"errors"
@@ -13,9 +13,11 @@ import (
 var handlers = map[string]NewHandlerFunc{}
 
 // NewHandlerFunc is ...
+// give a handler for a protocol scheme
 type NewHandlerFunc func(string, time.Duration) (gonet.Handler, error)
 
 // RegisterHandler is ...
+// register a new protocol scheme
 func RegisterHandler(proto string, fn NewHandlerFunc) {
 	handlers[proto] = fn
 }
