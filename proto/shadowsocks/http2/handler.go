@@ -37,7 +37,7 @@ type NetDialer struct {
 }
 
 // Dial is ...
-func (d *NetDialer) Dial(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
+func (d *NetDialer) DialTLS(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
 	conn, err = net.Dial(network, d.Addr)
 	if err != nil {
 		return
@@ -97,7 +97,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	sum := sha256.Sum224([]byte(password))
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
-	dialer := NetDialer{}
+	dialer := NetDialer{Addr: server}
 	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) (r *http.Request) {
 			r = &http.Request{
@@ -119,7 +119,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		},
 		Cipher: cipher,
 		Transport: &http2.Transport{
-			DialTLS: dialer.Dial,
+			DialTLS: dialer.DialTLS,
 			TLSClientConfig: &tls.Config{
 				ServerName:         host,
 				ClientSessionCache: tls.NewLRUClientSessionCache(32),
@@ -138,7 +138,7 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	proxyIP, err := net.ResolveUDPAddr("udp", server)
+	proxyAddr, err := net.ResolveUDPAddr("udp", server)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	server = net.JoinHostPort(proxyIP.IP.String(), portString)
+	server = net.JoinHostPort(proxyAddr.IP.String(), portString)
 
 	sum := sha256.Sum224([]byte(password))
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))

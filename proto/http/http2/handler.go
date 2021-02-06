@@ -18,6 +18,35 @@ import (
 	"github.com/imgk/shadow/pkg/gonet"
 )
 
+// NetDialer is ...
+type NetDialer struct {
+	// Dialer is ...
+	Dialer net.Dialer
+	// Addr is ...
+	Addr string
+}
+
+// Dial is ...
+func (d *NetDialer) DialTLS(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
+	conn, err = net.Dial(network, d.Addr)
+	if err != nil {
+		return
+	}
+	conn = tls.Client(conn, cfg)
+	return
+}
+
+// QUICDialer is ...
+type QUICDialer struct {
+	// Addr is ...
+	Addr string
+}
+
+// Dial is ...
+func (d *QUICDialer) Dial(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
+}
+
 // Hander is ...
 type Handler struct {
 	// NewRequest is ...
@@ -39,6 +68,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}
 
 	if scheme == "http2" {
+		dialer := NetDialer{Addr: server}
 		handler := &Handler{
 			NewRequest: func(addr string, body io.ReadCloser, auth string) *http.Request {
 				r := &http.Request{
@@ -61,14 +91,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				return r
 			},
 			Transport: &http2.Transport{
-				DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
-					conn, err = net.Dial("tcp", server)
-					if err != nil {
-						return
-					}
-					conn = tls.Client(conn, cfg)
-					return
-				},
+				DialTLS: dialer.DialTLS,
 				TLSClientConfig: &tls.Config{
 					ServerName:         domain,
 					ClientSessionCache: tls.NewLRUClientSessionCache(32),
@@ -79,6 +102,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		return handler, nil
 	}
 
+	dialer := QUICDialer{Addr: server}
 	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) *http.Request {
 			r := &http.Request{
@@ -101,9 +125,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			return r
 		},
 		Transport: &http3.RoundTripper{
-			Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
-				return quic.DialAddrEarly(server, tlsCfg, cfg)
-			},
+			Dial: dialer.Dial,
 			TLSClientConfig: &tls.Config{
 				ServerName:         domain,
 				ClientSessionCache: tls.NewLRUClientSessionCache(32),
