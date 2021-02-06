@@ -18,7 +18,14 @@ import (
 
 // Resolver is ...
 type Resolver interface {
+	// Resolve is ...
+	// resolve dns query in byte slice and store answers to the incoming byte slice
+	// for compatible reason, the first 2 bytes are reserved for length space for
+	// dns over tcp and dns over tls, the input length is the length of dns message
+	// without 2 prefix bytes, and the output length also does not include the prefix bytes
 	Resolve([]byte, int) (int, error)
+	// DialContext is ...
+	// net.Resovler.Dial
 	DialContext(context.Context, string, string) (net.Conn, error)
 }
 

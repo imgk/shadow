@@ -44,10 +44,8 @@ type Reader struct {
 
 // NewReader is ...
 func NewReader(r io.ReadCloser, cipher *Cipher) *Reader {
-	return &Reader{
-		Reader: r,
-		Cipher: cipher,
-	}
+	reader := &Reader{Reader: r, Cipher: cipher}
+	return reader
 }
 
 func (r *Reader) init() (err error) {
@@ -188,10 +186,8 @@ type Writer struct {
 
 // NewWriter is ...
 func NewWriter(w io.WriteCloser, cipher *Cipher) *Writer {
-	return &Writer{
-		Writer: w,
-		Cipher: cipher,
-	}
+	writer := &Writer{Writer: w, Cipher: cipher}
+	return writer
 }
 
 func (w *Writer) init() error {

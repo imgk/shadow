@@ -146,10 +146,10 @@ func (h *Handler) renew() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
 		return errors.New("http response code error")
 	}
-	defer r.Body.Close()
 
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {

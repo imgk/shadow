@@ -20,11 +20,13 @@ import (
 
 // Hander is ...
 type Handler struct {
+	// NewRequest is ...
 	// give new http.MethocConnect http.Request
-	NewRequest func(string, io.ReadCloser) *http.Request
+	NewRequest func(string, io.ReadCloser, string) *http.Request
 
+	// Transport is ...
 	// for connect to proxy server
-	http.Client
+	Transport http.RoundTripper
 
 	proxyAuth string
 }
@@ -38,7 +40,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 
 	if scheme == "http2" {
 		handler := &Handler{
-			NewRequest: func(addr string, body io.ReadCloser) *http.Request {
+			NewRequest: func(addr string, body io.ReadCloser, auth string) *http.Request {
 				r := &http.Request{
 					Method: http.MethodConnect,
 					Host:   addr,
@@ -53,23 +55,23 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 					Header:     make(http.Header),
 				}
 				r.Header.Set("Accept-Encoding", "identity")
-				r.Header.Add("Proxy-Authorization", auth)
+				if auth != "" {
+					r.Header.Add("Proxy-Authorization", auth)
+				}
 				return r
 			},
-			Client: http.Client{
-				Transport: &http2.Transport{
-					DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
-						conn, err = net.Dial("tcp", server)
-						if err != nil {
-							return
-						}
-						conn = tls.Client(conn, cfg)
+			Transport: &http2.Transport{
+				DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
+					conn, err = net.Dial("tcp", server)
+					if err != nil {
 						return
-					},
-					TLSClientConfig: &tls.Config{
-						ServerName:         domain,
-						ClientSessionCache: tls.NewLRUClientSessionCache(32),
-					},
+					}
+					conn = tls.Client(conn, cfg)
+					return
+				},
+				TLSClientConfig: &tls.Config{
+					ServerName:         domain,
+					ClientSessionCache: tls.NewLRUClientSessionCache(32),
 				},
 			},
 			proxyAuth: auth,
@@ -78,7 +80,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	}
 
 	handler := &Handler{
-		NewRequest: func(addr string, body io.ReadCloser) *http.Request {
+		NewRequest: func(addr string, body io.ReadCloser, auth string) *http.Request {
 			r := &http.Request{
 				Method: http.MethodConnect,
 				Host:   addr,
@@ -93,20 +95,20 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				Header:     make(http.Header),
 			}
 			r.Header.Set("Accept-Encoding", "identity")
-			r.Header.Add("Proxy-Authorization", auth)
+			if auth != "" {
+				r.Header.Add("Proxy-Authorization", auth)
+			}
 			return r
 		},
-		Client: http.Client{
-			Transport: &http3.RoundTripper{
-				Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
-					return quic.DialAddrEarly(server, tlsCfg, cfg)
-				},
-				TLSClientConfig: &tls.Config{
-					ServerName:         domain,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				},
-				QuicConfig: &quic.Config{KeepAlive: true},
+		Transport: &http3.RoundTripper{
+			Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+				return quic.DialAddrEarly(server, tlsCfg, cfg)
 			},
+			TLSClientConfig: &tls.Config{
+				ServerName:         domain,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			},
+			QuicConfig: &quic.Config{KeepAlive: true},
 		},
 		proxyAuth: auth,
 	}
@@ -122,16 +124,16 @@ func (h *Handler) Close() error {
 func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req := h.NewRequest(tgt.String(), &Reader{Reader: conn})
+	req := h.NewRequest(tgt.String(), &Reader{Reader: conn}, h.proxyAuth)
 
-	r, err := h.Client.Do(req)
+	r, err := h.Transport.RoundTrip(req)
 	if err != nil {
 		return fmt.Errorf("do request error: %w", err)
 	}
+	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
-	defer r.Body.Close()
 
 	if _, err := io.Copy(conn, r.Body); err != nil {
 		return fmt.Errorf("io.Copy error: %w", err)

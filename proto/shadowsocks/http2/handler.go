@@ -28,6 +28,35 @@ import (
 
 var zerononce = [128]byte{}
 
+// NetDialer is ...
+type NetDialer struct {
+	// Dialer is ...
+	Dialer net.Dialer
+	// Addr is ...
+	Addr string
+}
+
+// Dial is ...
+func (d *NetDialer) Dial(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
+	conn, err = net.Dial(network, d.Addr)
+	if err != nil {
+		return
+	}
+	conn = tls.Client(conn, cfg)
+	return
+}
+
+// QUICDialer is ...
+type QUICDialer struct {
+	// Addr is ...
+	Addr string
+}
+
+// Dial is ...
+func (d *QUICDialer) Dial(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
+}
+
 // Handler is ...
 type Handler struct {
 	// NewReqeust is ...
@@ -35,8 +64,8 @@ type Handler struct {
 
 	// Cipher is ...
 	Cipher *core.Cipher
-	// Client is ...
-	Client http.Client
+	// Transport is ...
+	Transport http.RoundTripper
 
 	proxyAuth string
 	timeout   time.Duration
@@ -49,7 +78,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		return nil, err
 	}
 
-	proxyIP, err := net.ResolveUDPAddr("udp", server)
+	proxyAddr, err := net.ResolveUDPAddr("udp", server)
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +92,13 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	server = net.JoinHostPort(proxyIP.IP.String(), portString)
+	server = net.JoinHostPort(proxyAddr.IP.String(), portString)
 
 	sum := sha256.Sum224([]byte(password))
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
-	return &Handler{
+	dialer := NetDialer{}
+	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) (r *http.Request) {
 			r = &http.Request{
 				Method: http.MethodConnect,
@@ -88,25 +118,17 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			return
 		},
 		Cipher: cipher,
-		Client: http.Client{
-			Transport: &http2.Transport{
-				DialTLS: func(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
-					conn, err = net.Dial("tcp", server)
-					if err != nil {
-						return
-					}
-					conn = tls.Client(conn, cfg)
-					return
-				},
-				TLSClientConfig: &tls.Config{
-					ServerName:         host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				},
+		Transport: &http2.Transport{
+			DialTLS: dialer.Dial,
+			TLSClientConfig: &tls.Config{
+				ServerName:         host,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
 			},
 		},
 		proxyAuth: proxyAuth,
 		timeout:   timeout,
-	}, nil
+	}
+	return handler, nil
 }
 
 // NewQUCIHandler is ...
@@ -135,7 +157,8 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 	sum := sha256.Sum224([]byte(password))
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
-	return &Handler{
+	dialer := QUICDialer{Addr: server}
+	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) (r *http.Request) {
 			r = &http.Request{
 				Method: http.MethodConnect,
@@ -155,21 +178,18 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 			return
 		},
 		Cipher: cipher,
-		Client: http.Client{
-			Transport: &http3.RoundTripper{
-				Dial: func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
-					return quic.DialAddrEarly(server, tlsCfg, cfg)
-				},
-				TLSClientConfig: &tls.Config{
-					ServerName:         host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				},
-				QuicConfig: &quic.Config{KeepAlive: true},
+		Transport: &http3.RoundTripper{
+			Dial: dialer.Dial,
+			TLSClientConfig: &tls.Config{
+				ServerName:         host,
+				ClientSessionCache: tls.NewLRUClientSessionCache(32),
 			},
+			QuicConfig: &quic.Config{KeepAlive: true},
 		},
 		proxyAuth: proxyAuth,
 		timeout:   timeout,
-	}, nil
+	}
+	return handler, nil
 }
 
 // Close is ...
@@ -183,14 +203,14 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	req := h.NewRequest("tcp.imgk.cc", NewReader(h.Cipher, conn, tgt), h.proxyAuth)
 
-	r, err := h.Client.Do(req)
+	r, err := h.Transport.RoundTrip(req)
 	if err != nil {
 		return fmt.Errorf("do request error: %w", err)
 	}
+	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
-	defer r.Body.Close()
 
 	if _, err := core.NewReader(r.Body, h.Cipher).WriteTo(io.Writer(conn)); err != nil {
 		return fmt.Errorf("WriteTo error: %w", err)
@@ -204,14 +224,14 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 
 	req := h.NewRequest("udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout), h.proxyAuth)
 
-	r, err := h.Client.Do(req)
+	r, err := h.Transport.RoundTrip(req)
 	if err != nil {
 		return fmt.Errorf("do request error: %v", err)
 	}
+	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
-	defer r.Body.Close()
 
 	err = func(r io.Reader) error {
 		const MaxBufferSize = 16 << 10
