@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/pkg/resolver/http"
-	"github.com/imgk/shadow/pkg/resolver/quic"
 	"github.com/imgk/shadow/pkg/resolver/tcp"
 	"github.com/imgk/shadow/pkg/resolver/tls"
 	"github.com/imgk/shadow/pkg/resolver/udp"
@@ -89,24 +88,6 @@ func NewResolver(s string) (Resolver, error) {
 			s = strings.TrimSuffix(s, fmt.Sprintf("#%s", domain))
 		}
 		resolver := http.NewResolver(s, addr.String(), domain, "POST")
-		return resolver, nil
-	case "quic":
-		addr, err := net.ResolveUDPAddr("udp", u.Host)
-		if err != nil {
-			return nil, err
-		}
-
-		domain, _, err := net.SplitHostPort(u.Host)
-		if err != nil {
-			return nil, err
-		}
-		if u.Fragment != "" {
-			domain = u.Fragment
-		}
-		resolver, err := quic.NewResolver(addr.String(), domain)
-		if err != nil {
-			return nil, fmt.Errorf("new quic resolver error: %w", err)
-		}
 		return resolver, nil
 	default:
 		return nil, errors.New("invalid dns protocol")
