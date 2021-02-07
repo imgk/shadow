@@ -4,26 +4,14 @@ A shadowsocks, trojan, socks5 and http proxy client for Windows, Linux and macOS
 
 ## How to build
 
+Replace `$(proto)` with proxies you want to use. Currently shadow supports `socks`, `shadowsocks`, `trojan`, `http`.
+
 ```
-# close this repo
-git clone https://github.com/imgk/shadow.git
-
-# move to this repo dir
-cd shadow
-
-# import one or more protocols
-cat <<EOF > main_protocol.go
-package main
-
-import _ "github.com/imgk/shadow/proto/shadowsocks"
-
-EOF
-
 # linux darwin windows,wintun
-go get -v -ldflags="-s -w" -trimpath
+go get -v -ldflags="-s -w" -trimpath -tags="$(proto)"
 
 # windows,windivert
-go get -v -ldflags="-s -w" -trimpath -tags=shadow_divert
+go get -v -ldflags="-s -w" -trimpath -tags="shadow_divert $(proto)"
 ```
 
 ## How to use it

@@ -17,16 +17,16 @@ var (
 )
 
 // QueryFullProcessImageName is ...
-func QueryFullProcessImageName(process windows.Handle, flags uint32, b []uint16) (s string, err error) {
+func QueryFullProcessImageName(process windows.Handle, flags uint32, b []uint16) (string, error) {
 	n := uint32(windows.MAX_PATH)
 
-	// BOOL QueryFullProcessImageNameA(
+	// BOOL QueryFullProcessImageNameW(
 	//   HANDLE hProcess,
 	//   DWORD  dwFlags,
 	//   LPSTR  lpExeName,
 	//   PDWORD lpdwSize
 	// );
-	// https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable
+	// https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-queryfullprocessimagenamew
 	ret, _, errno := queryFullProcessImageNameW.Call(
 		uintptr(process),
 		uintptr(flags),
@@ -34,11 +34,9 @@ func QueryFullProcessImageName(process windows.Handle, flags uint32, b []uint16)
 		uintptr(unsafe.Pointer(&n)),
 	)
 	if ret == 0 {
-		err = errno
-		return
+		return "", errno
 	}
-	s = windows.UTF16ToString(b[:n])
-	return
+	return windows.UTF16ToString(b[:n]), nil
 }
 
 // QueryNameByPID is ...
@@ -64,7 +62,7 @@ type AppFilter struct {
 	sync.RWMutex
 	// PIDs is ...
 	PIDs map[uint32]struct{}
-	// Apps
+	// Apps is ...
 	Apps map[string]struct{}
 
 	buff []uint16
@@ -73,10 +71,9 @@ type AppFilter struct {
 // NewAppFilter is ...
 func NewAppFilter() *AppFilter {
 	f := &AppFilter{
-		RWMutex: sync.RWMutex{},
-		PIDs:    make(map[uint32]struct{}),
-		Apps:    make(map[string]struct{}),
-		buff:    make([]uint16, windows.MAX_PATH),
+		PIDs: make(map[uint32]struct{}),
+		Apps: make(map[string]struct{}),
+		buff: make([]uint16, windows.MAX_PATH),
 	}
 	return f
 }
@@ -107,14 +104,14 @@ func (f *AppFilter) Lookup(id uint32) bool {
 	f.RLock()
 	defer f.RUnlock()
 
+	// use PID
 	if _, ok := f.PIDs[id]; ok {
 		return true
 	}
 
+	// use name
 	file, _ := QueryNameByPID(id, f.buff)
-	if _, ok := f.Apps[file]; ok {
-		return true
-	}
 
-	return false
+	_, ok := f.Apps[file]
+	return ok
 }

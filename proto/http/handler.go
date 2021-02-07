@@ -168,7 +168,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 			return
 		}
 		if r.StatusCode != http.StatusOK {
-			err = errors.New(fmt.Sprintf("http response code error: %v", r.StatusCode))
+			err = fmt.Errorf("http response code error: %v", r.StatusCode)
 			return
 		}
 		if n := reader.Buffered(); n > 0 {

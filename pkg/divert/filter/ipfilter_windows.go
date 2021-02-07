@@ -18,14 +18,13 @@ type IPFilter struct {
 	sync.RWMutex
 	// Tree is ...
 	Tree *iptree.Tree
-
 	// Rules is ...
 	Rules map[string]bool
 	// Final is ...
 	Final bool
 
-	// Reader is ...
-	Reader *maxminddb.Reader
+	// reader is ...
+	reader *maxminddb.Reader
 }
 
 // NewIPFilter is ...
@@ -56,8 +55,8 @@ func (f *IPFilter) IgnorePrivate() {
 
 // Close is ...
 func (f *IPFilter) Close() error {
-	if f.Reader != nil {
-		return f.Reader.Close()
+	if f.reader != nil {
+		return f.reader.Close()
 	}
 	return nil
 }
@@ -67,7 +66,7 @@ func (f *IPFilter) SetGeoIP(s string, proxy, bypass []string, final bool) (err e
 	f.Lock()
 	defer f.Unlock()
 
-	f.Reader, err = maxminddb.Open(s)
+	f.reader, err = maxminddb.Open(s)
 	if err != nil {
 		return
 	}
@@ -129,19 +128,19 @@ func (f *IPFilter) Lookup(ip net.IP) bool {
 		return v == nil
 	}
 
-	// geometry ip recored
+	// geology record
 	type Record struct {
 		Country struct {
 			ISOCode string `maxminddb:"iso_code"`
 		} `maxminddb:"country"`
 	}
 
-	if f.Reader == nil {
+	if f.reader == nil {
 		return false
 	}
 
 	record := Record{}
-	if err := f.Reader.Lookup(ip, &record); err != nil {
+	if err := f.reader.Lookup(ip, &record); err != nil {
 		return f.Final
 	}
 

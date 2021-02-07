@@ -236,8 +236,8 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 	const MaxMessageSize = 2 << 10
 	sc, b := pool.Pool.Get(MaxMessageSize)
 	defer pool.Pool.Put(sc)
-	m := dns.Msg{}
 
+	msg := dns.Msg{}
 	for {
 		conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 		n, addr, err := conn.ReadTo(b[2:])
@@ -254,20 +254,20 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 			break
 		}
 
-		if err := m.Unpack(b[2 : 2+n]); err != nil {
+		if err := msg.Unpack(b[2 : 2+n]); err != nil {
 			s.Error("unpack message error: %v", err)
 			continue
 		}
 
-		if len(m.Question) == 0 {
+		if len(msg.Question) == 0 {
 			s.Error("no question in message")
 			continue
 		}
-		s.Info("queryd %v ask for %v", conn.RemoteAddr(), m.Question[0].Name)
+		s.Info("queryd %v ask for %v", conn.RemoteAddr(), msg.Question[0].Name)
 
-		s.HandleMessage(&m)
-		if m.MsgHdr.Response {
-			bb, err := m.PackBuffer(b[2:])
+		s.HandleMessage(&msg)
+		if msg.MsgHdr.Response {
+			bb, err := msg.PackBuffer(b[2:])
 			if err != nil {
 				s.Error("append message error: %v", err)
 				continue
@@ -276,11 +276,6 @@ func (s *Stack) HandleQuery(conn *core.UDPConn) {
 		} else {
 			nr, err := s.resolver.Resolve(b, n)
 			if err != nil {
-				if ne := net.Error(nil); errors.As(err, &ne) {
-					if ne.Timeout() {
-						continue
-					}
-				}
 				s.Error("resolve dns error: %v", err)
 				continue
 			}

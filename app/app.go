@@ -49,6 +49,7 @@ type Conf struct {
 		// Bypass is ...
 		Bypass []string `json:"bypass,omitempty"`
 		// Final is ...
+		// default action when country code does not appears in `Proxy` or `Bypass`
 		Final string `json:"final"`
 	} `json:"geo_ip_rules,omitempty"`
 	// AppRules is ...
@@ -137,11 +138,11 @@ func (c *Conf) prepareFilterString() error {
 
 // prepareGeographicalIP is ...
 func (c *Conf) prepareGeographicalIP() {
-	for _, v := range c.GeoIP.Proxy {
-		c.GeoIP.Proxy = append(c.GeoIP.Proxy, strings.ToUpper(v))
+	for i, v := range c.GeoIP.Proxy {
+		c.GeoIP.Proxy[i] = strings.ToUpper(v)
 	}
-	for _, v := range c.GeoIP.Bypass {
-		c.GeoIP.Bypass = append(c.GeoIP.Bypass, strings.ToUpper(v))
+	for i, v := range c.GeoIP.Bypass {
+		c.GeoIP.Bypass[i] = strings.ToUpper(v)
 	}
 	c.GeoIP.Final = strings.ToLower(c.GeoIP.Final)
 }
@@ -196,11 +197,10 @@ type App struct {
 
 // NewApp is new shadow app from config file
 func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
-	conf := new(Conf)
+	conf := &Conf{}
 	if err := conf.ReadFromFile(file); err != nil {
 		return nil, err
 	}
-
 	return NewAppFromConf(conf, timeout, w), nil
 }
 
@@ -210,7 +210,6 @@ func NewAppFromByteSlice(b []byte, timeout time.Duration, w io.Writer) (*App, er
 	if err := conf.ReadFromByteSlice(b); err != nil {
 		return nil, err
 	}
-
 	return NewAppFromConf(conf, timeout, w), nil
 }
 
@@ -246,6 +245,7 @@ func (app *App) Close() error {
 	for _, closer := range app.closers {
 		closer.Close()
 	}
+	// close channel after all io.Closer is closed
 	close(app.closed)
 	return nil
 }

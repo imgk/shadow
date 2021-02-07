@@ -56,7 +56,7 @@ func ParseURL(s string) (auth, addr, domain, scheme string, err error) {
 
 		scheme = u.Scheme
 	default:
-		err = errors.New(fmt.Sprintf("scheme error: %v", u.Scheme))
+		err = fmt.Errorf("scheme error: %v", u.Scheme)
 		return
 	}
 

@@ -102,16 +102,15 @@ func GetExtendedTcpTable(order uint32, ulAf uint32, tableClass uint32, buf []byt
 			uintptr(tableClass),
 			uintptr(uint32(0)),
 		)
-
-		if ret != windows.NO_ERROR {
-			if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
-				buf = make([]byte, dwSize)
-				pTcpTable = &buf[0]
-				continue
-			}
-			return nil, errno
+		if ret == windows.NO_ERROR {
+			return buf, nil
 		}
-		return buf, nil
+		if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
+			buf = make([]byte, dwSize)
+			pTcpTable = &buf[0]
+			continue
+		}
+		return nil, errno
 	}
 }
 
@@ -195,15 +194,14 @@ func GetExtendedUdpTable(order uint32, ulAf uint32, tableClass uint32, buf []byt
 			uintptr(tableClass),
 			uintptr(uint32(0)),
 		)
-
-		if ret != windows.NO_ERROR {
-			if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
-				buf = make([]byte, dwSize)
-				pUdpTable = &buf[0]
-				continue
-			}
-			return nil, errno
+		if ret == windows.NO_ERROR {
+			return buf, nil
 		}
-		return buf, nil
+		if windows.Errno(ret) == windows.ERROR_INSUFFICIENT_BUFFER {
+			buf = make([]byte, dwSize)
+			pUdpTable = &buf[0]
+			continue
+		}
+		return nil, errno
 	}
 }

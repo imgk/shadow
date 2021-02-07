@@ -42,7 +42,7 @@ type Device struct {
 func NewDevice(filter string, appFilter *filter.AppFilter, ipFilter *filter.IPFilter, hijack bool) (dev *Device, err error) {
 	ifIdx, subIfIdx, err := GetInterfaceIndex()
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	filter = fmt.Sprintf("ifIdx = %d and %s", ifIdx, filter)
@@ -190,7 +190,6 @@ func (d *Device) WriteTo(w io.Writer) (n int64, err error) {
 		err = ew
 		break
 	}
-
 	if err != nil {
 		select {
 		case <-d.closed:

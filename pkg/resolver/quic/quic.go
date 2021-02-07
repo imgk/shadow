@@ -39,7 +39,7 @@ func NewResolver(addr, domain string) (*Resolver, error) {
 		},
 		Timeout: time.Second * 3,
 	}
-	sess, err := quic.DialAddr(addr, &resolver.Config, nil)
+	sess, err := quic.DialAddr(addr, &resolver.Config, &quic.Config{KeepAlive: true})
 	if err != nil {
 		return nil, err
 	}
@@ -66,9 +66,18 @@ func (r *Resolver) Resolve(b []byte, n int) (int, error) {
 // DialContext is ...
 func (r *Resolver) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	stream, err := r.sess.OpenStream()
+	if err == nil {
+		return &Conn{Session: r.sess, Stream: stream}, nil
+	}
+
+	// TODO: how to close session
+	r.sess.CloseWithError(0, "")
+	// dial a new session when error happens
+	r.sess, err = quic.DialAddr(r.Addr, &r.Config, &quic.Config{KeepAlive: true})
 	if err != nil {
 		return nil, err
 	}
+	stream, err = r.sess.OpenStream()
 	return &Conn{Session: r.sess, Stream: stream}, nil
 }
 

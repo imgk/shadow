@@ -14,26 +14,35 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/app"
+
+	// register protocol
+	_ "github.com/imgk/shadow/proto/register"
 )
 
 func main() {
 	type FlagConfig struct {
-		Verbose  bool
+		// Verbose is ...
+		// enable verbose mode
+		Verbose bool
+		// FilePath is ...
+		// path to config file
 		FilePath string
-		Timeout  time.Duration
+		// Timeout is ...
+		// UDP timeout duration
+		Timeout time.Duration
 	}
 
 	conf := FlagConfig{}
 	flag.BoolVar(&conf.Verbose, "v", false, "enable verbose mode")
 	flag.StringVar(&conf.FilePath, "c", "config.json", "config file")
-	flag.DurationVar(&conf.Timeout, "t", time.Minute, "timeout")
+	flag.DurationVar(&conf.Timeout, "t", time.Minute*3, "timeout")
 	flag.Parse()
 
 	w := io.Writer(nil)
 	if conf.Verbose {
 		w = os.Stdout
 	}
-	app, err := app.NewApp(conf.FilePath, conf.Timeout, w)
+	app, err := app.NewApp(conf.FilePath, conf.Timeout, w /* nil for no output*/)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -53,6 +62,8 @@ func main() {
 	// close app
 	app.Close()
 
+	// use os.Exit when failed to close app
+	// and print runtime.Stack
 	select {
 	case <-time.After(time.Second * 10):
 		buf := make([]byte, 1024)

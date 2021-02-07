@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -29,5 +28,5 @@ func NewHandler(url string, timeout time.Duration) (gonet.Handler, error) {
 	if ok {
 		return fn(url, timeout)
 	}
-	return nil, errors.New(fmt.Sprintf("not a supported scheme: %v", url))
+	return nil, fmt.Errorf("not a supported scheme: %v", url)
 }
