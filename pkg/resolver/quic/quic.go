@@ -20,30 +20,48 @@ var (
 type Resolver struct {
 	// Addr is ...
 	Addr string
+	// Domain is ...
+	Domain string
 	// Config is ...
 	Config tls.Config
+	// QUICConfig is ...
+	QUICConfig quic.Config
 	// Timeout is ...
 	Timeout time.Duration
 
+	addr net.Addr
+	conn *net.UDPConn
 	sess quic.Session
 }
 
 // NewResolver is ...
 func NewResolver(addr, domain string) (*Resolver, error) {
+	nAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		return nil, err
+	}
 	resolver := &Resolver{
-		Addr: addr,
+		Addr:   addr,
+		Domain: domain,
 		Config: tls.Config{
 			ServerName:         domain,
 			ClientSessionCache: tls.NewLRUClientSessionCache(32),
 			NextProtos:         []string{"dq"},
 		},
-		Timeout: time.Second * 3,
+		QUICConfig: quic.Config{KeepAlive: true},
+		Timeout:    time.Second * 3,
+		addr:       nAddr,
+		conn:       conn,
 	}
-	sess, err := quic.DialAddr(addr, &resolver.Config, &quic.Config{KeepAlive: true})
+	resolver.sess, err = quic.Dial(conn, nAddr, resolver.Domain, &resolver.Config, &resolver.QUICConfig)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
-	resolver.sess = sess
 	return resolver, nil
 }
 
@@ -73,12 +91,17 @@ func (r *Resolver) DialContext(ctx context.Context, network, addr string) (net.C
 	// TODO: how to close session
 	r.sess.CloseWithError(0, "")
 	// dial a new session when error happens
-	r.sess, err = quic.DialAddr(r.Addr, &r.Config, &quic.Config{KeepAlive: true})
+	r.sess, err = quic.Dial(r.conn, r.addr, r.Domain, &r.Config, &r.QUICConfig)
 	if err != nil {
 		return nil, err
 	}
 	stream, err = r.sess.OpenStream()
 	return &Conn{Session: r.sess, Stream: stream}, nil
+}
+
+// Close is ...
+func (r *Resolver) Close() error {
+	return r.conn.Close()
 }
 
 // Conn is ...

@@ -65,7 +65,7 @@ type Handler struct {
 	// Cipher is ...
 	Cipher *core.Cipher
 	// Transport is ...
-	Transport http.RoundTripper
+	Client http.Client
 
 	proxyAuth string
 	timeout   time.Duration
@@ -118,12 +118,15 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			return
 		},
 		Cipher: cipher,
-		Transport: &http2.Transport{
-			DialTLS: dialer.DialTLS,
-			TLSClientConfig: &tls.Config{
-				ServerName:         host,
-				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+		Client: http.Client{
+			Transport: &http2.Transport{
+				DialTLS: dialer.DialTLS,
+				TLSClientConfig: &tls.Config{
+					ServerName:         host,
+					ClientSessionCache: tls.NewLRUClientSessionCache(32),
+				},
 			},
+			Timeout: time.Second * 3,
 		},
 		proxyAuth: proxyAuth,
 		timeout:   timeout,
@@ -178,13 +181,16 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 			return
 		},
 		Cipher: cipher,
-		Transport: &http3.RoundTripper{
-			Dial: dialer.Dial,
-			TLSClientConfig: &tls.Config{
-				ServerName:         host,
-				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+		Client: http.Client{
+			Transport: &http3.RoundTripper{
+				Dial: dialer.Dial,
+				TLSClientConfig: &tls.Config{
+					ServerName:         host,
+					ClientSessionCache: tls.NewLRUClientSessionCache(32),
+				},
+				QuicConfig: &quic.Config{KeepAlive: true},
 			},
-			QuicConfig: &quic.Config{KeepAlive: true},
+			Timeout: time.Second * 3,
 		},
 		proxyAuth: proxyAuth,
 		timeout:   timeout,
@@ -203,7 +209,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	req := h.NewRequest("tcp.imgk.cc", NewReader(h.Cipher, conn, tgt), h.proxyAuth)
 
-	r, err := h.Transport.RoundTrip(req)
+	r, err := h.Client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request error: %w", err)
 	}
@@ -224,7 +230,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 
 	req := h.NewRequest("udp.imgk.cc", NewPacketReader(h.Cipher, conn, h.timeout), h.proxyAuth)
 
-	r, err := h.Transport.RoundTrip(req)
+	r, err := h.Client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request error: %v", err)
 	}

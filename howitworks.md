@@ -1,1 +1,1 @@
-# How IT Works
+# How It Works

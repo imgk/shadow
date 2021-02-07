@@ -8,10 +8,10 @@ Replace `$(proto)` with proxies you want to use. Currently shadow supports `sock
 
 ```
 # linux darwin windows,wintun
-go get -v -ldflags="-s -w" -trimpath -tags="$(proto)"
+go get -v -ldflags="-s -w" -trimpath -tags="$(proto)" github.com/imgk/shadow
 
 # windows,windivert
-go get -v -ldflags="-s -w" -trimpath -tags="shadow_divert $(proto)"
+go get -v -ldflags="-s -w" -trimpath -tags="shadow_divert $(proto)" github.com/imgk/shadow
 ```
 
 ## How to use it

@@ -55,7 +55,7 @@ type Handler struct {
 
 	// Transport is ...
 	// for connect to proxy server
-	Transport http.RoundTripper
+	Client http.Client
 
 	proxyAuth string
 }
@@ -90,12 +90,15 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				}
 				return r
 			},
-			Transport: &http2.Transport{
-				DialTLS: dialer.DialTLS,
-				TLSClientConfig: &tls.Config{
-					ServerName:         domain,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			Client: http.Client{
+				Transport: &http2.Transport{
+					DialTLS: dialer.DialTLS,
+					TLSClientConfig: &tls.Config{
+						ServerName:         domain,
+						ClientSessionCache: tls.NewLRUClientSessionCache(32),
+					},
 				},
+				Timeout: time.Second * 3,
 			},
 			proxyAuth: auth,
 		}
@@ -124,13 +127,16 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			}
 			return r
 		},
-		Transport: &http3.RoundTripper{
-			Dial: dialer.Dial,
-			TLSClientConfig: &tls.Config{
-				ServerName:         domain,
-				ClientSessionCache: tls.NewLRUClientSessionCache(32),
+		Client: http.Client{
+			Transport: &http3.RoundTripper{
+				Dial: dialer.Dial,
+				TLSClientConfig: &tls.Config{
+					ServerName:         domain,
+					ClientSessionCache: tls.NewLRUClientSessionCache(32),
+				},
+				QuicConfig: &quic.Config{KeepAlive: true},
 			},
-			QuicConfig: &quic.Config{KeepAlive: true},
+			Timeout: time.Second * 3,
 		},
 		proxyAuth: auth,
 	}
@@ -148,7 +154,7 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 
 	req := h.NewRequest(tgt.String(), &Reader{Reader: conn}, h.proxyAuth)
 
-	r, err := h.Transport.RoundTrip(req)
+	r, err := h.Client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request error: %w", err)
 	}
