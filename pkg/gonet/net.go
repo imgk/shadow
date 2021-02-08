@@ -124,10 +124,10 @@ func relay(c, rc DuplexConn) error {
 
 // Copy is ...
 func Copy(w io.Writer, r io.Reader) (n int64, err error) {
-	if c, ok := r.(duplexConn); ok {
+	if c, ok := r.(*duplexConn); ok {
 		r = c.Conn
 	}
-	if c, ok := w.(duplexConn); ok {
+	if c, ok := w.(*duplexConn); ok {
 		w = c.Conn
 	}
 	if wt, ok := r.(io.WriterTo); ok {
