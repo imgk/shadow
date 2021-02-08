@@ -98,7 +98,6 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 						ClientSessionCache: tls.NewLRUClientSessionCache(32),
 					},
 				},
-				Timeout: time.Second * 3,
 			},
 			proxyAuth: auth,
 		}
@@ -136,7 +135,6 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 				},
 				QuicConfig: &quic.Config{KeepAlive: true},
 			},
-			Timeout: time.Second * 3,
 		},
 		proxyAuth: auth,
 	}
