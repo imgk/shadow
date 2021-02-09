@@ -44,7 +44,7 @@ type Stack struct {
 }
 
 // Start is to start the stack
-func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error) {
+func (s *Stack) Start(device Device, handler Handler, logger Logger, mtu int) (err error) {
 	s.Logger = logger
 
 	s.Device = device
@@ -184,7 +184,7 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger) (err error)
 	s.Stack.SetTransportProtocolHandler(udp.ProtocolNumber, s.HandlePacket)
 
 	// WithCreatingNIC creates NIC for stack.
-	if tcperr := s.Stack.CreateNIC(NICID, NewEndpoint(device, 1500)); tcperr != nil {
+	if tcperr := s.Stack.CreateNIC(NICID, NewEndpoint(device, mtu)); tcperr != nil {
 		err = fmt.Errorf("fail to create NIC in stack: %s", tcperr)
 		return
 	}

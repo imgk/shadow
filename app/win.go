@@ -112,7 +112,7 @@ func (app *App) Run() (err error) {
 	}
 	// new netstack
 	stack := netstack.NewStack(handler, resolver, tree, true)
-	err = stack.Start(dev, app.Logger)
+	err = stack.Start(dev, app.Logger, 1500 /*MTU for WinDivert*/)
 	if err != nil {
 		return
 	}

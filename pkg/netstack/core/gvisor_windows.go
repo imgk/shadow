@@ -87,7 +87,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 				})
 			}
 		}
-	}(r, e.mtu, e.Endpoint)
+	}(r, e.mtu+4, e.Endpoint)
 }
 
 // WriteNotify is to write packets back to system

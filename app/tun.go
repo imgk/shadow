@@ -58,7 +58,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 		name = tunName
 	}
 	if dev == nil {
-		dev, err = tun.NewDevice(name)
+		dev, err = tun.NewDeviceWithMTU(name, (2<<10)-4 /*MTU for Tun*/)
 		if err != nil {
 			return fmt.Errorf("tun device from name error: %w", err)
 		}
@@ -82,7 +82,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 	// new netstack
 	stack := netstack.NewStack(handler, resolver, tree, true)
-	err = stack.Start(dev, app.Logger)
+	err = stack.Start(dev, app.Logger, (2<<10)-4 /*MTU for Tun*/)
 	if err != nil {
 		return
 	}

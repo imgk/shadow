@@ -104,11 +104,13 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 type Stack struct {
 	// Stack is ...
 	core.Stack
-	handler gonet.Handler
+	// Handler is ...
+	Handler gonet.Handler
+	// Hijack is ...
+	Hijack bool
 
 	resolver resolver.Resolver
 	tree     *suffixtree.DomainTree
-	hijack   bool
 
 	counter uint16
 }
@@ -116,16 +118,16 @@ type Stack struct {
 // NewStack is ....
 func NewStack(handler gonet.Handler, resolver resolver.Resolver, tree *suffixtree.DomainTree, hijack bool) *Stack {
 	return &Stack{
-		handler:  handler,
+		Handler:  handler,
+		Hijack:   hijack,
 		resolver: resolver,
 		tree:     tree,
-		hijack:   hijack,
 		counter:  uint16(time.Now().Unix()),
 	}
 }
 
 // Start is ...
-func (s *Stack) Start(dev Device, lg logger.Logger) error {
+func (s *Stack) Start(dev Device, lg logger.Logger, mtu int) error {
 	device, ok := dev.(core.Device)
 	if !ok {
 		return errors.New("device type error")
@@ -134,7 +136,7 @@ func (s *Stack) Start(dev Device, lg logger.Logger) error {
 	if !ok {
 		return errors.New("logger type error")
 	}
-	return s.Stack.Start(device, s, logg)
+	return s.Stack.Start(device, s, logg, mtu)
 }
 
 // Handle handles net.Conn
@@ -159,7 +161,7 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 		}
 
 		s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), target)
-		if err := s.handler.Handle(conn, target); err != nil {
+		if err := s.Handler.Handle(conn, target); err != nil {
 			s.Error("handle tcp error: %v", err)
 		}
 		return
@@ -171,7 +173,7 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 	}
 
 	s.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
-	if err := s.handler.Handle(conn, addr); err != nil {
+	if err := s.Handler.Handle(conn, addr); err != nil {
 		s.Error("handle tcp error: %v", err)
 	}
 	return
@@ -181,7 +183,7 @@ func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
 func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 	if target == nil {
 		s.Info("proxyd %v <-UDP-> 0.0.0.0:0", conn.RemoteAddr())
-		if err := s.handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
+		if err := s.Handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
 			s.Error("handle udp error: %v", err)
 		}
 		return
@@ -193,7 +195,7 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 		return
 	}
 	if err == ErrNotFake {
-		if target.Port == 53 && s.hijack {
+		if target.Port == 53 && s.Hijack {
 			s.Info("hijack %v <-UDP-> %v", conn.RemoteAddr(), target)
 			s.HandleQuery(conn)
 			return
@@ -216,14 +218,14 @@ func (s *Stack) HandlePacket(conn *core.UDPConn, target *net.UDPAddr) {
 		}
 
 		s.Info("proxyd %v <-UDP-> %v", conn.RemoteAddr(), target)
-		if err := s.handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
+		if err := s.Handler.HandlePacket(NewUDPConn(conn, s)); err != nil {
 			s.Error("handle udp error: %v", err)
 		}
 		return
 	}
 
 	s.Info("proxyd %v <-UDP-> %v", conn.RemoteAddr(), addr)
-	if err := s.handler.HandlePacket(NewFakeUDPConn(conn, target, addr)); err != nil {
+	if err := s.Handler.HandlePacket(NewFakeUDPConn(conn, target, addr)); err != nil {
 		s.Error("handle udp error: %v", err)
 	}
 	return
