@@ -239,6 +239,7 @@ func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, buf []byte) {
 						continue
 					}
 				}
+				break
 			}
 			uc.SetReadDeadline(time.Now())
 		}(conn, uc)
