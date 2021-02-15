@@ -53,6 +53,9 @@ func (s *Stack) LookupIP(addr net.IP) (*socks.Addr, error) {
 		}
 		ss := fmt.Sprintf("%d.%d.18.198.in-addr.arpa.", ipv4[3], ipv4[2])
 		if de, ok := s.tree.Load(ss).(*suffixtree.DomainEntry); ok {
+			if de.PTR.Hdr.Ttl != 1 {
+				return nil, ErrNotFound
+			}
 			b := append(make([]byte, 0, socks.MaxAddrLen), socks.AddrTypeDomain, byte(len(de.PTR.Ptr)))
 			return &socks.Addr{Addr: append(b, de.PTR.Ptr[:]...)}, nil
 		}
