@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -154,12 +155,12 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger, mtu int) (e
 	mustSubnet := func(s string) tcpip.Subnet {
 		_, ipNet, err := net.ParseCIDR(s)
 		if err != nil {
-			panic(fmt.Errorf("unable to ParseCIDR(%s): %w", s, err))
+			log.Panic(fmt.Errorf("unable to ParseCIDR(%s): %w", s, err))
 		}
 
 		subnet, err := tcpip.NewSubnet(tcpip.Address(ipNet.IP), tcpip.AddressMask(ipNet.Mask))
 		if err != nil {
-			panic(fmt.Errorf("unable to NewSubnet(%s): %w", ipNet, err))
+			log.Panic(fmt.Errorf("unable to NewSubnet(%s): %w", ipNet, err))
 		}
 		return subnet
 	}

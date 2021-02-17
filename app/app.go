@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -163,7 +162,7 @@ func (c *Conf) ReadFromFile(file string) error {
 		return errors.New("not a file")
 	}
 
-	b, err := ioutil.ReadFile(file)
+	b, err := os.ReadFile(file)
 	if err != nil {
 		return err
 	}

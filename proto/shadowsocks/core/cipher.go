@@ -7,6 +7,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"io"
+	"log"
 	"strings"
 
 	"golang.org/x/crypto/chacha20poly1305"
@@ -87,6 +88,6 @@ func NewCipherFromKey(method, password string, key []byte) (*Cipher, error) {
 func hkdfSHA1(secret, salt, outkey []byte) {
 	r := hkdf.New(sha1.New, secret, salt, []byte("ss-subkey"))
 	if _, err := io.ReadFull(r, outkey); err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 }

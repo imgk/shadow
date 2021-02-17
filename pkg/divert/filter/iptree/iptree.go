@@ -4,6 +4,7 @@ package iptree
 
 import (
 	"fmt"
+	"log"
 	"net"
 )
 
@@ -77,7 +78,7 @@ func (t *Tree) InsertNet(n *net.IPNet, value interface{}) *Tree {
 			if !ok {
 				err := fmt.Errorf("invalid IPv6 tree: expected subTree64 value at 0x%016x, %d but got %T (%#v)",
 					MSKey, MSBits, v, v)
-				panic(err)
+				log.Panic(err)
 			}
 
 			r = (*Node64)(s)
@@ -107,7 +108,7 @@ func (t *Tree) InplaceInsertNet(n *net.IPNet, value interface{}) {
 				if !ok {
 					err := fmt.Errorf("invalid IPv6 tree: expected subTree64 value at 0x%016x, %d but got %T (%#v)",
 						MSKey, MSBits, v, v)
-					panic(err)
+					log.Panic(err)
 				}
 
 				r := (*Node64)(s)
@@ -211,7 +212,7 @@ func (t *Tree) DeleteByNet(n *net.IPNet) (*Tree, bool) {
 			if !ok {
 				err := fmt.Errorf("invalid IPv6 tree: expected subTree64 value at 0x%016x, %d but got %T (%#v)",
 					MSKey, MSBits, v, v)
-				panic(err)
+				log.Panic(err)
 			}
 
 			r, ok := (*Node64)(s).Delete(LSKey, LSBits)

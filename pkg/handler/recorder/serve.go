@@ -2,10 +2,15 @@ package recorder
 
 import (
 	"html/template"
+	"log"
 	"net"
 	"net/http"
 	"sort"
+
+	"github.com/imgk/shadow/pkg/embed"
 )
+
+var connsTemplate = template.Must(template.ParseFS(embed.Files, "admin.conns.html"))
 
 // ServeHTTP is ...
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -46,60 +51,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ConnSlice []*ConnItem
 	}
 
-	connsTemplate.Execute(w, ConnsInfo{ConnNum: len(conns), ConnSlice: conns})
+	if err := connsTemplate.Execute(w, ConnsInfo{ConnNum: len(conns), ConnSlice: conns}); err != nil {
+		log.Panic(err)
+	}
 }
-
-var connsTemplate = template.Must(template.New("").Parse(`
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-table {
-  font-family: arial, sans-serif;
-  border-collapse: collapse;
-  width: 100%;
-}
-
-td, th {
-  border: 1px solid #dddddd;
-  text-align: left;
-  padding: 8px;
-}
-
-tr:nth-child(even) {
-  background-color: #dddddd;
-}
-</style>
-</head>
-<body>
-
-<h2>Active Connections - {{ .ConnNum }}</h2>
-
-<table>
-  <tr>
-    <th>ID</th>
-    <th>Protocol</th>
-    <th>Source Address</th>
-    <th>Destination Address</th>
-    <th>Upload Bytes</th>
-    <th>Upload Speed</th>
-    <th>Download Bytes</th>
-    <th>Download Speed</th>
-  </tr>
-  {{ range .ConnSlice }}
-  <tr>
-    <td>{{ .ConnID }}</td>
-    <td>{{ .Protocol }}</td>
-    <td>{{ .Source }}</td>
-    <td>{{ .Destination }}</td>
-    <td>{{ .Upload }}</td>
-    <td>{{ .UploadSpeed }}</td>
-    <td>{{ .Download }}</td>
-    <td>{{ .DownloadSpeed }}</td>
-  </tr>
-  {{ end }}
-</table>
-
-</body>
-</html>
-`))

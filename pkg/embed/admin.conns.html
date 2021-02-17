@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+</style>
+</head>
+<body>
+
+<h2>Active Connections - {{ .ConnNum }}</h2>
+
+<table>
+  <tr>
+    <th>ID</th>
+    <th>Protocol</th>
+    <th>Source Address</th>
+    <th>Destination Address</th>
+    <th>Upload Bytes</th>
+    <th>Upload Speed</th>
+    <th>Download Bytes</th>
+    <th>Download Speed</th>
+  </tr>
+  {{ range .ConnSlice }}
+  <tr>
+    <td>{{ .ConnID }}</td>
+    <td>{{ .Protocol }}</td>
+    <td>{{ .Source }}</td>
+    <td>{{ .Destination }}</td>
+    <td>{{ .Upload }}</td>
+    <td>{{ .UploadSpeed }}</td>
+    <td>{{ .Download }}</td>
+    <td>{{ .DownloadSpeed }}</td>
+  </tr>
+  {{ end }}
+</table>
+
+</body>
+</html>
