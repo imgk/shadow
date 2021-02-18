@@ -24,7 +24,7 @@ import (
 )
 
 // Run is ...
-func (app *App) Run() (err error) {
+func (app *App) Run() error {
 	muName := windows.StringToUTF16Ptr("SHADOW-MUTEX")
 	// prevent openning more that one instance
 	mutex, err := windows.OpenMutex(windows.MUTEX_ALL_ACCESS, false, muName)
@@ -52,7 +52,7 @@ func (app *App) Run() (err error) {
 	switch event {
 	case windows.WAIT_OBJECT_0, windows.WAIT_ABANDONED:
 	default:
-		return fmt.Errorf("wait for mutex event id error: %w", event)
+		return fmt.Errorf("wait for mutex event id error: %v", event)
 	}
 
 	// new dns resolver
@@ -85,12 +85,12 @@ func (app *App) Run() (err error) {
 	// new application filter
 	appFilter, err := NewAppFilter(app.Conf)
 	if err != nil {
-		return
+		return fmt.Errorf("NewAppFilter error: %w", err)
 	}
 	// new ip filter
 	ipFilter, err := NewIPFilter(app.Conf)
 	if err != nil {
-		return
+		return fmt.Errorf("NewIPFilter error: %w", err)
 	}
 	ipFilter.IgnorePrivate()
 	defer func() {
@@ -108,13 +108,13 @@ func (app *App) Run() (err error) {
 	// new fake ip tree
 	tree, err := NewDomainTree(app.Conf)
 	if err != nil {
-		return
+		return fmt.Errorf("NewDomainTree error: %w", err)
 	}
 	// new netstack
 	stack := netstack.NewStack(handler, resolver, tree, true)
 	err = stack.Start(dev, app.Logger, 1500 /*MTU for WinDivert*/)
 	if err != nil {
-		return
+		return fmt.Errorf("start netstack error: %w", err)
 	}
 	app.attachCloser(stack)
 
