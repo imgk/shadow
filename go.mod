@@ -11,9 +11,9 @@ require (
 	github.com/xtaci/smux v1.5.15
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777
-	golang.org/x/sys v0.0.0-20210217090653-ed5674b6da4a
-	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
-	golang.zx2c4.com/wireguard v0.0.20201118
+	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
+	golang.zx2c4.com/wireguard v0.0.20200321-0.20201111175144-60b3766b89b9
 	golang.zx2c4.com/wireguard/windows v0.3.5
-	gvisor.dev/gvisor v0.0.0-20210213011838-e7ae604b523e
+	gvisor.dev/gvisor v0.0.0-20210218014549-2d9dc3c1b7be
 )

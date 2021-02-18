@@ -21,10 +21,10 @@ import (
 )
 
 func init() {
-	proto.RegisterHandler("trojan", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("trojan", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("trojan-go", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("trojan-go", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }

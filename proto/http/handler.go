@@ -17,16 +17,16 @@ import (
 )
 
 func init() {
-	proto.RegisterHandler("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
 }

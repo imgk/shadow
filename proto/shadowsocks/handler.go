@@ -21,37 +21,37 @@ import (
 )
 
 func init() {
-	proto.RegisterHandler("ss", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("ss", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("shadowsocks", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("shadowsocks", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("ss-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("ss-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("shadowsocks-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("shadowsocks-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewQUICHandler(s, timeout)
 	})
-	proto.RegisterHandler("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return http2.NewQUICHandler(s, timeout)
 	})
-	proto.RegisterHandler("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return online.NewHandler(s, timeout)
 	})
 }

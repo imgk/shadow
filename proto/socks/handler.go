@@ -17,10 +17,10 @@ import (
 )
 
 func init() {
-	proto.RegisterHandler("socks", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("socks", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
-	proto.RegisterHandler("socks5", func(s string, timeout time.Duration) (gonet.Handler, error) {
+	proto.RegisterNewHandlerFunc("socks5", func(s string, timeout time.Duration) (gonet.Handler, error) {
 		return NewHandler(s, timeout)
 	})
 }
