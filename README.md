@@ -11,7 +11,7 @@ Replace `$(proto)` with proxies you want to use. Currently shadow supports `sock
 go get -v -ldflags="-s -w" -trimpath -tags="$(proto)" github.com/imgk/shadow
 
 # windows,windivert
-go get -v -ldflags="-s -w" -trimpath -tags="shadow_divert $(proto)" github.com/imgk/shadow
+go get -v -ldflags="-s -w" -trimpath -tags="divert $(proto)" github.com/imgk/shadow
 ```
 
 ## How to use it

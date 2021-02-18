@@ -1,4 +1,4 @@
-// +build windows,shadow_divert
+// +build windows,divert
 
 package app
 
