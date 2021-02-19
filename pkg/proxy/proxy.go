@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -30,7 +31,7 @@ type Server struct {
 	// serve http.Request
 	Server http.Server
 	// Listener is ...
-	Lisener net.Listener
+	Listener net.Listener
 	// Handler is ...
 	// gonet.Handler
 	Handler gonet.Handler
@@ -47,13 +48,13 @@ type Server struct {
 // NewServer is ...
 func NewServer(ln net.Listener, lg logger.Logger, h gonet.Handler, t *suffixtree.DomainTree, r *http.ServeMux) *Server {
 	s := &Server{
-		Logger:  lg,
-		Router:  r,
-		Lisener: ln,
-		Handler: h,
-		ln:      NewListener(ln.Addr()),
-		tree:    t,
-		closed:  make(chan struct{}),
+		Logger:   lg,
+		Router:   r,
+		Listener: ln,
+		Handler:  h,
+		ln:       NewListener(ln.Addr()),
+		tree:     t,
+		closed:   make(chan struct{}),
 	}
 	s.Server.Handler = http.Handler(s)
 	return s
@@ -64,12 +65,16 @@ func NewServer(ln net.Listener, lg logger.Logger, h gonet.Handler, t *suffixtree
 func (s *Server) Serve() {
 	go s.Server.Serve(s.ln)
 
+	ln, ok := s.Listener.(*net.TCPListener)
+	if !ok {
+		log.Panic(errors.New("not *net.TCPListener"))
+	}
 	for {
-		conn, err := s.Lisener.Accept()
+		conn, err := ln.AcceptTCP()
 		if err != nil {
 			return
 		}
-		go func(c net.Conn) {
+		go func(c *net.TCPConn) {
 			// do socks5 handshake or
 			// return http net.Conn
 			uc, b, ok, err := s.Handshake(c)
@@ -116,7 +121,7 @@ func (s *Server) Close() error {
 	default:
 		close(s.closed)
 	}
-	return xerror.CombineError(s.Lisener.Close(), s.ln.Close(), s.Server.Close())
+	return xerror.CombineError(s.Listener.Close(), s.ln.Close(), s.Server.Close())
 }
 
 // Handshake is ...
@@ -218,7 +223,7 @@ func (s *Server) Handshake(conn net.Conn) (uc *net.UDPConn, buf []byte, ok bool,
 
 // ProxySocks is ...
 // handle socks5 proxy
-func (s *Server) ProxySocks(conn net.Conn, uc *net.UDPConn, buf []byte) {
+func (s *Server) ProxySocks(conn gonet.Conn, uc *net.UDPConn, buf []byte) {
 	defer conn.Close()
 
 	raddr := &socks.Addr{Addr: buf}
@@ -278,11 +283,11 @@ func (s *Server) ProxyGet(w http.ResponseWriter, r *http.Request) {
 
 	// handle http.MethodGet request
 	s.Logger.Info("proxyd %v <-TCP-> %v", r.RemoteAddr, addr)
-	go func(conn net.Conn, addr net.Addr) {
+	go func(conn gonet.Conn, addr net.Addr) {
 		if err := s.Handler.Handle(conn, addr); err != nil {
 			s.Logger.Error("handle http conn error: %v", err)
 		}
-	}(dst, addr)
+	}(gonet.NewConn(dst), addr)
 
 	// request http.Response
 	resp, err := t.RoundTrip(r)
@@ -343,8 +348,13 @@ func (s *Server) ProxyConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	nc, ok := conn.(*net.TCPConn)
+	if !ok {
+		log.Panic(errors.New("not *net.TCPConn"))
+	}
+
 	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
-	if err := s.Handler.Handle(conn, addr); err != nil {
+	if err := s.Handler.Handle(nc, addr); err != nil {
 		s.Logger.Error("handle https conn error: %v", err)
 	}
 }

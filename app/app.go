@@ -21,8 +21,13 @@ import (
 type Conf struct {
 	// Server is ...
 	// proxy server
+	// {
+	//   "protocol": "",
+	//   "url": "",
+	//   "server": ""
+	// }
 	// ss://chacha20-ietf-poly1305:test1234@1.2.3.4:8388
-	Server string `json:"server"`
+	Server json.RawMessage `json:"server"`
 	// NameServer is ...
 	// dns resolver server address
 	// tls://1.1.1.1:853
@@ -109,7 +114,24 @@ func (c *Conf) prepareFilterString() error {
 		return addr.IP.To16(), nil
 	}
 
-	proxyIP, err := ResolveIP(c.Server)
+	type Proto struct {
+		Proto  string `json:"protocol"`
+		URL    string `json:"url,omitempty"`
+		Server string `json:"server,omitempty"`
+	}
+	proto := Proto{}
+	if err := json.Unmarshal(c.Server, &proto); err != nil {
+		return fmt.Errorf("unmarshal server error: %w", err)
+	}
+	if proto.URL == "" && proto.Server == "" {
+		return errors.New("no server address for parsing")
+	}
+	server := proto.URL
+	if server == "" {
+		server = fmt.Sprintf("http://%s", proto.Server)
+	}
+
+	proxyIP, err := ResolveIP(server)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,12 +22,34 @@ import (
 )
 
 func init() {
-	proto.RegisterNewHandlerFunc("trojan", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("trojan-go", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
+	fn := func(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
+		type Proto struct {
+			Proto     string `json:"protocol"`
+			URL       string `json:"url,omitempty"`
+			Server    string `json:"server,omitempty"`
+			Password  string `json:"password,omitempty"`
+			Path      string `json:"path,omitempty"`
+			Transport string `json:"transport,omitempty"`
+			Mux       string `json:"mux,omitempty"`
+			Domain    string `json:"domain,omitempty"`
+		}
+		proto := Proto{}
+		if err := json.Unmarshal(b, &proto); err != nil {
+			return nil, err
+		}
+
+		switch proto.Proto {
+		case "trojan", "trojan-go":
+			if proto.URL == "" {
+				return NewHandler(proto.Server, proto.Path, proto.Password, proto.Transport, proto.Mux, proto.Domain, timeout)
+			}
+			return NewHandlerFromURL(proto.URL, timeout)
+		}
+		return nil, errors.New("protocol error")
+	}
+
+	proto.RegisterNewHandlerFunc("trojan", fn)
+	proto.RegisterNewHandlerFunc("trojan-go", fn)
 }
 
 // HeaderLen is ...
@@ -43,13 +66,17 @@ type Handler struct {
 	timeout time.Duration
 }
 
-// NewHandler is ...
-func NewHandler(s string, timeout time.Duration) (*Handler, error) {
+// NewHandlerFromURL is ...
+func NewHandlerFromURL(s string, timeout time.Duration) (*Handler, error) {
 	server, path, password, transport, mux, domain, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
+	return NewHandler(server, path, password, transport, mux, domain, timeout)
+}
 
+// NewHandler is ...
+func NewHandler(server, path, password, transport, mux, domain string, timeout time.Duration) (*Handler, error) {
 	proxyAddr, err := net.ResolveUDPAddr("udp", server)
 	if err != nil {
 		return nil, err
@@ -121,7 +148,7 @@ func (h *Handler) Close() error {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
 	rc, err := h.Dialer.Dial(socks.CmdConnect, tgt)

@@ -266,7 +266,7 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 		)
 	}
 
-	go s.Handler.Handle(gonet.NewTCPConn(&wq, ep), &net.TCPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
+	go s.Handler.Handle((*TCPConn)(unsafe.Pointer(gonet.NewTCPConn(&wq, ep))), &net.TCPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
 }
 
 // Get is to get *UDPConn
@@ -366,6 +366,11 @@ func (s *Stack) Close() error {
 	}
 	s.Stack.Close()
 	return nil
+}
+
+// TCPConn is ...
+type TCPConn struct {
+	gonet.TCPConn
 }
 
 // Packet is ...

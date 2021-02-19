@@ -147,10 +147,11 @@ func (h *Handler) Close() error {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req := h.NewRequest(tgt.String(), &Reader{Reader: conn}, h.proxyAuth)
+	rc := NewReader(conn)
+	req := h.NewRequest(tgt.String(), rc, h.proxyAuth)
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -161,9 +162,13 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
 
-	if _, err := io.Copy(conn, r.Body); err != nil {
-		return fmt.Errorf("io.Copy error: %w", err)
+	if _, err := gonet.Copy(conn, r.Body); err != nil {
+		conn.CloseWrite()
+		rc.Wait()
+		return fmt.Errorf("gonet.Copy error: %w", err)
 	}
+	conn.CloseWrite()
+	rc.Wait()
 	return nil
 }
 
@@ -175,9 +180,30 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 // Reader is ...
 type Reader struct {
 	io.Reader
+	closed chan struct{}
+}
+
+// NewReader is ...
+func NewReader(r io.Reader) *Reader {
+	reader := &Reader{
+		Reader: r,
+		closed: make(chan struct{}),
+	}
+	return reader
 }
 
 // Close is ...
 func (r *Reader) Close() error {
+	select {
+	case <-r.closed:
+		return nil
+	default:
+		close(r.closed)
+	}
 	return nil
+}
+
+// Wait is ...
+func (r *Reader) Wait() {
+	<-r.closed
 }

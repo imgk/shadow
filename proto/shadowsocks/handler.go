@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,39 +22,40 @@ import (
 )
 
 func init() {
-	proto.RegisterNewHandlerFunc("ss", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("shadowsocks", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("ss-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("shadowsocks-tls", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("ss-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return http2.NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("shadowsocks-h2", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return http2.NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("ss-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return http2.NewQUICHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("shadowsocks-h3", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return http2.NewQUICHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("ss-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return online.NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("shadowsocks-online", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return online.NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("online", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return online.NewHandler(s, timeout)
-	})
+	fn := func(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
+		type Proto struct {
+			Proto string `json:"protocol"`
+			URL   string `json:"url"`
+		}
+		proto := Proto{}
+		if err := json.Unmarshal(b, &proto); err != nil {
+			return nil, err
+		}
+
+		switch proto.Proto {
+		case "ss", "shadowsocks", "ss-tls", "shadowsocks-tls":
+			return NewHandler(proto.URL, timeout)
+		case "ss-h2", "shadowsocks-h2":
+			return http2.NewHandler(proto.URL, timeout)
+		case "ss-h3", "shadowsocks-h3":
+			return http2.NewQUICHandler(proto.URL, timeout)
+		case "ss-online", "shadowsocks-online", "online":
+			return online.NewHandler(proto.URL, timeout)
+		}
+		return nil, errors.New("protocol error")
+	}
+
+	proto.RegisterNewHandlerFunc("ss", fn)
+	proto.RegisterNewHandlerFunc("shadowsocks", fn)
+	proto.RegisterNewHandlerFunc("ss-tls", fn)
+	proto.RegisterNewHandlerFunc("shadowsocks-tls", fn)
+	proto.RegisterNewHandlerFunc("ss-h2", fn)
+	proto.RegisterNewHandlerFunc("shadowsocks-h2", fn)
+	proto.RegisterNewHandlerFunc("ss-h3", fn)
+	proto.RegisterNewHandlerFunc("shadowsocks-h3", fn)
+	proto.RegisterNewHandlerFunc("ss-online", fn)
+	proto.RegisterNewHandlerFunc("shadowsocks-online", fn)
+	proto.RegisterNewHandlerFunc("online", fn)
 }
 
 // Dialer is ...
@@ -141,7 +143,7 @@ func (*Handler) Close() error {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) (err error) {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) (err error) {
 	defer conn.Close()
 
 	addr, ok := tgt.(*socks.Addr)

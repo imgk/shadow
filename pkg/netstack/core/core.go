@@ -21,7 +21,7 @@ type Logger interface {
 
 // Handler is for handling incoming TCP and UDP connections
 type Handler interface {
-	Handle(net.Conn, *net.TCPAddr)
+	Handle(*TCPConn, *net.TCPAddr)
 	HandlePacket(*UDPConn, *net.UDPAddr)
 }
 

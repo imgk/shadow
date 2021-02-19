@@ -202,10 +202,11 @@ func (h *Handler) Close() error {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
-	req := h.NewRequest("tcp.imgk.cc", NewReader(h.Cipher, conn, tgt), h.proxyAuth)
+	rc := NewReader(h.Cipher, conn, tgt)
+	req := h.NewRequest("tcp.imgk.cc", rc, h.proxyAuth)
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -217,8 +218,12 @@ func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
 	}
 
 	if _, err := core.NewReader(r.Body, h.Cipher).WriteTo(io.Writer(conn)); err != nil {
+		conn.CloseWrite()
+		rc.Wait()
 		return fmt.Errorf("WriteTo error: %w", err)
 	}
+	conn.CloseWrite()
+	rc.Wait()
 	return nil
 }
 
@@ -314,8 +319,9 @@ type Reader struct {
 	// Reader is ...
 	Reader io.Reader
 
-	tgt   net.Addr
-	nonce []byte
+	closed chan struct{}
+	tgt    net.Addr
+	nonce  []byte
 }
 
 // NewReader is ...
@@ -323,13 +329,24 @@ func NewReader(cipher *core.Cipher, rc io.ReadCloser, tgt net.Addr) *Reader {
 	r := &Reader{
 		Cipher: cipher,
 		Reader: rc,
+		closed: make(chan struct{}),
 		tgt:    tgt,
 	}
 	return r
 }
 
+// Wait is ...
+func (r *Reader) Wait() {
+	<-r.closed
+}
+
 // Close is ...
 func (r *Reader) Close() error {
+	select {
+	case <-r.closed:
+	default:
+		close(r.closed)
+	}
 	return nil
 }
 

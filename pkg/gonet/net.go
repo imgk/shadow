@@ -13,7 +13,7 @@ import (
 // Handler is ...
 type Handler interface {
 	io.Closer
-	Handle(net.Conn, net.Addr) error
+	Handle(Conn, net.Addr) error
 	HandlePacket(PacketConn) error
 }
 
@@ -34,46 +34,46 @@ type CloseReader interface {
 	CloseRead() error
 }
 
-// CloseWriter
+// CloseWriter is ...
 type CloseWriter interface {
 	CloseWrite() error
 }
 
-// DuplexConn
-type DuplexConn interface {
+// Conn is ...
+type Conn interface {
 	net.Conn
 	CloseReader
 	CloseWriter
 }
 
-// WrapDuplexConn is ...
-func WrapDuplexConn(conn net.Conn) DuplexConn {
-	if c, ok := conn.(DuplexConn); ok {
+// NewConn is ...
+func NewConn(nc net.Conn) Conn {
+	if c, ok := nc.(Conn); ok {
 		return c
 	}
-	return &duplexConn{Conn: conn}
+	return &conn{Conn: nc}
 }
 
-type duplexConn struct {
+type conn struct {
 	net.Conn
 }
 
-func (c *duplexConn) ReadFrom(r io.Reader) (int64, error) {
+func (c *conn) ReadFrom(r io.Reader) (int64, error) {
 	return Copy(c.Conn, r)
 }
 
-func (c *duplexConn) WriteTo(w io.Writer) (int64, error) {
+func (c *conn) WriteTo(w io.Writer) (int64, error) {
 	return Copy(w, c.Conn)
 }
 
-func (c *duplexConn) CloseRead() error {
+func (c *conn) CloseRead() error {
 	if closer, ok := c.Conn.(CloseReader); ok {
 		return closer.CloseRead()
 	}
 	return errors.New("not supported")
 }
 
-func (c *duplexConn) CloseWrite() error {
+func (c *conn) CloseWrite() error {
 	if closer, ok := c.Conn.(CloseWriter); ok {
 		return closer.CloseWrite()
 	}
@@ -82,41 +82,24 @@ func (c *duplexConn) CloseWrite() error {
 
 // Relay is ...
 func Relay(c, rc net.Conn) error {
-	l, ok := c.(DuplexConn)
-	if !ok {
-		l = &duplexConn{Conn: c}
-	}
-
-	r, ok := rc.(DuplexConn)
-	if !ok {
-		r = &duplexConn{Conn: rc}
-	}
-
-	return relay(l, r)
-}
-
-func relay(c, rc DuplexConn) error {
 	errCh := make(chan error, 1)
-	go func(c, rc DuplexConn, errCh chan error) {
+	go func(c, rc net.Conn, errCh chan error) {
 		_, err := Copy(rc, c)
-		if err != nil {
-			rc.Close()
-			c.Close()
-		} else {
-			rc.CloseWrite()
-			c.CloseRead()
+		if closer, ok := rc.(CloseWriter); ok {
+			closer.CloseWrite()
 		}
-
+		if err != nil {
+			rc.SetReadDeadline(time.Now())
+		}
 		errCh <- err
 	}(c, rc, errCh)
 
 	_, err := Copy(c, rc)
+	if closer, ok := c.(CloseWriter); ok {
+		closer.CloseWrite()
+	}
 	if err != nil {
-		c.Close()
-		rc.Close()
-	} else {
-		c.CloseWrite()
-		rc.CloseRead()
+		c.SetReadDeadline(time.Now())
 	}
 
 	return xerror.CombineError(err, <-errCh)
@@ -124,10 +107,10 @@ func relay(c, rc DuplexConn) error {
 
 // Copy is ...
 func Copy(w io.Writer, r io.Reader) (n int64, err error) {
-	if c, ok := r.(*duplexConn); ok {
+	if c, ok := r.(*conn); ok {
 		r = c.Conn
 	}
-	if c, ok := w.(*duplexConn); ok {
+	if c, ok := w.(*conn); ok {
 		w = c.Conn
 	}
 	if wt, ok := r.(io.WriterTo); ok {

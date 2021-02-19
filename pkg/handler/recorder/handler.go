@@ -158,7 +158,7 @@ func NewHandler(h gonet.Handler) *Handler {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, addr net.Addr) (err error) {
+func (h *Handler) Handle(conn gonet.Conn, addr net.Addr) (err error) {
 	key := rand.Uint32()
 	conn = NewConnFromConn(conn, addr)
 

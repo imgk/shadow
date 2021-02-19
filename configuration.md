@@ -14,7 +14,10 @@
     // socks://1.2.3.4:1080
     // http
     // http://1.2.3.4:8080
-    "server": "ss://CHACHA20-IETF-POLY1305:password@127.0.0.1:8388",
+    "server": {
+        "protocol": "ss",
+        "url", "ss://CHACHA20-IETF-POLY1305:password@127.0.0.1:8388"
+    },
 
 
     // DNS Server

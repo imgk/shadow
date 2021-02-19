@@ -102,7 +102,7 @@ func (h *Handler) tryRenew() (err error) {
 		err = errors.New("no valid handler")
 		return
 	}
-	go handler.Handle(rc, addr)
+	go handler.Handle(gonet.NewConn(rc), addr)
 
 	req, err := http.NewRequest(http.MethodGet, "http://connectivitycheck.gstatic.com/generate_204", nil)
 	if err != nil {
@@ -191,7 +191,7 @@ func (h *Handler) Close() error {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	h.mu.Lock()
 	handler := h.Handler
 	h.mu.Unlock()

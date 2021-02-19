@@ -89,9 +89,9 @@ func (d *TLSDialer) ListenPacket(network, addr string) (net.PacketConn, error) {
 }
 
 var (
-	_ gonet.DuplexConn = (*Conn)(nil)
-	_ net.Conn         = (*Conn)(nil)
-	_ net.PacketConn   = (*PacketConn)(nil)
+	_ gonet.Conn     = (*Conn)(nil)
+	_ net.Conn       = (*Conn)(nil)
+	_ net.PacketConn = (*PacketConn)(nil)
 )
 
 // Conn supports net.Conn

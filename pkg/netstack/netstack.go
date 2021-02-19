@@ -139,8 +139,8 @@ func (s *Stack) Start(dev Device, lg logger.Logger, mtu int) error {
 	return s.Stack.Start(device, s, logg, mtu)
 }
 
-// Handle handles net.Conn
-func (s *Stack) Handle(conn net.Conn, target *net.TCPAddr) {
+// Handle handles *core.TCPConn
+func (s *Stack) Handle(conn *core.TCPConn, target *net.TCPAddr) {
 	addr, err := s.LookupAddr(target)
 	if err == ErrNotFake {
 		if ipv4 := target.IP.To4(); ipv4 != nil {

@@ -1,8 +1,8 @@
 package proto
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/imgk/shadow/pkg/gonet"
@@ -13,7 +13,7 @@ var handlers = map[string]NewHandlerFunc{}
 
 // NewHandlerFunc is ...
 // give a handler for a protocol scheme
-type NewHandlerFunc func(string, time.Duration) (gonet.Handler, error)
+type NewHandlerFunc func(json.RawMessage, time.Duration) (gonet.Handler, error)
 
 // RegisterNewHandlerFunc is ...
 // register a new protocol scheme
@@ -22,11 +22,18 @@ func RegisterNewHandlerFunc(proto string, fn NewHandlerFunc) {
 }
 
 // NewHandler is ...
-func NewHandler(s string, timeout time.Duration) (gonet.Handler, error) {
-	ss := strings.Split(s, ":")
-	fn, ok := handlers[ss[0]]
-	if ok {
-		return fn(s, timeout)
+func NewHandler(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
+	type Proto struct {
+		Proto string `json:"protocol"`
 	}
-	return nil, fmt.Errorf("not a supported scheme: %v", s)
+	proto := Proto{}
+	if err := json.Unmarshal(b, &proto); err != nil {
+		return nil, err
+	}
+
+	fn, ok := handlers[proto.Proto]
+	if ok {
+		return fn(b, timeout)
+	}
+	return nil, fmt.Errorf("not a supported scheme: %v", proto.Proto)
 }

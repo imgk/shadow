@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,18 +18,29 @@ import (
 )
 
 func init() {
-	proto.RegisterNewHandlerFunc("http", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("https", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("http2", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return http2.NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("http3", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return http2.NewHandler(s, timeout)
-	})
+	fn := func(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
+		type Proto struct {
+			Proto string `json:"protocol"`
+			URL   string `json:"url"`
+		}
+		proto := Proto{}
+		if err := json.Unmarshal(b, &proto); err != nil {
+			return nil, err
+		}
+
+		switch proto.Proto {
+		case "http", "https":
+			return NewHandler(proto.URL, timeout)
+		case "http2", "http3":
+			return http2.NewHandler(proto.URL, timeout)
+		}
+		return nil, errors.New("protocol error")
+	}
+
+	proto.RegisterNewHandlerFunc("http", fn)
+	proto.RegisterNewHandlerFunc("https", fn)
+	proto.RegisterNewHandlerFunc("http2", fn)
+	proto.RegisterNewHandlerFunc("http3", fn)
 }
 
 // rawConn is ...
@@ -135,7 +147,7 @@ func (*Handler) Close() error {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
 	rc, err := func(network, addr, proxyAuth string) (conn net.Conn, err error) {

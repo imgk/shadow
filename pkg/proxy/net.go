@@ -15,7 +15,7 @@ import (
 var (
 	_ net.Listener     = (*Listener)(nil)
 	_ net.Conn         = (*Conn)(nil)
-	_ gonet.DuplexConn = (*Conn)(nil)
+	_ gonet.Conn       = (*Conn)(nil)
 	_ gonet.PacketConn = (*PacketConn)(nil)
 )
 

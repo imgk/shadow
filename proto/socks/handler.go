@@ -1,6 +1,7 @@
 package socks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,12 +18,25 @@ import (
 )
 
 func init() {
-	proto.RegisterNewHandlerFunc("socks", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
-	proto.RegisterNewHandlerFunc("socks5", func(s string, timeout time.Duration) (gonet.Handler, error) {
-		return NewHandler(s, timeout)
-	})
+	fn := func(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
+		type Proto struct {
+			Proto string `json:"protocol"`
+			URL   string `json:"url"`
+		}
+		proto := Proto{}
+		if err := json.Unmarshal(b, &proto); err != nil {
+			return nil, err
+		}
+
+		switch proto.Proto {
+		case "socks", "socks5":
+			return NewHandler(proto.URL, timeout)
+		}
+		return nil, errors.New("protocol error")
+	}
+
+	proto.RegisterNewHandlerFunc("socks", fn)
+	proto.RegisterNewHandlerFunc("socks5", fn)
 }
 
 // Handler is ...
@@ -77,7 +91,7 @@ func (h *Handler) Dial(tgt net.Addr, cmd byte) (net.Conn, *socks.Addr, error) {
 }
 
 // Handle is ...
-func (h *Handler) Handle(conn net.Conn, tgt net.Addr) error {
+func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
 	rc, _, err := h.Dial(tgt, socks.CmdConnect)
