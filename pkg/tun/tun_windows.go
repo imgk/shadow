@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"golang.zx2c4.com/wireguard/tun"
+	"golang.zx2c4.com/wireguard/windows/tunnel"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
 
@@ -81,45 +82,6 @@ func (d *Device) DeviceType() string {
 // Write is ...
 func (d *Device) Write(b []byte) (int, error) {
 	return d.NativeTun.Write(b, 0)
-}
-
-// cleanupAddressesOnDisconnectedInterfaces is ...
-// https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L22-L58
-func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, addresses []net.IPNet) {
-	if len(addresses) == 0 {
-		return
-	}
-	includedInAddresses := func(a net.IPNet) bool {
-		// TODO: this makes the whole algorithm O(n^2). But we can't stick net.IPNet in a Go hashmap. Bummer!
-		for _, addr := range addresses {
-			ip := addr.IP
-			if ip4 := ip.To4(); ip4 != nil {
-				ip = ip4
-			}
-			mA, _ := addr.Mask.Size()
-			mB, _ := a.Mask.Size()
-			if bytes.Equal(ip, a.IP) && mA == mB {
-				return true
-			}
-		}
-		return false
-	}
-	interfaces, err := winipcfg.GetAdaptersAddresses(family, winipcfg.GAAFlagDefault)
-	if err != nil {
-		return
-	}
-	for _, iface := range interfaces {
-		if iface.OperStatus == winipcfg.IfOperStatusUp {
-			continue
-		}
-		for address := iface.FirstUnicastAddress; address != nil; address = address.Next {
-			ip := address.Address.IP()
-			ipnet := net.IPNet{IP: ip, Mask: net.CIDRMask(int(address.OnLinkPrefixLength), 8*len(ip))}
-			if includedInAddresses(ipnet) {
-				iface.LUID.DeleteIPAddress(ipnet)
-			}
-		}
-	}
 }
 
 // setInterfaceAddress4 is ...
@@ -245,3 +207,12 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 
 	return luid.SetRoutesForFamily(windows.AF_INET6, deduplicatedRoutes)
 }
+
+// use golang.zx2c4.com/wireguard/windows/tunnel
+var _ = tunnel.UseFixedGUIDInsteadOfDeterministic
+
+// cleanupAddressesOnDisconnectedInterfaces is ...
+// https://github.com/WireGuard/wireguard-windows/blob/master/tunnel/addressconfig.go#L22
+//
+//go:linkname cleanupAddressesOnDisconnectedInterfaces golang.zx2c4.com/wireguard/windows/tunnel.cleanupAddressesOnDisconnectedInterfaces
+func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, addresses []net.IPNet)
