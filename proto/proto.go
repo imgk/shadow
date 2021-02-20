@@ -28,7 +28,7 @@ func NewHandler(b json.RawMessage, timeout time.Duration) (gonet.Handler, error)
 	}
 	proto := Proto{}
 	if err := json.Unmarshal(b, &proto); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal server protocol error: %w", err)
 	}
 
 	fn, ok := handlers[proto.Proto]

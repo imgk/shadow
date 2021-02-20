@@ -16,14 +16,20 @@ import (
 
 // Device is a tun-like device for reading packets from system
 type Device interface {
+	// Writer is ...
 	io.Writer
+	// DeviceType is ...
+	// give device type
 	DeviceType() string
 }
 
 // Endpoint is ...
 type Endpoint struct {
+	// Endpoint is ...
 	*channel.Endpoint
+	// Device is ...
 	Device Device
+	// Writer is ...
 	Writer io.Writer
 
 	mtu  int
@@ -59,11 +65,11 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 		if !ok {
 			log.Panic(errors.New("not a valid device for windows"))
 		}
-		go func(w *Endpoint, wt io.WriterTo) {
+		go func(w io.Writer, wt io.WriterTo) {
 			if _, err := wt.WriteTo(w); err != nil {
 				return
 			}
-		}(e, wt)
+		}(&endpoint{Endpoint: e.Endpoint}, wt)
 		return
 	}
 	// WinTun
@@ -105,8 +111,14 @@ func (e *Endpoint) WriteNotify() {
 	e.mu.Unlock()
 }
 
+// endpoint is for WinDivert
+// write packets from WinDivert to gvisor netstack
+type endpoint struct {
+	Endpoint *channel.Endpoint
+}
+
 // Write is to write packet to stack
-func (e *Endpoint) Write(b []byte) (int, error) {
+func (e *endpoint) Write(b []byte) (int, error) {
 	buf := append(make([]byte, 0, len(b)), b...)
 
 	switch header.IPVersion(buf) {

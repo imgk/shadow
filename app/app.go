@@ -20,7 +20,7 @@ import (
 // Conf is shadow application configuration
 type Conf struct {
 	// Server is ...
-	// proxy server
+	// proxy server address
 	// {
 	//   "protocol": "",
 	//   "url": "",

@@ -15,15 +15,24 @@ import (
 
 // Device is a tun-like device for reading packets from system
 type Device interface {
+	// Reader is ...
 	Reader
+	// Writer is ...
 	Writer
+	// DeviceType is ...
+	// give device type
 	DeviceType() string
 }
 
 // Endpoint is ...
 type Endpoint struct {
+	// Endpoint is ...
 	*channel.Endpoint
+	// Reader is ...
+	// read packets from tun device
 	Reader Reader
+	// Writer is ...
+	// write packets to tun device
 	Writer Writer
 
 	mtu  int
@@ -99,5 +108,6 @@ func (e *Endpoint) WriteNotify() {
 
 // Writer is for linux tun writing with 4 bytes prefix
 type Writer interface {
+	// Write packets to tun device
 	Write([]byte, int) (int, error)
 }
