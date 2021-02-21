@@ -102,7 +102,6 @@ func printBuildInfo() {
 	if !ok {
 		log.Panic(errors.New("no build info"))
 	}
-	fmt.Println("main module")
 	printModule(&info.Main)
 	for _, m := range info.Deps {
 		printModule(m)
