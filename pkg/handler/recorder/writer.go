@@ -1,9 +1,9 @@
 package recorder
 
 import (
+	"errors"
 	"net"
 	"sync/atomic"
-	"time"
 
 	"github.com/imgk/shadow/pkg/gonet"
 )
@@ -28,8 +28,7 @@ func (w *Writer) Close() error {
 	if closer, ok := w.conn.(gonet.CloseWriter); ok {
 		return closer.CloseWrite()
 	}
-	w.conn.SetWriteDeadline(time.Now())
-	return w.conn.Close()
+	return errors.New("not supported")
 }
 
 // WriteFrom is ...

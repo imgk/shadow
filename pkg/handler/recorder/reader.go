@@ -1,9 +1,9 @@
 package recorder
 
 import (
+	"errors"
 	"net"
 	"sync/atomic"
-	"time"
 
 	"github.com/imgk/shadow/pkg/gonet"
 )
@@ -28,8 +28,7 @@ func (r *Reader) Close() error {
 	if closer, ok := r.conn.(gonet.CloseReader); ok {
 		return closer.CloseRead()
 	}
-	r.conn.SetReadDeadline(time.Now())
-	return r.conn.Close()
+	return errors.New("not supported")
 }
 
 // ReadTo is ...

@@ -64,15 +64,16 @@ func (r *Reader) init() (err error) {
 	return
 }
 
-// Close is ...
-func (r *Reader) Close() (err error) {
+// CloseRead is ...
+func (r *Reader) CloseRead() error {
 	if closer, ok := r.Reader.(CloseReader); ok {
-		err = closer.CloseRead()
-		return
+		return closer.CloseRead()
 	}
-	if conn, ok := r.Reader.(net.Conn); ok {
-		conn.SetReadDeadline(time.Now())
-	}
+	return errors.New("not supported")
+}
+
+// Close is ...
+func (r *Reader) Close() error {
 	return r.Reader.Close()
 }
 
@@ -211,15 +212,16 @@ func (w *Writer) init() error {
 	return err
 }
 
-// Close is ...
-func (w *Writer) Close() (err error) {
+// CloseWrite is ...
+func (w *Writer) CloseWrite() error {
 	if closer, ok := w.Writer.(CloseWriter); ok {
-		err = closer.CloseWrite()
-		return
+		return closer.CloseWrite()
 	}
-	if conn, ok := w.Writer.(net.Conn); ok {
-		conn.SetWriteDeadline(time.Now())
-	}
+	return errors.New("not supported")
+}
+
+// Close is ...
+func (w *Writer) Close() error {
 	return w.Writer.Close()
 }
 
@@ -281,12 +283,12 @@ func (w *Writer) readFrom(r io.Reader) (n int64, err error) {
 
 // Conn is ...
 type Conn struct {
-	// Conn is ...
-	net.Conn
+	// nc is ...
+	nc net.Conn
 	// Reader is ...
-	r Reader
+	Reader
 	// Writer is ...
-	w Writer
+	Writer
 }
 
 // NewConn is ...
@@ -296,12 +298,12 @@ func NewConn(conn net.Conn, cipher *Cipher) net.Conn {
 	}
 
 	conn = &Conn{
-		Conn: conn,
-		r: Reader{
+		nc: conn,
+		Reader: Reader{
 			Reader: conn,
 			Cipher: cipher,
 		},
-		w: Writer{
+		Writer: Writer{
 			Writer: conn,
 			Cipher: cipher,
 		},
@@ -309,12 +311,12 @@ func NewConn(conn net.Conn, cipher *Cipher) net.Conn {
 	return conn
 }
 
-func (c *Conn) Read(b []byte) (int, error)          { return c.r.Read(b) }
-func (c *Conn) WriteTo(w io.Writer) (int64, error)  { return c.r.WriteTo(w) }
-func (c *Conn) Write(b []byte) (int, error)         { return c.w.Write(b) }
-func (c *Conn) ReadFrom(r io.Reader) (int64, error) { return c.w.ReadFrom(r) }
-func (c *Conn) CloseRead() error                    { return c.r.Close() }
-func (c *Conn) CloseWrite() error                   { return c.w.Close() }
+func (c *Conn) Close() error                       { return c.nc.Close() }
+func (c *Conn) LocalAddr() net.Addr                { return c.nc.LocalAddr() }
+func (c *Conn) RemoteAddr() net.Addr               { return c.nc.RemoteAddr() }
+func (c *Conn) SetDeadline(t time.Time) error      { return c.nc.SetDeadline(t) }
+func (c *Conn) SetReadDeadline(t time.Time) error  { return c.nc.SetReadDeadline(t) }
+func (c *Conn) SetWriteDeadline(t time.Time) error { return c.nc.SetWriteDeadline(t) }
 
 var (
 	_ CloseReader = (*Conn)(nil)

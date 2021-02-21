@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	"github.com/imgk/shadow/app"
@@ -30,13 +32,21 @@ func main() {
 		// Timeout is ...
 		// UDP timeout duration
 		Timeout time.Duration
+		// BuildInfo is ...
+		BuildInfo bool
 	}
 
 	conf := FlagConfig{}
 	flag.BoolVar(&conf.Verbose, "v", false, "enable verbose mode")
 	flag.StringVar(&conf.FilePath, "c", "config.json", "config file")
 	flag.DurationVar(&conf.Timeout, "t", time.Minute*3, "timeout")
+	flag.BoolVar(&conf.BuildInfo, "build-info", false, "build info")
 	flag.Parse()
+
+	if conf.BuildInfo {
+		printBuildInfo()
+		return
+	}
 
 	w := io.Writer(nil)
 	if conf.Verbose {
@@ -85,4 +95,24 @@ func main() {
 		os.Exit(777)
 	case <-app.Done():
 	}
+}
+
+func printBuildInfo() {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		log.Panic(errors.New("no build info"))
+	}
+	fmt.Println("main module")
+	printModule(&info.Main)
+	for _, m := range info.Deps {
+		printModule(m)
+	}
+}
+
+func printModule(m *debug.Module) {
+	if m.Replace == nil {
+		fmt.Printf("%s@%s\n", m.Path, m.Version)
+		return
+	}
+	fmt.Printf("%s@%s => %s@%s\n", m.Path, m.Version, m.Replace.Path, m.Replace.Version)
 }
