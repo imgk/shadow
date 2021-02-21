@@ -175,6 +175,7 @@ func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
 	dialer.closed = make(chan struct{})
 
 	go func(d *MuxDialer) {
+		defer d.Ticker.Stop()
 	LOOP:
 		for {
 			select {
