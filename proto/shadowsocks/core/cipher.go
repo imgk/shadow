@@ -24,6 +24,33 @@ type Cipher struct {
 	NewAEAD func([]byte) (cipher.AEAD, error)
 }
 
+// Key is ...
+type Key []byte
+
+// AES256GCM is ...
+// generate AES-256-GCM cipher
+func (k Key) AES256GCM(salt []byte) (cipher.AEAD, error) {
+	const KeySize = 32
+
+	subkey := make([]byte, KeySize)
+	hkdfSHA1([]byte(k), salt, subkey)
+	block, err := aes.NewCipher(subkey)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+// Chacha20Poly1305 is ...
+// generate Chacha20-IETF-Poly1305 cipher
+func (k Key) Chacha20Poly1305(salt []byte) (cipher.AEAD, error) {
+	const KeySize = 32
+
+	subkey := make([]byte, KeySize)
+	hkdfSHA1([]byte(k), salt, subkey)
+	return chacha20poly1305.New(subkey)
+}
+
 // NewCipher is ...
 func NewCipher(method, password string) (*Cipher, error) {
 	return NewCipherFromKey(method, password, nil)
@@ -56,26 +83,14 @@ func NewCipherFromKey(method, password string, key []byte) (*Cipher, error) {
 		cipher := &Cipher{
 			KeySize:  KeySize,
 			SaltSize: SaltSize,
-			NewAEAD: func(salt []byte) (cipher.AEAD, error) {
-				subkey := make([]byte, KeySize)
-				hkdfSHA1(key, salt, subkey)
-				block, err := aes.NewCipher(subkey)
-				if err != nil {
-					return nil, err
-				}
-				return cipher.NewGCM(block)
-			},
+			NewAEAD:  Key(key).AES256GCM,
 		}
 		return cipher, nil
 	case "CHACHA20-IETF-POLY1305", "AEAD_CHACHA20_POLY1305":
 		cipher := &Cipher{
 			KeySize:  KeySize,
 			SaltSize: SaltSize,
-			NewAEAD: func(salt []byte) (cipher.AEAD, error) {
-				subkey := make([]byte, KeySize)
-				hkdfSHA1(key, salt, subkey)
-				return chacha20poly1305.New(subkey)
-			},
+			NewAEAD:  Key(key).Chacha20Poly1305,
 		}
 		return cipher, nil
 	case "DUMMY":

@@ -169,10 +169,12 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger, mtu int) (e
 	// This will handle all incoming ICMP packets.
 	s.Stack.SetRouteTable([]tcpip.Route{
 		{
+			// Destination: header.IPv4EmptySubnet,
 			Destination: mustSubnet("0.0.0.0/0"),
 			NIC:         NICID,
 		},
 		{
+			// Destination: header.IPv6EmptySubnet,
 			Destination: mustSubnet("::/0"),
 			NIC:         NICID,
 		},
