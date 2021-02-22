@@ -44,7 +44,7 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 ```
 # configure firewall if necessary
 iptables -I FORWARD -o $TunName -j ACCEPT
-iptables -t nat -I POSTROUTING -o $TunName -j ACCEPT
+iptables -t nat -I POSTROUTING -o $TunName -j MASQUERADE
 ```
 
 ### MacOS
