@@ -40,7 +40,7 @@ func main() {
 	flag.BoolVar(&conf.Verbose, "v", false, "enable verbose mode")
 	flag.StringVar(&conf.FilePath, "c", "config.json", "config file")
 	flag.DurationVar(&conf.Timeout, "t", time.Minute*3, "timeout")
-	flag.BoolVar(&conf.BuildInfo, "build-info", false, "build info")
+	flag.BoolVar(&conf.BuildInfo, "f", false, "build info")
 	flag.Parse()
 
 	if conf.BuildInfo {
