@@ -7,6 +7,7 @@ import (
 
 // Error is ...
 type Error interface {
+	error
 	As(interface{}) bool
 	Is(error) bool
 }
