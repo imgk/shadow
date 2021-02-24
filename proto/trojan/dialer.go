@@ -244,7 +244,7 @@ func (d *MuxDialer) Dial(cmd byte, addr net.Addr) (net.Conn, error) {
 	}
 	d.mu.Unlock()
 
-	conn, err := d.Dialer.Dial(cmd, &socks.Addr{Addr: d.EmptyAddr[:]})
+	conn, err := d.Dialer.Dial(d.EmptyAddr[0], &socks.Addr{Addr: d.EmptyAddr[1:]})
 	if err != nil {
 		return nil, err
 	}
