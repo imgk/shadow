@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -147,9 +148,9 @@ type MuxDialer struct {
 }
 
 // Configure is ...
-func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
-	if dialer, ok := d.(*MuxDialer); ok {
-		return dialer
+func (d *MuxDialer) Configure(dialer Dialer, ver int) *MuxDialer {
+	if d, ok := dialer.(*MuxDialer); ok {
+		return d
 	}
 
 	// smux version 1
@@ -159,9 +160,9 @@ func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
 		cmd = 0x8f
 	}
 
-	dialer.Dialer = d
-	dialer.Ticker = time.NewTicker(time.Minute * 3)
-	dialer.Config = smux.Config{
+	d.Dialer = dialer
+	d.Ticker = time.NewTicker(time.Minute * 3)
+	d.Config = smux.Config{
 		Version:           ver,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
@@ -169,10 +170,13 @@ func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
 		MaxReceiveBuffer:  4194304,
 		MaxStreamBuffer:   65536,
 	}
-	dialer.MaxConn = 8
-	dialer.EmptyAddr = [...]byte{cmd, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a}
-	dialer.conns = make(map[*smux.Session]struct{})
-	dialer.closed = make(chan struct{})
+	if err := smux.VerifyConfig(&d.Config); err != nil {
+		log.Panic(errors.New("smux config error"))
+	}
+	d.MaxConn = 8
+	d.EmptyAddr = [...]byte{cmd, socks.AddrTypeIPv4, 0, 0, 0, 0, 0, 0, 0x0d, 0x0a}
+	d.conns = make(map[*smux.Session]struct{})
+	d.closed = make(chan struct{})
 
 	go func(d *MuxDialer) {
 		defer d.Ticker.Stop()
@@ -198,8 +202,8 @@ func (dialer *MuxDialer) Configure(d Dialer, ver int) *MuxDialer {
 			}
 			d.mu.Unlock()
 		}
-	}(dialer)
-	return dialer
+	}(d)
+	return d
 }
 
 // Close is ...
