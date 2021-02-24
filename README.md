@@ -4,7 +4,7 @@ A shadowsocks, trojan, socks5 and http proxy client for Windows, Linux and macOS
 
 ## How to build
 
-Replace `$(proto)` with proxies you want to use. Currently shadow supports `socks`, `shadowsocks`, `trojan`, `http`.
+Build with Go 1.16. Replace `$(proto)` with proxies you want to use. Currently shadow supports `socks`, `shadowsocks`, `trojan`, `http`.
 
 ```
 git clone https://github.com/imgk/shadow.git
@@ -30,6 +30,9 @@ Usage of go/bin/shadow:
 ```
 
 ### Windows
+
+For WinTun, download [wintun](https://www.wintun.net) and put `wintun.dll` in `C:\Windows\System32`.
+For WinDivert, download [WinDivert](https://www.reqrypt.org/windivert.html) 2.2 and put `WinDivert.dll` and `WinDivert64.sys` in `C:\Windows\System32`.
 
 Run shadow.exe with administrator privilege.
 ```
