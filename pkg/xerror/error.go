@@ -5,6 +5,22 @@ import (
 	"fmt"
 )
 
+// As is ...
+func As(err error, v interface{}) bool {
+	if e, ok := err.(*Error); ok {
+		return e.As(v)
+	}
+	return errors.As(err, v)
+}
+
+// Is is ...
+func Is(err, v error) bool {
+	if e, ok := err.(*Error); ok {
+		return e.Is(v)
+	}
+	return errors.Is(err, v)
+}
+
 // Error is ...
 type Error struct {
 	Err []error
