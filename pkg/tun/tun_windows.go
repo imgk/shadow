@@ -153,10 +153,19 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 
 	deduplicatedRoutes := make([]*winipcfg.RouteData, 0, len(routes))
 	sort.Slice(routes, func(i, j int) bool {
-		return routes[i].Metric < routes[j].Metric ||
-			bytes.Compare(routes[i].NextHop, routes[j].NextHop) == -1 ||
-			bytes.Compare(routes[i].Destination.IP, routes[j].Destination.IP) == -1 ||
-			bytes.Compare(routes[i].Destination.Mask, routes[j].Destination.Mask) == -1
+		if routes[i].Metric != routes[j].Metric {
+			return routes[i].Metric < routes[j].Metric
+		}
+		if c := bytes.Compare(routes[i].NextHop, routes[j].NextHop); c != 0 {
+			return c < 0
+		}
+		if c := bytes.Compare(routes[i].Destination.IP, routes[j].Destination.IP); c != 0 {
+			return c < 0
+		}
+		if c := bytes.Compare(routes[i].Destination.Mask, routes[j].Destination.Mask); c != 0 {
+			return c < 0
+		}
+		return false
 	})
 	for i := 0; i < len(routes); i++ {
 		if i > 0 && routes[i].Metric == routes[i-1].Metric &&
@@ -190,10 +199,19 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 
 	deduplicatedRoutes := make([]*winipcfg.RouteData, 0, len(routes))
 	sort.Slice(routes, func(i, j int) bool {
-		return routes[i].Metric < routes[j].Metric ||
-			bytes.Compare(routes[i].NextHop, routes[j].NextHop) == -1 ||
-			bytes.Compare(routes[i].Destination.IP, routes[j].Destination.IP) == -1 ||
-			bytes.Compare(routes[i].Destination.Mask, routes[j].Destination.Mask) == -1
+		if routes[i].Metric != routes[j].Metric {
+			return routes[i].Metric < routes[j].Metric
+		}
+		if c := bytes.Compare(routes[i].NextHop, routes[j].NextHop); c != 0 {
+			return c < 0
+		}
+		if c := bytes.Compare(routes[i].Destination.IP, routes[j].Destination.IP); c != 0 {
+			return c < 0
+		}
+		if c := bytes.Compare(routes[i].Destination.Mask, routes[j].Destination.Mask); c != 0 {
+			return c < 0
+		}
+		return false
 	})
 	for i := 0; i < len(routes); i++ {
 		if i > 0 && routes[i].Metric == routes[i-1].Metric &&

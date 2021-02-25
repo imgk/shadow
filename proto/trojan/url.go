@@ -2,6 +2,7 @@ package trojan
 
 import (
 	"errors"
+	"net"
 	"net/url"
 )
 
@@ -37,7 +38,13 @@ func ParseURL(s string) (server, path, password, transport, domain string, err e
 		return
 	}
 
-	domain = u.Fragment
+	domain, _, err = net.SplitHostPort(u.Host)
+	if err != nil {
+		return
+	}
+	if u.Fragment != "" {
+		domain = u.Fragment
+	}
 	if domain == "" {
 		err = errors.New("no domain name")
 	}
