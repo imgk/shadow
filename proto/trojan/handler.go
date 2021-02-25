@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/xtaci/smux"
 
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
@@ -30,7 +29,6 @@ func init() {
 			Password  string `json:"password,omitempty"`
 			Path      string `json:"path,omitempty"`
 			Transport string `json:"transport,omitempty"`
-			Mux       string `json:"mux,omitempty"`
 			Domain    string `json:"domain,omitempty"`
 		}
 		proto := Proto{}
@@ -41,7 +39,7 @@ func init() {
 		switch proto.Proto {
 		case "trojan", "trojan-go":
 			if proto.URL == "" {
-				return NewHandler(proto.Server, proto.Path, proto.Password, proto.Transport, proto.Mux, proto.Domain, timeout)
+				return NewHandler(proto.Server, proto.Path, proto.Password, proto.Transport, proto.Domain, timeout)
 			}
 			return NewHandlerFromURL(proto.URL, timeout)
 		}
@@ -68,15 +66,15 @@ type Handler struct {
 
 // NewHandlerFromURL is ...
 func NewHandlerFromURL(s string, timeout time.Duration) (*Handler, error) {
-	server, path, password, transport, mux, domain, err := ParseURL(s)
+	server, path, password, transport, domain, err := ParseURL(s)
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(server, path, password, transport, mux, domain, timeout)
+	return NewHandler(server, path, password, transport, domain, timeout)
 }
 
 // NewHandler is ...
-func NewHandler(server, path, password, transport, mux, domain string, timeout time.Duration) (*Handler, error) {
+func NewHandler(server, path, password, transport, domain string, timeout time.Duration) (*Handler, error) {
 	proxyAddr, err := net.ResolveUDPAddr("udp", server)
 	if err != nil {
 		return nil, err
@@ -123,16 +121,6 @@ func NewHandler(server, path, password, transport, mux, domain string, timeout t
 			},
 		}
 		handler.Dialer = dialer
-	default:
-	}
-
-	switch mux {
-	case "v1":
-		dialer := &MuxDialer{}
-		handler.Dialer = dialer.Configure(handler.Dialer, 1)
-	case "v2":
-		dialer := &MuxDialer{}
-		handler.Dialer = dialer.Configure(handler.Dialer, 2)
 	default:
 	}
 
@@ -279,7 +267,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	}
 	conn.SetReadDeadline(time.Now())
 
-	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, smux.ErrTimeout) || errors.Is(err, os.ErrDeadlineExceeded) {
+	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, os.ErrDeadlineExceeded) {
 		err = <-errCh
 	} else {
 		<-errCh

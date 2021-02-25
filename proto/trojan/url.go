@@ -6,7 +6,7 @@ import (
 )
 
 // ParseURL is ...
-func ParseURL(s string) (server, path, password, transport, mux, domain string, err error) {
+func ParseURL(s string) (server, path, password, transport, domain string, err error) {
 	u, err := url.Parse(s)
 	if err != nil {
 		return
@@ -34,16 +34,6 @@ func ParseURL(s string) (server, path, password, transport, mux, domain string, 
 	case "tls", "websocket":
 	default:
 		err = errors.New("wrong transport")
-		return
-	}
-
-	mux = u.Query().Get("mux")
-	switch mux {
-	case "":
-		mux = "off"
-	case "off", "v1", "v2":
-	default:
-		err = errors.New("wrong mux config")
 		return
 	}
 

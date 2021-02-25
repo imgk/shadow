@@ -9,21 +9,21 @@
     // Trojan-(GFW/GO)
     // trojan://password@ip:port#domain.name
     // Trojan-GO
-    // trojan://password@ip:port/path?transport=(tls|websocket)&mux=(off|v1)#domain.name
+    // trojan://password@ip:port/path?transport=(tls|websocket)#domain.name
     // socks5
     // socks://1.2.3.4:1080
     // http
     // http://1.2.3.4:8080
     "server": {
         "protocol": "ss",
-        "url", "ss://CHACHA20-IETF-POLY1305:password@127.0.0.1:8388"
+        "url": "ss://CHACHA20-IETF-POLY1305:password@127.0.0.1:8388"
     },
 
 
     // DNS Server
     // tls://1.1.1.1:853
     // https://1.1.1.1:443/dns-query
-    "name_server": "https://1.1.1.1/dns-query",
+    "name_server": "https://1.1.1.1:443/dns-query",
 
 
     // tun device only

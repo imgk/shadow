@@ -6,28 +6,24 @@ import (
 )
 
 // Error is ...
-type Error interface {
-	error
-	As(interface{}) bool
-	Is(error) bool
-}
-
-type mError struct {
+type Error struct {
 	Err []error
 }
 
-func (e *mError) Error() string {
+// Error is ...
+func (e *Error) Error() string {
 	switch len(e.Err) {
 	case 0:
 		return "nil"
 	case 1:
 		return e.Err[0].Error()
 	default:
-		return fmt.Sprintf("%s, err: %v", e.Err[0], &mError{Err: e.Err[1:]})
+		return fmt.Sprintf("%s, err: %v", e.Err[0], &Error{Err: e.Err[1:]})
 	}
 }
 
-func (e *mError) Unwrap() error {
+// Unwrap is ...
+func (e *Error) Unwrap() error {
 	switch len(e.Err) {
 	case 0:
 		return nil
@@ -36,7 +32,8 @@ func (e *mError) Unwrap() error {
 	}
 }
 
-func (e *mError) As(v interface{}) bool {
+// As is ...
+func (e *Error) As(v interface{}) bool {
 	for _, err := range e.Err {
 		if errors.As(err, v) {
 			return true
@@ -45,7 +42,8 @@ func (e *mError) As(v interface{}) bool {
 	return false
 }
 
-func (e *mError) Is(v error) bool {
+// Is is ...
+func (e *Error) Is(v error) bool {
 	for _, err := range e.Err {
 		if errors.Is(err, v) {
 			return true
@@ -65,5 +63,8 @@ func CombineError(err ...error) error {
 	if len(me) == 0 {
 		return nil
 	}
-	return &mError{Err: me}
+	if len(me) == 1 {
+		return me[0]
+	}
+	return &Error{Err: me}
 }
