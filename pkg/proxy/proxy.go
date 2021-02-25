@@ -17,7 +17,7 @@ import (
 	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/pkg/suffixtree"
-	"github.com/imgk/shadow/pkg/xerror"
+	"github.com/imgk/shadow/pkg/xerrors"
 )
 
 // Server is ...
@@ -121,7 +121,7 @@ func (s *Server) Close() error {
 	default:
 		close(s.closed)
 	}
-	return xerror.CombineError(s.Listener.Close(), s.ln.Close(), s.Server.Close())
+	return xerrors.CombineError(s.Listener.Close(), s.ln.Close(), s.Server.Close())
 }
 
 // Handshake is ...

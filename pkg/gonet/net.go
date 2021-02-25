@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/imgk/shadow/pkg/pool"
-	"github.com/imgk/shadow/pkg/xerror"
+	"github.com/imgk/shadow/pkg/xerrors"
 )
 
 // Handler is ...
@@ -102,7 +102,7 @@ func Relay(c, rc net.Conn) error {
 		c.SetReadDeadline(time.Now())
 	}
 
-	return xerror.CombineError(err, <-errCh)
+	return xerrors.CombineError(err, <-errCh)
 }
 
 // Copy is ...
