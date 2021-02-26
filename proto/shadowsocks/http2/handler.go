@@ -235,7 +235,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 
 	r, err := h.Client.Do(req)
 	if err != nil {
-		return fmt.Errorf("do request error: %v", err)
+		return fmt.Errorf("do request error: %w", err)
 	}
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
@@ -258,7 +258,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 			n := int(b[0])<<8 | int(b[1])
 
 			if _, err := io.ReadFull(r, b[:n]); err != nil {
-				return fmt.Errorf("read packet error: %v", err)
+				return fmt.Errorf("read packet error: %w", err)
 			}
 
 			bb, err := func(pkt []byte, cipher *core.Cipher) ([]byte, error) {
@@ -280,12 +280,12 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				return aead.Open(pkt[saltSize:saltSize], zerononce[:aead.NonceSize()], pkt[saltSize:], nil)
 			}(b[:n], h.Cipher)
 			if err != nil {
-				return fmt.Errorf("unpack error: %v", err)
+				return fmt.Errorf("unpack error: %w", err)
 			}
 
 			raddr, err := socks.ParseAddr(bb)
 			if err != nil {
-				return fmt.Errorf("parse socks.Addr error: %v", err)
+				return fmt.Errorf("parse socks.Addr error: %w", err)
 			}
 
 			if _, err := conn.WriteFrom(bb[len(raddr.Addr):], raddr); err != nil {
