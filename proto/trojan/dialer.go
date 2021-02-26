@@ -32,25 +32,6 @@ func WriteHeaderAddr(conn net.Conn, header []byte, cmd byte, tgt net.Addr) error
 	return err
 }
 
-// WriteAddr is ...
-func WriteAddr(conn net.Conn, cmd byte, tgt net.Addr) error {
-	buff := make([]byte, 1+socks.MaxAddrLen)
-	buff[0] = cmd
-
-	if addr, ok := tgt.(*socks.Addr); ok {
-		buff = append(buff[:1], addr.Addr...)
-	} else {
-		addr, err := socks.ResolveAddrBuffer(tgt, buff[1:])
-		if err != nil {
-			return err
-		}
-		buff = buff[:1+len(addr.Addr)]
-	}
-
-	_, err := conn.Write(buff)
-	return err
-}
-
 // NetDialer is ...
 type NetDialer struct {
 	// Dialer is ...

@@ -12,7 +12,8 @@ import (
 )
 
 // MaxPacketSize is ...
-const MaxPacketSize = 16384
+// the maximum size of payload
+const MaxPacketSize = 0x3FFF // 16k - 1
 
 func increment(b []byte) {
 	for i := range b {
