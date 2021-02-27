@@ -21,6 +21,8 @@ import (
 	_ "github.com/imgk/shadow/proto/register"
 )
 
+var version = "devel"
+
 func main() {
 	type FlagConfig struct {
 		// Verbose is ...
@@ -33,6 +35,7 @@ func main() {
 		// UDP timeout duration
 		Timeout time.Duration
 		// BuildInfo is ...
+		// show build info
 		BuildInfo bool
 	}
 
@@ -44,6 +47,7 @@ func main() {
 	flag.Parse()
 
 	if conf.BuildInfo {
+		fmt.Printf("build version: %v\n", version)
 		printBuildInfo()
 		return
 	}

@@ -61,11 +61,16 @@ func (d *Device) AddRouteEntry(cidr []string) error {
 			continue
 		}
 	}
-	if err := d.addRouteEntry4(cidr4); err != nil {
+	if len(cidr4) > 0 {
+		if err := d.addRouteEntry4(cidr4); err != nil {
+			return err
+		}
+	}
+	if len(cidr6) > 0 {
+		err := d.addRouteEntry6(cidr6)
 		return err
 	}
-	err := d.addRouteEntry6(cidr6)
-	return err
+	return nil
 }
 
 // getInterfaceConfig4 is ...

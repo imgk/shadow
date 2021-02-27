@@ -36,7 +36,7 @@ func (app *App) Run() error {
 	if err != nil {
 		return fmt.Errorf("create mutex error: %w", err)
 	}
-	app.attachCloser(&Mutex{Handle: mutex})
+	app.attachCloser(&WindowsMutex{Handle: mutex})
 	defer func() {
 		if err != nil {
 			for _, closer := range app.closers {
@@ -180,13 +180,13 @@ func NewAppFilter(conf *Conf) (*filter.AppFilter, error) {
 	return filter, nil
 }
 
-// Mutex is ...
-type Mutex struct {
+// WindowsMutex is ...
+type WindowsMutex struct {
 	Handle windows.Handle
 }
 
 // Close is ...
-func (m *Mutex) Close() error {
+func (m *WindowsMutex) Close() error {
 	windows.ReleaseMutex(m.Handle)
 	windows.CloseHandle(m.Handle)
 	return nil

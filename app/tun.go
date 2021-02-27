@@ -57,7 +57,9 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	if tunName := app.Conf.TunName; tunName != "" {
 		name = tunName
 	}
+	createDevice := false
 	if dev == nil {
+		createDevice = true
 		dev, err = tun.NewDeviceWithMTU(name, (2<<10)-4 /*MTU for Tun*/)
 		if err != nil {
 			return fmt.Errorf("tun device from name error: %w", err)
@@ -71,8 +73,10 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 			return err
 		}
 	}
-	if err := dev.Activate(); err != nil {
-		return fmt.Errorf("turn up tun device error: %w", err)
+	if createDevice {
+		if err := dev.Activate(); err != nil {
+			return fmt.Errorf("turn up tun device error: %w", err)
+		}
 	}
 
 	// new fake ip tree

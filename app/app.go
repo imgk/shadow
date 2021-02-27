@@ -46,11 +46,13 @@ type Conf struct {
 	// process packets by geo info of target IP
 	GeoIP struct {
 		// File is ...
-		// mmdb file
+		// mmdb file path
 		File string `json:"file"`
 		// Proxy is ...
+		// ISO code of countries to be proxied
 		Proxy []string `json:"proxy,omitempty"`
 		// Bypass is ...
+		// ISO code of countries to be bypassed
 		Bypass []string `json:"bypass,omitempty"`
 		// Final is ...
 		// default action when country code does not appears in `Proxy` or `Bypass`
@@ -79,6 +81,9 @@ type Conf struct {
 		// Proxy is ...
 		Proxy []string `json:"proxy"`
 	} `json:"ip_cidr_rules"`
+	// Hijack is ...
+	// hijack dns queries
+	Hijack bool
 	// DomianRules is ...
 	// hijack dns queries and process with domain rules
 	DomainRules struct {
@@ -86,13 +91,17 @@ type Conf struct {
 		// fake ip with prefix of 198.18 will be assigned
 		Proxy []string `json:"proxy"`
 		// Direct is ...
+		// send queries to remote dns server
 		Direct []string `json:"direct,omitempty"`
 		// Blocked is ...
+		// answer 0.0.0.0 or ::0
 		Blocked []string `json:"blocked,omitempty"`
 	} `json:"domain_rules"`
 }
 
 // prepareFilterString is ...
+// generate filter string for WinDivert
+// ignore packets to dns server and proxy server
 func (c *Conf) prepareFilterString() error {
 	const Filter44 = "outbound and (ipv6 or (ip and ip.DstAddr != %s and ip.DstAddr != %s))"
 	const Filter64 = "outbound and ((ipv6 and ipv6.DstAddr != %s) or (ip and ip.DstAddr != %s))"
@@ -158,6 +167,7 @@ func (c *Conf) prepareFilterString() error {
 }
 
 // prepareGeographicalIP is ...
+// the country codes should upper letters
 func (c *Conf) prepareGeographicalIP() {
 	for i, v := range c.GeoIP.Proxy {
 		c.GeoIP.Proxy[i] = strings.ToUpper(v)
@@ -205,11 +215,14 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 
 // App is shadow application
 type App struct {
-	// Logger is ....
+	// Logger is ...
+	// to print logs
 	Logger logger.Logger
 	// Conf is ...
+	// shadow configuration
 	Conf *Conf
 	// Timeout is ...
+	// timeout for closing UDP connections
 	Timeout time.Duration
 
 	closed  chan struct{}
@@ -272,6 +285,7 @@ func (app *App) Close() error {
 }
 
 // NewDomainTree is ...
+// generate domain tree from configuration
 func NewDomainTree(conf *Conf) (*suffixtree.DomainTree, error) {
 	tree := suffixtree.NewDomainTree(".")
 	tree.Lock()
