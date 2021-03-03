@@ -348,9 +348,9 @@ func (s *Server) ProxyConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nc, ok := conn.(*net.TCPConn)
+	nc, ok := conn.(gonet.Conn)
 	if !ok {
-		log.Panic(errors.New("not *net.TCPConn"))
+		log.Panic(errors.New("not gonet.Conn"))
 	}
 
 	s.Logger.Info("proxyd %v <-TCP-> %v", conn.RemoteAddr(), addr)
