@@ -26,7 +26,7 @@ type NetDialer struct {
 	Addr string
 }
 
-// Dial is ...
+// DialTLS is ...
 func (d *NetDialer) DialTLS(network, addr string, cfg *tls.Config) (conn net.Conn, err error) {
 	conn, err = net.Dial(network, d.Addr)
 	if err != nil {
@@ -53,7 +53,7 @@ type Handler struct {
 	// give new http.MethocConnect http.Request
 	NewRequest func(string, io.ReadCloser, string) *http.Request
 
-	// Transport is ...
+	// Client is ...
 	// for connect to proxy server
 	Client http.Client
 

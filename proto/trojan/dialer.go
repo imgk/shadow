@@ -3,6 +3,7 @@ package trojan
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 
 	"github.com/gorilla/websocket"
@@ -11,7 +12,7 @@ import (
 )
 
 // WriteHeaderAddr is ...
-func WriteHeaderAddr(conn net.Conn, header []byte, cmd byte, tgt net.Addr) error {
+func WriteHeaderAddr(w io.Writer, header []byte, cmd byte, tgt net.Addr) error {
 	buff := make([]byte, HeaderLen+2+1+socks.MaxAddrLen+2)
 	copy(buff, header)
 	buff[HeaderLen+2] = cmd
@@ -28,7 +29,7 @@ func WriteHeaderAddr(conn net.Conn, header []byte, cmd byte, tgt net.Addr) error
 		buff = append(buff[:HeaderLen+2+1+len(addr.Addr)], 0x0d, 0x0a)
 	}
 
-	_, err := conn.Write(buff)
+	_, err := w.Write(buff)
 	return err
 }
 

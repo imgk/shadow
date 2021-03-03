@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
-	"time"
 	"unsafe"
 
 	"github.com/imgk/shadow/pkg/gonet"
@@ -164,8 +163,7 @@ func (c *Conn) CloseRead() error {
 	if closer, ok := c.Conn.(gonet.CloseReader); ok {
 		return closer.CloseRead()
 	}
-	c.Conn.SetReadDeadline(time.Now())
-	return c.Conn.Close()
+	return errors.New("not supported")
 }
 
 // CloseWrite is gonet.CloseWriter
@@ -173,8 +171,7 @@ func (c *Conn) CloseWrite() error {
 	if closer, ok := c.Conn.(gonet.CloseWriter); ok {
 		return closer.CloseWrite()
 	}
-	c.Conn.SetWriteDeadline(time.Now())
-	return c.Conn.Close()
+	return errors.New("not supported")
 }
 
 // Equal is ...

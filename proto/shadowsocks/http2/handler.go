@@ -64,14 +64,14 @@ type Handler struct {
 
 	// Cipher is ...
 	Cipher *core.Cipher
-	// Transport is ...
+	// Client is ...
 	Client http.Client
 
 	proxyAuth string
 	timeout   time.Duration
 }
 
-// MewHandler is ...
+// NewHandler is ...
 func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 	server, method, password, err := ParseURL(s)
 	if err != nil {

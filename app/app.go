@@ -178,6 +178,23 @@ func (c *Conf) prepareGeographicalIP() {
 	c.GeoIP.Final = strings.ToLower(c.GeoIP.Final)
 }
 
+// ReadFromURL is ...
+func (c *Conf) ReadFromURL(s string) error {
+	r, err := http.Get(s)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		return fmt.Errorf("status code error: %v", r.StatusCode)
+	}
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	return c.ReadFromByteSlice(b)
+}
+
 // ReadFromFile is to read config from file
 func (c *Conf) ReadFromFile(file string) error {
 	file, err := filepath.Abs(file)
@@ -230,10 +247,16 @@ type App struct {
 }
 
 // NewApp is new shadow app from config file
-func NewApp(file string, timeout time.Duration, w io.Writer) (*App, error) {
+func NewApp(s string, timeout time.Duration, w io.Writer) (*App, error) {
 	conf := &Conf{}
-	if err := conf.ReadFromFile(file); err != nil {
-		return nil, err
+	if strings.HasPrefix(s, "https") || strings.HasPrefix(s, "http") {
+		if err := conf.ReadFromURL(s); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := conf.ReadFromFile(s); err != nil {
+			return nil, err
+		}
 	}
 	return NewAppFromConf(conf, timeout, w), nil
 }

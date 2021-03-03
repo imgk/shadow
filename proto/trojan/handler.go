@@ -18,6 +18,9 @@ import (
 	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 	"github.com/imgk/shadow/proto"
+
+	// other protocols
+	"github.com/imgk/shadow/proto/trojan/http2"
 )
 
 func init() {
@@ -36,12 +39,24 @@ func init() {
 			return nil, err
 		}
 
+		server, path, password, transport, domain, err := ParseURL(proto.URL)
+		if err != nil {
+			if proto.URL != "" {
+				return nil, err
+			}
+			server, path, password, transport, domain = proto.Server, proto.Path, proto.Password, proto.Transport, proto.Domain
+		}
 		switch proto.Proto {
 		case "trojan", "trojan-go":
-			if proto.URL == "" {
-				return NewHandler(proto.Server, proto.Path, proto.Password, proto.Transport, proto.Domain, timeout)
+			switch transport {
+			case "tls", "websocket":
+				return NewHandler(server, path, password, transport, domain, timeout)
+			case "http2":
+				return http2.NewHandler(server, path, password, domain, timeout)
+			case "http3":
+				return http2.NewQUICHandler(server, path, password, domain, timeout)
 			}
-			return NewHandlerFromURL(proto.URL, timeout)
+			return nil, errors.New("transport error")
 		}
 		return nil, errors.New("protocol error")
 	}
@@ -62,15 +77,6 @@ type Handler struct {
 
 	server  string
 	timeout time.Duration
-}
-
-// NewHandlerFromURL is ...
-func NewHandlerFromURL(s string, timeout time.Duration) (*Handler, error) {
-	server, path, password, transport, domain, err := ParseURL(s)
-	if err != nil {
-		return nil, err
-	}
-	return NewHandler(server, path, password, transport, domain, timeout)
 }
 
 // NewHandler is ...
