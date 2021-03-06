@@ -297,7 +297,7 @@ func (s *Stack) Del(k string) {
 func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuffer) bool {
 	// Ref: gVisor pkg/tcpip/transport/udp/endpoint.go HandlePacket
 	udpHdr := header.UDP(pkt.TransportHeader().View())
-	if int(udpHdr.Length()) > pkt.Data.Size()+header.UDPMinimumSize {
+	if int(udpHdr.Length()) > pkt.Data().Size()+header.UDPMinimumSize {
 		s.Error("udp %v:%v <---> %v:%v malformed packet",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
@@ -323,7 +323,8 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 
 	key := string(id.RemoteAddress) + string([]byte{byte(id.RemotePort >> 8), byte(id.RemotePort)})
 	if conn, ok := s.Get(key); ok {
-		conn.HandlePacket(pkt.Data.ToView(), &net.UDPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
+		vv := pkt.Data().ExtractVV()
+		conn.HandlePacket(vv.ToView(), &net.UDPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
 		return true
 	}
 
@@ -355,7 +356,8 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 		route,
 	)
 	s.Add(key, conn)
-	conn.HandlePacket(pkt.Data.ToView(), conn.LocalAddr().(*net.UDPAddr))
+	vv := pkt.Data().ExtractVV()
+	conn.HandlePacket(vv.ToView(), conn.LocalAddr().(*net.UDPAddr))
 
 	go s.Handler.HandlePacket(conn, conn.LocalAddr().(*net.UDPAddr))
 	return true

@@ -77,13 +77,15 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 
 			switch header.IPVersion(buf) {
 			case header.IPv4Version:
-				ep.InjectInbound(header.IPv4ProtocolNumber, &stack.PacketBuffer{
-					Data: buffer.View(buf[:nr]).ToVectorisedView(),
-				})
+				ep.InjectInbound(header.IPv4ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
+					ReserveHeaderBytes: 0,
+					Data:               buffer.View(buf[:nr]).ToVectorisedView(),
+				}))
 			case header.IPv6Version:
-				ep.InjectInbound(header.IPv6ProtocolNumber, &stack.PacketBuffer{
-					Data: buffer.View(buf[:nr]).ToVectorisedView(),
-				})
+				ep.InjectInbound(header.IPv6ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
+					ReserveHeaderBytes: 0,
+					Data:               buffer.View(buf[:nr]).ToVectorisedView(),
+				}))
 			}
 		}
 	}(e.Reader, Offset+e.mtu, e.Endpoint)
@@ -101,7 +103,8 @@ func (e *Endpoint) WriteNotify() {
 	e.mu.Lock()
 	buf := append(e.buff[:Offset], info.Pkt.NetworkHeader().View()...)
 	buf = append(buf, info.Pkt.TransportHeader().View()...)
-	buf = append(buf, info.Pkt.Data.ToView()...)
+	vv := info.Pkt.Data().ExtractVV()
+	buf = append(buf, vv.ToView()...)
 	e.Writer.Write(buf, Offset)
 	e.mu.Unlock()
 }

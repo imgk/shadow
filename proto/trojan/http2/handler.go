@@ -60,7 +60,7 @@ type Handler struct {
 	http.Client
 
 	proxyAuth string
-	timeout time.Duration
+	timeout   time.Duration
 }
 
 // NewHandler is ...
@@ -102,7 +102,7 @@ func NewHandler(server, path, password, domain string, timeout time.Duration) (*
 			},
 		},
 		proxyAuth: auth,
-		timeout: timeout,
+		timeout:   timeout,
 	}
 	return handler, nil
 }
@@ -147,7 +147,7 @@ func NewQUICHandler(server, path, password, domain string, timeout time.Duration
 			},
 		},
 		proxyAuth: auth,
-		timeout: timeout,
+		timeout:   timeout,
 	}
 	return handler, nil
 }

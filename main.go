@@ -47,7 +47,7 @@ func main() {
 	flag.Parse()
 
 	if conf.BuildInfo {
-		fmt.Printf("build version: %v\n", version)
+		fmt.Printf("version: %v\n", version)
 		printBuildInfo()
 		return
 	}
