@@ -16,5 +16,3 @@ require (
 	golang.zx2c4.com/wireguard/windows v0.3.8
 	gvisor.dev/gvisor v0.0.0-20210305231150-2d2c558d9661
 )
-
-replace golang.zx2c4.com/wireguard => golang.zx2c4.com/wireguard v0.0.0-20210305220617-a00464b70712
