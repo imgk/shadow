@@ -58,12 +58,12 @@ func (addr *Addr) String() string {
 }
 
 // ReadAddr is ....
-func ReadAddr(conn net.Conn) (*Addr, error) {
+func ReadAddr(conn io.Reader) (*Addr, error) {
 	return ReadAddrBuffer(conn, make([]byte, MaxAddrLen))
 }
 
 // ReadAddrBuffer is ...
-func ReadAddrBuffer(conn net.Conn, addr []byte) (*Addr, error) {
+func ReadAddrBuffer(conn io.Reader, addr []byte) (*Addr, error) {
 	_, err := io.ReadFull(conn, addr[:2])
 	if err != nil {
 		return nil, err

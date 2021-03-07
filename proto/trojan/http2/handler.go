@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/imgk/shadow/pkg/gonet"
+	"github.com/imgk/shadow/pkg/pool"
 	"github.com/imgk/shadow/pkg/socks"
 )
 
@@ -199,9 +200,38 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 		return fmt.Errorf("response status code error: %v", r.StatusCode)
 	}
 
-	err = func() error {
-		return nil
-	}()
+	err = func(rc io.ReadCloser, conn gonet.PacketConn) (err error) {
+		const MaxBufferSize = 16 << 10
+	
+		sc, b := pool.Pool.Get(MaxBufferSize)
+		defer pool.Pool.Put(sc)
+
+		for {
+			raddr, er := socks.ReadAddrBuffer(rc, b)
+			if er != nil {
+				err = er
+				break
+			}
+
+			n := len(raddr.Addr)
+			if _, er := io.ReadFull(rc, b[n:n+4]); er != nil {
+				err = er
+				break
+			}
+
+			n += (int(b[n])<<8 | int(b[n+1]))
+			if _, er := io.ReadFull(rc, b[len(raddr.Addr):n]); er != nil {
+				err = er
+				break
+			}
+
+			if _, ew := conn.WriteFrom(b[len(raddr.Addr):n], raddr); ew != nil {
+				err = ew
+				break
+			}
+		}
+		return
+	}(r.Body, conn)
 
 	return err
 }
