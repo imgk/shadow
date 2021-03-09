@@ -32,7 +32,7 @@ func ParseURL(s string) (server, path, password, transport, domain string, err e
 	switch transport {
 	case "":
 		transport = "tls"
-	case "tls", "websocket":
+	case "tls", "websocket", "http2", "http3":
 	default:
 		err = errors.New("wrong transport")
 		return

@@ -163,7 +163,7 @@ func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	defer conn.Close()
 
 	rc := NewReader(conn, tgt)
-	req := h.NewRequest("", rc, h.proxyAuth)
+	req := h.NewRequest("tcp.imgk.cc", rc, h.proxyAuth)
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -189,7 +189,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
 	rc := NewPacketReader(conn, h.timeout)
-	req := h.NewRequest("", rc, h.proxyAuth)
+	req := h.NewRequest("udp.imgk.cc", rc, h.proxyAuth)
 
 	r, err := h.Client.Do(req)
 	if err != nil {
@@ -202,7 +202,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 
 	err = func(rc io.ReadCloser, conn gonet.PacketConn) (err error) {
 		const MaxBufferSize = 16 << 10
-	
+
 		sc, b := pool.Pool.Get(MaxBufferSize)
 		defer pool.Pool.Put(sc)
 
