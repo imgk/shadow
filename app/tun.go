@@ -85,7 +85,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 		return
 	}
 	// new netstack
-	stack := netstack.NewStack(handler, resolver, tree, true)
+	stack := netstack.NewStack(handler, resolver, tree, !app.Conf.DomainRules.DisableHijack /* ture for hijacking queries */)
 	err = stack.Start(dev, app.Logger, (2<<10)-4 /*MTU for Tun*/)
 	if err != nil {
 		return
