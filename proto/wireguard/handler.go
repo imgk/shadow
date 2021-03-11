@@ -97,7 +97,6 @@ func NewHandler(addr, dns string, mtu int, setting string, timeout time.Duration
 
 // Close is ...
 func (h *Handler) Close() error {
-	h.Tun.Close()
 	h.Device.Close()
 	return nil
 }
