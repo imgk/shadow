@@ -1,6 +1,8 @@
 package wireguard
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +14,6 @@ import (
 
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 
 	"github.com/imgk/shadow/pkg/gonet"
@@ -46,10 +47,18 @@ func init() {
 		if ip := net.ParseIP(proto.NameServer); ip == nil {
 			return nil, errors.New("name server error")
 		}
+		privateKey, err := base64.StdEncoding.DecodeString(proto.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
+		publicKey, err := base64.StdEncoding.DecodeString(proto.PublicKey)
+		if err != nil {
+			return nil, err
+		}
 		setting := fmt.Sprintf(`private_key=%s
 public_key=%s
 endpoint=%s
-allowed_ip=%s`, proto.PrivateKey, proto.PublicKey, proto.Server, proto.AllowedIPs)
+allowed_ip=%s`, hex.EncodeToString(privateKey), hex.EncodeToString(publicKey), proto.Server, proto.AllowedIPs)
 		return NewHandler(proto.Address, proto.NameServer, proto.MTU, setting, timeout)
 	}
 
@@ -60,8 +69,6 @@ allowed_ip=%s`, proto.PrivateKey, proto.PublicKey, proto.Server, proto.AllowedIP
 type Handler struct {
 	// Net is ...
 	Net *netstack.Net
-	// Tun is ...
-	Tun tun.Device
 	// Device is ...
 	Device *device.Device
 
@@ -82,7 +89,6 @@ func NewHandler(addr, dns string, mtu int, setting string, timeout time.Duration
 	dev.IpcSet(setting)
 	h := &Handler{
 		Net:     tnet,
-		Tun:     tun,
 		Device:  dev,
 		Addr:    addr,
 		setting: setting,
@@ -109,6 +115,7 @@ func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	if err != nil {
 		return err
 	}
+	defer rc.Close()
 	cc, ok := rc.(gonet.Conn)
 	if !ok {
 		return errors.New("rc type error")
@@ -150,6 +157,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	if err != nil {
 		return err
 	}
+	defer rc.Close()
 
 	const MaxBufferSize = 16 << 10
 
