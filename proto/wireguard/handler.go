@@ -220,7 +220,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				break
 			}
 		}
-		conn.SetReadDeadline(time.Now())
+		rc.SetReadDeadline(time.Now())
 		return
 	}(conn, rc, errCh)
 
