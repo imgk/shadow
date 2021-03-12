@@ -40,10 +40,14 @@ func NewIPFilter() *IPFilter {
 // ingore private address
 func (f *IPFilter) IgnorePrivate() {
 	for _, s := range []string{
+		// RFC 1918: private IPv4 networks
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
+		// RFC 4193: IPv6 ULAs
 		"fc00::/7",
+		// RFC 6598: reserved prefix for CGNAT
+		"100.64.0.0/10",
 	} {
 		_, ipNet, err := net.ParseCIDR(s)
 		if err != nil {
