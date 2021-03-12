@@ -11,5 +11,5 @@ Please read [howitworks.md](https://github.com/imgk/shadow/blob/main/doc/howitwo
 ## Example Usage of Shadow
 
 1. Use shadow as DoH and DoT client for Windows.
-2. Use shadow as transport proxy on Windows.
-3. Use shadow as transport proxy on Linux/OpenWrt/macOS.
+2. Use shadow as transparent proxy on Windows.
+3. Use shadow as transparent proxy on Linux/OpenWrt/macOS.
