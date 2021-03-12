@@ -31,7 +31,6 @@ func init() {
 			PublicKey  string `json:"public_key"`
 			Address    string `json:"address"`
 			NameServer string `json:"name_server"`
-			AllowedIPs string `json:"allowed_ips"`
 			MTU        int    `json:"mtu"`
 		}
 		proto := Proto{}
@@ -58,7 +57,7 @@ func init() {
 		setting := fmt.Sprintf(`private_key=%s
 public_key=%s
 endpoint=%s
-allowed_ip=%s`, hex.EncodeToString(privateKey), hex.EncodeToString(publicKey), proto.Server, proto.AllowedIPs)
+allowed_ip=0.0.0.0/0`, hex.EncodeToString(privateKey), hex.EncodeToString(publicKey), proto.Server)
 		return NewHandler(proto.Address, proto.NameServer, proto.MTU, setting, timeout)
 	}
 

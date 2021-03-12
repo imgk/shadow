@@ -1,6 +1,6 @@
 # Config File
 
-```
+```json
 {
     // Proxy Server
     // Shadowsocks
@@ -36,9 +36,9 @@
     // proxy/bypass = iso code of country
     // final = proxy/bypass
     "geo_ip_rules": {
-        "file": "",
+        "file": "Country.mmdb",
         "proxy": [],
-        "bypass": [],
+        "bypass": ["CN"],
         "final": "",
     },
     // windivert only
