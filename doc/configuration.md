@@ -1,6 +1,6 @@
 # Config File
 
-```json
+```
 {
     // Proxy Server
     // Shadowsocks

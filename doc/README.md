@@ -2,13 +2,14 @@
 
 ## Configuration
 
-Please read (configuration.md)[https://github.com/imgk/shadow/blob/main/doc/configuration.md].
+Please read [configuration.md](https://github.com/imgk/shadow/blob/main/doc/configuration.md).
 
 ## How it works
 
-Please read (howitworks.md)[https://github.com/imgk/shadow/blob/main/doc/howitworks.md].
+Please read [howitworks.md](https://github.com/imgk/shadow/blob/main/doc/howitworks.md).
 
 ## Example Usage of Shadow
 
 1. Use shadow as DoH and DoT client for Windows.
-
+2. Use shadow as transport proxy on Windows.
+3. Use shadow as transport proxy on Linux/OpenWrt/macOS.
