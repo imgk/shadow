@@ -8,6 +8,7 @@ require (
 	github.com/lucas-clemente/quic-go v0.19.3
 	github.com/miekg/dns v1.1.40
 	github.com/oschwald/maxminddb-golang v1.8.0
+	github.com/v2fly/v2ray-core/v4 v4.35.1
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
 	golang.org/x/sys v0.0.0-20210309074719-68d13333faf2
