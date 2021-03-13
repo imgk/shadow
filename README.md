@@ -30,18 +30,23 @@ Usage of go/bin/shadow:
 
 ### Windows
 
-Use shadow with simple GUI [shadow-windows](https://github.com/imgk/shadow-windows).
-
 For WinTun, download [WinTun](https://www.wintun.net) and put `wintun.dll` in `C:\Windows\System32`.
 
 For WinDivert, download [WinDivert](https://www.reqrypt.org/windivert.html) 2.2 and put `WinDivert.dll` and `WinDivert64.sys` in `C:\Windows\System32`.
 
+#### GUI
+
+Use shadow with simple GUI [shadow-windows](https://github.com/imgk/shadow-windows).
+
+#### No GUI
+
 Run shadow.exe with administrator privilege.
+
 ```
 go/bin/shadow.exe -c C:/Users/example/shadow/config.json -v
 ```
 
-### Linux and Openwrt Router
+### Linux and OpenWrt Router
 
 1. Set system DNS server. Please add DNS server to `ip_cidr_rules.proxy` for diverting all DNS queries to shadow.
 
@@ -49,13 +54,15 @@ go/bin/shadow.exe -c C:/Users/example/shadow/config.json -v
 sudo go/bin/shadow -c /etc/shadow.json -v
 ```
 
+If you are using OpenWrt, you need to configure firewall.
+
 ```
 # configure firewall for OpenWrt
 iptables -I FORWARD -o $TunName -j ACCEPT
 iptables -t nat -I POSTROUTING -o $TunName -j MASQUERADE
 ```
 
-### MacOS
+### macOS
 
 1. Set system DNS server. Please add DNS server to `ip_cidr_rules.proxy` for diverting all DNS queries to shadow.
 
