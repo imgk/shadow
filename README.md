@@ -30,6 +30,8 @@ Usage of go/bin/shadow:
 
 ### Windows
 
+Use shadow with simple GUI [shadow-windows](https://github.com/imgk/shadow-windows).
+
 For WinTun, download [WinTun](https://www.wintun.net) and put `wintun.dll` in `C:\Windows\System32`.
 
 For WinDivert, download [WinDivert](https://www.reqrypt.org/windivert.html) 2.2 and put `WinDivert.dll` and `WinDivert64.sys` in `C:\Windows\System32`.

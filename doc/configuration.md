@@ -1,6 +1,6 @@
 # Config File
 
-```
+```jsonc
 {
     // Proxy Server
     // Shadowsocks
