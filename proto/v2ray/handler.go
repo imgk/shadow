@@ -1,6 +1,7 @@
 package v2ray
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/v2fly/v2ray-core/v4"
+	"github.com/v2fly/v2ray-core/v4/infra/conf"
 
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
@@ -19,16 +21,21 @@ import (
 func init() {
 	fn := func(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
 		type Proto struct {
-			Proto  string          `json:"protocol"`
-			URL    string          `json:"url,omitempty"`
-			Server string          `json:"server"`
-			Config json.RawMessage `json:"v2ray_config"`
+			Proto      string      `json:"protocol"`
+			URL        string      `json:"url,omitempty"`
+			Server     string      `json:"server"`
+			NameServer []string      `json:"name_server"`
+			Config     *conf.Config `json:"config"`
 		}
 		proto := Proto{}
 		if err := json.Unmarshal(b, &proto); err != nil {
 			return nil, err
 		}
-		return NewHandler(proto.Config, timeout)
+		servers := make([]net.IP, 0, len(proto.NameServer))
+		for _, v := range proto.NameServer {
+			servers = append(servers, net.ParseIP(v))
+		}
+		return NewHandler(proto.Config, servers, timeout)
 	}
 
 	proto.RegisterNewHandlerFunc("v2ray", fn)
@@ -39,13 +46,27 @@ type Handler struct {
 	// Instance is ...
 	Instance *core.Instance
 
+	dnsServers     []net.IP
 	timeout time.Duration
 }
 
 // NewHandler is ...
-func NewHandler(b json.RawMessage, timeout time.Duration) (*Handler, error) {
+func NewHandler(conf *conf.Config, servers []net.IP, timeout time.Duration) (*Handler, error) {
+	config, err := conf.Build()
+	if err != nil {
+		return nil, err
+	}
+	instance, err := core.New(config)
+	if err != nil {
+		return nil, err
+	}
+	if err := instance.Start(); err != nil {
+		return nil, err
+	}
 	h := &Handler{
-		timeout: timeout,
+		Instance: instance,
+		dnsServers:    servers,
+		timeout:  timeout,
 	}
 	return h, nil
 }
@@ -63,7 +84,7 @@ func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 	if err != nil {
 		return err
 	}
-	rc, err := core.Dial(nil, h.Instance, dest)
+	rc, err := core.Dial(context.Background(), h.Instance, dest)
 	if err != nil {
 		return err
 	}
@@ -104,7 +125,7 @@ func (h *Handler) Handle(conn gonet.Conn, tgt net.Addr) error {
 func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	defer conn.Close()
 
-	rc, err := core.DialUDP(nil, h.Instance)
+	rc, err := core.DialUDP(context.Background(), h.Instance)
 	if err != nil {
 		return err
 	}
@@ -207,5 +228,5 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 
 // LookupHost is ...
 func (h *Handler) LookupHost(s string) ([]string, error) {
-	return []string{}, nil
+	return h.LookupContextHost(context.Background(), s)
 }
