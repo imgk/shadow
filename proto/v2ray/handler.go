@@ -21,10 +21,10 @@ import (
 func init() {
 	fn := func(b json.RawMessage, timeout time.Duration) (gonet.Handler, error) {
 		type Proto struct {
-			Proto      string      `json:"protocol"`
-			URL        string      `json:"url,omitempty"`
-			Server     string      `json:"server"`
-			NameServer []string      `json:"name_server"`
+			Proto      string       `json:"protocol"`
+			URL        string       `json:"url,omitempty"`
+			Server     string       `json:"server"`
+			NameServer []string     `json:"name_server"`
 			Config     *conf.Config `json:"config"`
 		}
 		proto := Proto{}
@@ -46,8 +46,8 @@ type Handler struct {
 	// Instance is ...
 	Instance *core.Instance
 
-	dnsServers     []net.IP
-	timeout time.Duration
+	dnsServers []net.IP
+	timeout    time.Duration
 }
 
 // NewHandler is ...
@@ -64,9 +64,9 @@ func NewHandler(conf *conf.Config, servers []net.IP, timeout time.Duration) (*Ha
 		return nil, err
 	}
 	h := &Handler{
-		Instance: instance,
-		dnsServers:    servers,
-		timeout:  timeout,
+		Instance:   instance,
+		dnsServers: servers,
+		timeout:    timeout,
 	}
 	return h, nil
 }

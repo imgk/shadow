@@ -2,9 +2,9 @@ package v2ray
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
-	"crypto/rand"
 	"io"
 	"net"
 	"strings"
