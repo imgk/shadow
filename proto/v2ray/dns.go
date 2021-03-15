@@ -405,13 +405,19 @@ func (h *Handler) LookupContextHost(ctx context.Context, host string) ([]string,
 	var lastErr error
 	if true {
 		go func() {
-			p, server, err := h.tryOneName(ctx, host+".", dnsmessage.TypeA)
+			if !strings.HasSuffix(host, ".") {
+				host = host + "."
+			}
+			p, server, err := h.tryOneName(ctx, host, dnsmessage.TypeA)
 			lane <- result{p, server, err}
 		}()
 	}
 	if true {
 		go func() {
-			p, server, err := h.tryOneName(ctx, host+".", dnsmessage.TypeAAAA)
+			if !strings.HasSuffix(host, ".") {
+				host = host + "."
+			}
+			p, server, err := h.tryOneName(ctx, host, dnsmessage.TypeAAAA)
 			lane <- result{p, server, err}
 		}()
 	}
