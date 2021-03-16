@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -205,7 +206,7 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 				if err != nil || port < 0 || port > 65535 {
 					return nil, errors.New("address port error")
 				}
-				addrs, err := h.Net.LookupHost(host)
+				addrs, err := h.LookupHost(host)
 				if err != nil {
 					return nil, err
 				}
@@ -252,4 +253,12 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 	<-errCh
 
 	return err
+}
+
+// LookupHost is ...
+func (h *Handler) LookupHost(host string) ([]string, error) {
+	if strings.HasSuffix(host, ".") {
+		host = strings.TrimSuffix(host, ".")
+	}
+	return h.Net.LookupHost(host)
 }
