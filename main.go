@@ -74,7 +74,9 @@ func main() {
 	fmt.Println("shadow is closing...")
 
 	// close app
-	app.Close()
+	go func() {
+		app.Close()
+	}()
 
 	// use os.Exit when failed to close app
 	// and print runtime.Stack
