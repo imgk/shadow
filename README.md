@@ -6,7 +6,7 @@ A shadowsocks, trojan, socks5 and http proxy client for Windows, Linux and macOS
 
 Build with Go 1.16.
 
-Replace `$(proto)` with names of proxies which you want to use. Currently shadow supports `socks`, `shadowsocks`, `trojan`, `http`.
+Replace `$(proto)` with names of proxies which you want to use. Currently shadow supports `socks5`, `shadowsocks`, `trojan`, `http`, `wireguard` or `v2ray`.
 
 ```
 # linux darwin windows,wintun
@@ -24,7 +24,7 @@ Usage of go/bin/shadow:
   -c string
         config file (default "config.json")
   -t duration
-        timeout (default 1m0s)
+        timeout (default 3m0s)
   -v    enable verbose mode
 ```
 
@@ -38,7 +38,7 @@ For WinDivert, download [WinDivert](https://www.reqrypt.org/windivert.html) 2.2 
 
 Use shadow with simple GUI [shadow-windows](https://github.com/imgk/shadow-windows).
 
-#### No GUI
+#### CLI
 
 Run shadow.exe with administrator privilege.
 
@@ -57,6 +57,9 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 If you are using OpenWrt, you need to configure firewall.
 
 ```
+# set tun name in the config.json
+export TunName=utun
+
 # configure firewall for OpenWrt
 iptables -I FORWARD -o $TunName -j ACCEPT
 iptables -t nat -I POSTROUTING -o $TunName -j MASQUERADE
