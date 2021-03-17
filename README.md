@@ -6,7 +6,7 @@ A shadowsocks, trojan, socks5 and http proxy client for Windows, Linux and macOS
 
 Build with Go 1.16.
 
-Replace `$(proto)` with names of proxies which you want to use. Currently shadow supports `socks5`, `shadowsocks`, `trojan`, `http`, `wireguard` or `v2ray`.
+Replace `$(proto)` with names of proxies which you want to use. Currently shadow supports `socks`, `shadowsocks`, `trojan`, `http`, `wireguard` or `v2ray`.
 
 ```
 # linux darwin windows,wintun
