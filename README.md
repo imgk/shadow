@@ -1,6 +1,6 @@
 # Shadow
 
-A shadowsocks, trojan, socks5 and http proxy client for Windows, Linux and macOS.
+A transparent proxy client for Windows, Linux and macOS, which now supports shadowsocks, trojan, socks5, http and wireguard, as well as all methods supported by v2ray.
 
 ## How to build
 
