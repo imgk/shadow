@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
 	"time"
 
 	"github.com/imgk/shadow/pkg/pool"
@@ -12,30 +13,43 @@ import (
 
 // Handler is ...
 type Handler interface {
+	// Closer is ...
 	io.Closer
+	// Handle is ...
 	Handle(Conn, net.Addr) error
+	// HandlePacket is ...
 	HandlePacket(PacketConn) error
 }
 
 // PacketConn is ...
 type PacketConn interface {
+	// LocalAddr is ...
 	LocalAddr() net.Addr
+	// RemoteAddr is ...
 	RemoteAddr() net.Addr
+	// SetDeadline is ...
 	SetDeadline(time.Time) error
+	// SetReadDeadline is ...
 	SetReadDeadline(time.Time) error
+	// SetWriteDeadline is ...
 	SetWriteDeadline(time.Time) error
+	// ReadTo is ...
 	ReadTo([]byte) (int, net.Addr, error)
+	// WriteFrom is ...
 	WriteFrom([]byte, net.Addr) (int, error)
+	// Close is ...
 	Close() error
 }
 
 // CloseReader is ...
 type CloseReader interface {
+	// CloseRead is ...
 	CloseRead() error
 }
 
 // CloseWriter is ...
 type CloseWriter interface {
+	// CloseWrite is ...
 	CloseWrite() error
 }
 
@@ -54,18 +68,12 @@ func NewConn(nc net.Conn) Conn {
 	return &conn{Conn: nc}
 }
 
+// conn is ...
 type conn struct {
 	net.Conn
 }
 
-func (c *conn) ReadFrom(r io.Reader) (int64, error) {
-	return Copy(c.Conn, r)
-}
-
-func (c *conn) WriteTo(w io.Writer) (int64, error) {
-	return Copy(w, c.Conn)
-}
-
+// CloseRead is ...
 func (c *conn) CloseRead() error {
 	if closer, ok := c.Conn.(CloseReader); ok {
 		return closer.CloseRead()
@@ -73,6 +81,7 @@ func (c *conn) CloseRead() error {
 	return errors.New("not supported")
 }
 
+// CloseWrite is ...
 func (c *conn) CloseWrite() error {
 	if closer, ok := c.Conn.(CloseWriter); ok {
 		return closer.CloseWrite()
@@ -88,9 +97,11 @@ func Relay(c, rc net.Conn) error {
 		if closer, ok := rc.(CloseWriter); ok {
 			closer.CloseWrite()
 		}
-		if err != nil {
-			rc.SetReadDeadline(time.Now())
+		if err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+			errCh <- nil
+			return
 		}
+		rc.SetReadDeadline(time.Now())
 		errCh <- err
 	}(c, rc, errCh)
 
@@ -98,9 +109,11 @@ func Relay(c, rc net.Conn) error {
 	if closer, ok := c.(CloseWriter); ok {
 		closer.CloseWrite()
 	}
-	if err != nil {
-		c.SetReadDeadline(time.Now())
+	if err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		err = <-errCh
+		return err
 	}
+	c.SetReadDeadline(time.Now())
 
 	return xerrors.CombineError(err, <-errCh)
 }
