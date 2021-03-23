@@ -15,6 +15,6 @@ require (
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	golang.zx2c4.com/wireguard v0.0.0-20210311162910-5f0c8b942d93
 	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210311162910-5f0c8b942d93
-	golang.zx2c4.com/wireguard/windows v0.3.8
-	gvisor.dev/gvisor v0.0.0-20210322211820-0db21bb9e382
+	golang.zx2c4.com/wireguard/windows v0.3.9
+	gvisor.dev/gvisor v0.0.0-20210323022253-2ed67c04a4af
 )
