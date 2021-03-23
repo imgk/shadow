@@ -52,7 +52,28 @@ If you are willing to use WinTun, remember to modify Windows route table if shad
 
 2. Use shadow as transparent proxy on Windows.
 
+Use geography location of IP address and proxy HTTPS connections. `1.2.3.4` is the IP address of your proxy server.
+
 ```json
+{
+    "server": {
+        "protocol": "trojan",
+        "url": "trojan://password@1.2.3.4:443#example.com"
+    },
+    "name_server": "https://1.1.1.1:443/dns-query",
+    "windivert_filter_string": "outbound and tcp and tcp.DstPort == 443 and ip.DstAddr != 1.2.3.4",
+    "ip_cidr_rules": {
+        "proxy": [
+            "198.18.0.0/16"
+        ]
+    },
+    "geo_ip_rules": {
+        "file": "Country.mmdb",
+        "proxy": [],
+        "bypass": ["CN"],
+        "final": "proxy"
+    }
+}
 ```
 
 3. Use shadow as transparent proxy on Linux/OpenWrt/macOS.
