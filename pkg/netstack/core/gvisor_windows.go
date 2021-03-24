@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -69,7 +70,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 			if _, err := wt.WriteTo(w); err != nil {
 				return
 			}
-		}(&endpoint{Endpoint: e.Endpoint}, wt)
+		}((*endpoint)(unsafe.Pointer(e.Endpoint)), wt)
 		return
 	}
 	// WinTun
@@ -117,7 +118,7 @@ func (e *Endpoint) WriteNotify() {
 // endpoint is for WinDivert
 // write packets from WinDivert to gvisor netstack
 type endpoint struct {
-	Endpoint *channel.Endpoint
+	Endpoint channel.Endpoint
 }
 
 // Write is to write packet to stack
