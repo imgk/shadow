@@ -372,8 +372,8 @@ github.com/syndtr/gocapability v0.0.0-20180916011248-d98352740cb2/go.mod h1:hkRG
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
 github.com/urfave/cli v1.22.2/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/v2fly/VSign v0.0.0-20201108000810-e2adc24bf848/go.mod h1:p80Bv154ZtrGpXMN15slDCqc9UGmfBuUzheDFBYaW/M=
-github.com/v2fly/v2ray-core/v4 v4.36.3-0.20210322142630-f3a56ca09016 h1:v6i79dsJJwYtm34rovPC6noYGD8ODhgTnJcP8VsPHP0=
-github.com/v2fly/v2ray-core/v4 v4.36.3-0.20210322142630-f3a56ca09016/go.mod h1:p7lB9Ew6UbhIUpgnub9x++GdoHVTq3o0f7dQTYBBHGc=
+github.com/v2fly/v2ray-core/v4 v4.36.3-0.20210323074920-3db3ba5872f7 h1:udsvFTJhOJmJNwD73E/mGC3cYpiyEZP1aBpboP38MzM=
+github.com/v2fly/v2ray-core/v4 v4.36.3-0.20210323074920-3db3ba5872f7/go.mod h1:p7lB9Ew6UbhIUpgnub9x++GdoHVTq3o0f7dQTYBBHGc=
 github.com/viant/assertly v0.4.8/go.mod h1:aGifi++jvCrUaklKEKT0BU95igDNaqkvz+49uaYMPRU=
 github.com/viant/toolbox v0.24.0/go.mod h1:OxMCG57V0PXuIP2HNQrtJf2CjqdmbrOx5EkMILuUhzM=
 github.com/vishvananda/netlink v1.0.1-0.20190930145447-2ec5bdc52b86/go.mod h1:+SR5DhBJrl6ZM7CoCKvpw5BKroDKQ+PJqOg65H/2ktk=
@@ -483,8 +483,9 @@ golang.org/x/net v0.0.0-20201031054903-ff519b6c9102/go.mod h1:sp8m0HH+o8qH0wwXwY
 golang.org/x/net v0.0.0-20201224014010-6772e930b67b/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
 golang.org/x/net v0.0.0-20210224082022-3d97a244fca7/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
 golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
-golang.org/x/net v0.0.0-20210316092652-d523dce5a7f4 h1:b0LrWgu8+q7z4J+0Y3Umo5q1dL7NXBkKBWkaVkAq17E=
 golang.org/x/net v0.0.0-20210316092652-d523dce5a7f4/go.mod h1:RBQZq4jEuRlivfhVLdyRGr576XBO4/greRjx4P4O3yc=
+golang.org/x/net v0.0.0-20210323141857-08027d57d8cf h1:sewfyKLWuY3ko6EI4hbFziQ8bHkfammpzCDfLT92I1c=
+golang.org/x/net v0.0.0-20210323141857-08027d57d8cf/go.mod h1:RBQZq4jEuRlivfhVLdyRGr576XBO4/greRjx4P4O3yc=
 golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
 golang.org/x/oauth2 v0.0.0-20181017192945-9dcd33a902f4/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
 golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
@@ -640,10 +641,11 @@ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8T
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 h1:go1bK/D/BFZV2I8cIQd1NKEZ+0owSTG1fDTci4IqFcE=
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.zx2c4.com/wireguard v0.0.0-20210306154438-593658d9755b/go.mod h1:39ZQQ95hUxDxT7opsWy/rtfgvXXc8s30qfZ02df69Fo=
-golang.zx2c4.com/wireguard v0.0.0-20210311162910-5f0c8b942d93 h1:nb+w1m5cgug4cfeqcWJx4lcj8cYA+wWAz7aGI96Wp/Q=
 golang.zx2c4.com/wireguard v0.0.0-20210311162910-5f0c8b942d93/go.mod h1:a057zjmoc00UN7gVkaJt2sXVK523kMJcogDTEvPIasg=
-golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210311162910-5f0c8b942d93 h1:bxQk/vzchZV/1T1qlMTNoLoq7OfNQpYZa3PGTlDliEk=
-golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210311162910-5f0c8b942d93/go.mod h1:KDpQeHQtxrj/lOcBtTtre7CnpkYZMJ09KToid5irEl8=
+golang.zx2c4.com/wireguard v0.0.0-20210323190719-bc69a3fa60f7 h1:28UjmZGNdpJRaWhE4re8uEN9bSkekcRob5c0ktcUSGw=
+golang.zx2c4.com/wireguard v0.0.0-20210323190719-bc69a3fa60f7/go.mod h1:a057zjmoc00UN7gVkaJt2sXVK523kMJcogDTEvPIasg=
+golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210323190719-bc69a3fa60f7 h1:KFUADOjx581RJhuh97Eyo821Hg1uNMQKjc8zVIN0Slg=
+golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210323190719-bc69a3fa60f7/go.mod h1:KDpQeHQtxrj/lOcBtTtre7CnpkYZMJ09KToid5irEl8=
 golang.zx2c4.com/wireguard/windows v0.3.9 h1:yA/ymfTqD/x1ySO4KFlaSgCMAEzvcvzRoFz9Io+v2os=
 golang.zx2c4.com/wireguard/windows v0.3.9/go.mod h1:Vdt1vvL5vB9YdARIePBqqd1lTpSonPZImmsbQVtwkQU=
 google.golang.org/api v0.0.0-20180910000450-7ca32eb868bf/go.mod h1:4mhQ8q/RsB7i+udVvVy5NUi08OU8ZlA0gRVgrF7VFY0=
@@ -770,8 +772,8 @@ gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c/go.mod h1:K4uyk7z7BCEPqu6E+C
 gotest.tools v2.2.0+incompatible/go.mod h1:DsYFclhRJ6vuDpmuTbkuFWG+y2sxOXAzmJt81HFBacw=
 grpc.go4.org v0.0.0-20170609214715-11d0a25b4919/go.mod h1:77eQGdRu53HpSqPFJFmuJdjuHRquDANNeA4x7B8WQ9o=
 gvisor.dev/gvisor v0.0.0-20210306005637-a64c3a1b5a9f/go.mod h1:TMDExUbPoyZXybG8K1+vm5ElIxI5qXUM5fwK7vI8YIg=
-gvisor.dev/gvisor v0.0.0-20210323022253-2ed67c04a4af h1:SCtMne03R2WIQITMJrq5yF++M+EIQjNPRIowH+gueow=
-gvisor.dev/gvisor v0.0.0-20210323022253-2ed67c04a4af/go.mod h1:ucHEMlckp+S/YzKEpwwAyGBhAh807Wxq/8Erc6gFxCE=
+gvisor.dev/gvisor v0.0.0-20210323233101-8e2958434d9f h1:KU2HhSxsP6xlYzS4+sSBrC54Veme0oMbCZ3jbWk9EkM=
+gvisor.dev/gvisor v0.0.0-20210323233101-8e2958434d9f/go.mod h1:ucHEMlckp+S/YzKEpwwAyGBhAh807Wxq/8Erc6gFxCE=
 h12.io/socks v1.0.2/go.mod h1:AIhxy1jOId/XCz9BO+EIgNL2rQiPTBNnOfnVnQ+3Eck=
 honnef.co/go/tools v0.0.0-20180728063816-88497007e858/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
 honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
