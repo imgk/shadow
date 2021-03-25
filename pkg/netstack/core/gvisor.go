@@ -41,7 +41,7 @@ type Stack struct {
 
 	// UDP Table
 	mu    sync.RWMutex
-	conns map[string]*UDPConn
+	conns map[int]*UDPConn
 }
 
 // Start is to start the stack
@@ -223,7 +223,7 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger, mtu int) (e
 		return
 	}
 
-	s.conns = make(map[string]*UDPConn)
+	s.conns = make(map[int]*UDPConn)
 	return
 }
 
@@ -272,7 +272,7 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 }
 
 // Get is to get *UDPConn
-func (s *Stack) Get(k string) (*UDPConn, bool) {
+func (s *Stack) Get(k int) (*UDPConn, bool) {
 	s.mu.RLock()
 	conn, ok := s.conns[k]
 	s.mu.RUnlock()
@@ -280,14 +280,14 @@ func (s *Stack) Get(k string) (*UDPConn, bool) {
 }
 
 // Add is to add *UDPConn
-func (s *Stack) Add(k string, conn *UDPConn) {
+func (s *Stack) Add(k int, conn *UDPConn) {
 	s.mu.Lock()
 	s.conns[k] = conn
 	s.mu.Unlock()
 }
 
 // Del is to delete *UDPConn
-func (s *Stack) Del(k string) {
+func (s *Stack) Del(k int) {
 	s.mu.Lock()
 	delete(s.conns, k)
 	s.mu.Unlock()
@@ -321,7 +321,7 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 
 	s.Stack.Stats().UDP.PacketsReceived.Increment()
 
-	key := string(id.RemoteAddress) + string([]byte{byte(id.RemotePort >> 8), byte(id.RemotePort)})
+	key := int(id.RemotePort)
 	if conn, ok := s.Get(key); ok {
 		vv := pkt.Data().ExtractVV()
 		conn.HandlePacket(vv.ToView(), &net.UDPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
@@ -391,7 +391,7 @@ type Packet struct {
 type UDPConn struct {
 	deadlineTimer
 
-	key    string
+	key    int
 	route  *stack.Route
 	stack  *Stack
 	addr   net.UDPAddr
@@ -401,7 +401,7 @@ type UDPConn struct {
 }
 
 // NewUDPConn is to create a new *UDPConn
-func NewUDPConn(key string, addr, raddr net.UDPAddr, s *Stack, r *stack.Route) *UDPConn {
+func NewUDPConn(key int, addr, raddr net.UDPAddr, s *Stack, r *stack.Route) *UDPConn {
 	conn := &UDPConn{
 		key:    key,
 		route:  r,
