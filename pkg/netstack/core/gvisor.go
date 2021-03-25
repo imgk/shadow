@@ -328,33 +328,7 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 		return true
 	}
 
-	// get route
-	netHdr := pkt.Network()
-	route, tcperr := s.Stack.FindRoute(
-		pkt.NICID,
-		netHdr.DestinationAddress(),
-		netHdr.SourceAddress(),
-		pkt.NetworkProtocolNumber,
-		false, /* multicastLoop */
-	)
-	if tcperr != nil {
-		s.Error("udp %v:%v <---> %v:%v find route error: %v",
-			net.IP(id.RemoteAddress),
-			int(id.RemotePort),
-			net.IP(id.LocalAddress),
-			int(id.LocalPort),
-			tcperr,
-		)
-		return true
-	}
-
-	conn := NewUDPConn(
-		key,
-		net.UDPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)},
-		net.UDPAddr{IP: net.IP(id.RemoteAddress), Port: int(id.RemotePort)},
-		s,
-		route,
-	)
+	conn := NewUDPConn(key, id, pkt, s)
 	s.Add(key, conn)
 	vv := pkt.Data().ExtractVV()
 	conn.HandlePacket(vv.ToView(), conn.LocalAddr().(*net.UDPAddr))
@@ -391,26 +365,34 @@ type Packet struct {
 type UDPConn struct {
 	deadlineTimer
 
-	key    int
-	route  *stack.Route
-	stack  *Stack
-	addr   net.UDPAddr
-	raddr  net.UDPAddr
-	closed chan struct{}
+	key   int
+	stack *Stack
+
+	routeInfo struct {
+		src   tcpip.Address
+		nicID tcpip.NICID
+		pn    tcpip.NetworkProtocolNumber
+		id    stack.TransportEndpointID
+	}
+
 	stream chan Packet
+	closed chan struct{}
 }
 
 // NewUDPConn is to create a new *UDPConn
-func NewUDPConn(key int, addr, raddr net.UDPAddr, s *Stack, r *stack.Route) *UDPConn {
+func NewUDPConn(key int, id stack.TransportEndpointID, pkt *stack.PacketBuffer, s *Stack) *UDPConn {
 	conn := &UDPConn{
 		key:    key,
-		route:  r,
 		stack:  s,
-		addr:   addr,
-		raddr:  raddr,
-		closed: make(chan struct{}),
 		stream: make(chan Packet, 16),
+		closed: make(chan struct{}),
 	}
+	hdr := pkt.Network()
+	conn.routeInfo.src = hdr.SourceAddress()
+	conn.routeInfo.nicID = pkt.NICID
+	conn.routeInfo.pn = pkt.NetworkProtocolNumber
+	conn.routeInfo.id = id
+
 	conn.deadlineTimer.init()
 	return conn
 }
@@ -424,18 +406,17 @@ func (conn *UDPConn) Close() error {
 		close(conn.closed)
 	}
 	conn.stack.Del(conn.key)
-	conn.route.Release()
 	return nil
 }
 
 // LocalAddr is net.PacketConn.LocalAddr
 func (conn *UDPConn) LocalAddr() net.Addr {
-	return &conn.addr
+	return &net.UDPAddr{IP: net.IP(conn.routeInfo.id.LocalAddress), Port: int(conn.routeInfo.id.LocalPort)}
 }
 
 // RemoteAddr is net.PacketConn.RemoteAddr
 func (conn *UDPConn) RemoteAddr() net.Addr {
-	return &conn.raddr
+	return &net.UDPAddr{IP: net.IP(conn.routeInfo.id.RemoteAddress), Port: int(conn.routeInfo.id.RemotePort)}
 }
 
 // ReadTo is ...
@@ -465,18 +446,17 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 		return 0, errors.New("core.UDPConn.WriteFrom error: addr type error")
 	}
 
-	if ipv4 := src.IP.To4(); ipv4 != nil {
-		conn.route.LocalAddress = tcpip.Address(ipv4)
-	} else {
-		ipv6 := src.IP.To16()
-		conn.route.LocalAddress = tcpip.Address(ipv6)
+	route, tcperr := conn.stack.Stack.FindRoute(conn.routeInfo.nicID, tcpip.Address(src.IP), conn.routeInfo.src, conn.routeInfo.pn, false)
+	if tcperr != nil {
+		return 0, errors.New(tcperr.String())
 	}
+	defer route.Release()
 
 	if tcperr := sendUDP(
-		conn.route,
+		route,
 		v.ToVectorisedView(),
 		uint16(src.Port),
-		uint16(conn.raddr.Port),
+		conn.routeInfo.id.RemotePort,
 		0,    /* ttl */
 		true, /* useDefaultTTL */
 		0,    /* tos */
