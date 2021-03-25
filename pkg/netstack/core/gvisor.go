@@ -369,10 +369,10 @@ type UDPConn struct {
 	stack *Stack
 
 	routeInfo struct {
-		src   tcpip.Address
-		nicID tcpip.NICID
-		pn    tcpip.NetworkProtocolNumber
-		id    stack.TransportEndpointID
+		src tcpip.Address
+		nic tcpip.NICID
+		pn  tcpip.NetworkProtocolNumber
+		id  stack.TransportEndpointID
 	}
 
 	stream chan Packet
@@ -389,7 +389,7 @@ func NewUDPConn(key int, id stack.TransportEndpointID, pkt *stack.PacketBuffer, 
 	}
 	hdr := pkt.Network()
 	conn.routeInfo.src = hdr.SourceAddress()
-	conn.routeInfo.nicID = pkt.NICID
+	conn.routeInfo.nic = pkt.NICID
 	conn.routeInfo.pn = pkt.NetworkProtocolNumber
 	conn.routeInfo.id = id
 
@@ -424,7 +424,7 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 	deadline := conn.readCancel()
 	select {
 	case <-deadline:
-		err = &timeoutError{}
+		err = (*timeoutError)(nil)
 	case <-conn.closed:
 		err = io.EOF
 	case pkt := <-conn.stream:
@@ -446,7 +446,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 		return 0, errors.New("core.UDPConn.WriteFrom error: addr type error")
 	}
 
-	route, tcperr := conn.stack.Stack.FindRoute(conn.routeInfo.nicID, tcpip.Address(src.IP), conn.routeInfo.src, conn.routeInfo.pn, false)
+	route, tcperr := conn.stack.Stack.FindRoute(conn.routeInfo.nic, tcpip.Address(src.IP), conn.routeInfo.src, conn.routeInfo.pn, false)
 	if tcperr != nil {
 		return 0, errors.New(tcperr.String())
 	}
