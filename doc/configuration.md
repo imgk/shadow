@@ -27,8 +27,10 @@
 
     // tun device only
     // For macOS, `tun_name` shoulde be `utun[0-9]`
-    "tun_name": "utun",
-    "tun_addr": ["192.168.0.11/24"],
+    "tun": {
+        "tun_name": "utun",
+        "tun_addr": ["192.168.0.11/24"]
+    },
 
 
     // windivert only
