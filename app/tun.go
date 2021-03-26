@@ -18,8 +18,9 @@ import (
 
 // RunWithDevice is ...
 func (app *App) RunWithDevice(dev *tun.Device) (err error) {
+	config := app.Conf
 	// new dns resolver
-	resolver, err := resolver.NewResolver(app.Conf.NameServer)
+	resolver, err := resolver.NewResolver(config.NameServer)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -29,7 +30,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 
 	// new connection handler
-	handler, err := proto.NewHandler(app.Conf.Server, app.Timeout)
+	handler, err := proto.NewHandler(config.Server, app.Timeout)
 	if err != nil {
 		return fmt.Errorf("protocol error: %w", err)
 	}
@@ -54,20 +55,24 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 
 	// new tun device
 	name := "utun"
-	if tunName := app.Conf.TunName; tunName != "" {
+	if tunName := config.Tun.TunName; tunName != "" {
 		name = tunName
 	}
 	createDevice := false
 	if dev == nil {
 		createDevice = true
-		dev, err = tun.NewDeviceWithMTU(name, (2<<10)-4 /*MTU for Tun*/)
+		mtu := (2 << 10) - 4 /*MTU for Tun*/
+		if config.Tun.MTU < 65536 && config.Tun.MTU > 0 {
+			mtu = config.Tun.MTU
+		}
+		dev, err = tun.NewDeviceWithMTU(name, mtu)
 		if err != nil {
 			return fmt.Errorf("tun device from name error: %w", err)
 		}
 	}
 	app.attachCloser(dev)
 	// set tun address
-	for _, address := range app.Conf.TunAddr {
+	for _, address := range config.Tun.TunAddr {
 		err := dev.SetInterfaceAddress(address)
 		if err != nil {
 			return err
@@ -80,12 +85,12 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 
 	// new fake ip tree
-	tree, err := NewDomainTree(app.Conf)
+	tree, err := NewDomainTree(config)
 	if err != nil {
 		return
 	}
 	// new netstack
-	stack := netstack.NewStack(handler, resolver, tree, !app.Conf.DomainRules.DisableHijack /* ture for hijacking queries */)
+	stack := netstack.NewStack(handler, resolver, tree, !config.DomainRules.DisableHijack /* ture for hijacking queries */)
 	err = stack.Start(dev, app.Logger, (2<<10)-4 /*MTU for Tun*/)
 	if err != nil {
 		return
@@ -93,7 +98,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	app.attachCloser(stack)
 
 	// enable socks5/http proxy
-	if addr := app.Conf.ProxyServer; addr != "" {
+	if addr := config.ProxyServer; addr != "" {
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			return err
@@ -105,7 +110,7 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	}
 
 	// add route table entry
-	if err := dev.AddRouteEntry(app.Conf.IPCIDRRules.Proxy); err != nil {
+	if err := dev.AddRouteEntry(config.IPCIDRRules.Proxy); err != nil {
 		return fmt.Errorf("add route entry error: %w", err)
 	}
 

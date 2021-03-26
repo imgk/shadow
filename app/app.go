@@ -65,14 +65,22 @@ type Conf struct {
 		Proxy []string `json:"proxy"`
 	} `json:"app_rules,omitempty"`
 
-	// TunName is ...
-	// for macOS, this should be utun[0-9]
-	TunName string `json:"tun_name,omitempty"`
-	// TunAddr is ...
-	// tun device ip address
-	// 192.168.0.11/24
-	// fe80:08ef:ae86:68ea::11/64
-	TunAddr []string `json:"tun_addr,omitempty"`
+	// Tun is ...
+	// config for tun device
+	Tun struct {
+		// TunName is ...
+		// for macOS, this should be utun[0-9]
+		TunName string `json:"tun_name,omitempty"`
+		// TunAddr is ...
+		// tun device ip address
+		// 192.168.0.11/24
+		// fe80:08ef:ae86:68ea::11/64
+		TunAddr []string `json:"tun_addr,omitempty"`
+		// NameServer is ...
+		NameServer string `json:"name_server,omitempty"`
+		// MTU is ...
+		MTU int `json:"mtu,omitempty"`
+	} `json:"tun,omitempty"`
 
 	// IPCIDRRules is ...
 	// Tun: try to add these cidrs to route table
