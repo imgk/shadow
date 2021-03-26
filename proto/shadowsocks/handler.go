@@ -18,7 +18,6 @@ import (
 
 	// other protocols
 	"github.com/imgk/shadow/proto/shadowsocks/http2"
-	"github.com/imgk/shadow/proto/shadowsocks/online"
 )
 
 func init() {
@@ -39,8 +38,6 @@ func init() {
 			return http2.NewHandler(proto.URL, timeout)
 		case "ss-h3", "shadowsocks-h3":
 			return http2.NewQUICHandler(proto.URL, timeout)
-		case "ss-online", "shadowsocks-online", "online":
-			return online.NewHandler(proto.URL, timeout)
 		}
 		return nil, errors.New("protocol error")
 	}
@@ -53,9 +50,6 @@ func init() {
 	proto.RegisterNewHandlerFunc("shadowsocks-h2", fn)
 	proto.RegisterNewHandlerFunc("ss-h3", fn)
 	proto.RegisterNewHandlerFunc("shadowsocks-h3", fn)
-	proto.RegisterNewHandlerFunc("ss-online", fn)
-	proto.RegisterNewHandlerFunc("shadowsocks-online", fn)
-	proto.RegisterNewHandlerFunc("online", fn)
 }
 
 // Dialer is ...
