@@ -99,7 +99,7 @@ func (app *App) Run() error {
 		}
 	}()
 	// new windivert device
-	dev, err := divert.NewDevice(app.Conf.FilterString, appFilter, ipFilter, !app.Conf.DomainRules.DisableHijack /* ture for hijacking queries */)
+	dev, err := divert.NewDevice(app.Conf.FilterString, appFilter, ipFilter, !app.Conf.DomainRules.DisableHijack /* true for hijacking queries */)
 	if err != nil {
 		return fmt.Errorf("windivert error: %w", err)
 	}
@@ -111,7 +111,7 @@ func (app *App) Run() error {
 		return fmt.Errorf("NewDomainTree error: %w", err)
 	}
 	// new netstack
-	stack := netstack.NewStack(handler, resolver, tree, !app.Conf.DomainRules.DisableHijack /* ture for hijacking queries */)
+	stack := netstack.NewStack(handler, resolver, tree, !app.Conf.DomainRules.DisableHijack /* true for hijacking queries */)
 	err = stack.Start(dev, app.Logger, 1500 /*MTU for WinDivert*/)
 	if err != nil {
 		return fmt.Errorf("start netstack error: %w", err)
