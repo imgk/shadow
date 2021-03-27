@@ -327,7 +327,6 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	defer unix.Close(fd)
 
 	l := roundup(unix.SizeofSockaddrInet6)
-	n := roundup(unix.SizeofSockaddrDatalink)
 
 	type rt_message struct {
 		hdr rt_msghdr
@@ -340,10 +339,10 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	}
 
 	// https://gitlab.run.montefiore.ulg.ac.be/sdn-pp/fastclick/blob/master/elements/userlevel/kerneltun.cc#L292-334
-	msgSlice := make([]byte, unsafe.Sizeof(rt_msghdr{})+l+n+l)
+	msgSlice := make([]byte, unsafe.Sizeof(rt_msghdr{})+l+l+l)
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + n + l)
+	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + l + l)
 	msg.hdr.rtm_version = unix.RTM_VERSION
 	msg.hdr.rtm_type = unix.RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
@@ -359,12 +358,12 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	msg_dest.Len = unix.SizeofSockaddrInet6
 	msg_dest.Family = unix.AF_INET6
 
-	msg_gateway := (*unix.RawSockaddrDatalink)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l))
-	msg_gateway.Len = unix.SizeofSockaddrDatalink
-	msg_gateway.Family = unix.AF_LINK
-	msg_gateway.Index = uint16(interf.Index)
+	msg_gateway := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l))
+	msg_gateway.Len = unix.SizeofSockaddrInet6
+	msg_gateway.Family = unix.AF_INET6
+	msg_gateway.Addr = d.Conf6.Gateway
 
-	msg_mask := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l + n))
+	msg_mask := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(unsafe.Pointer(&msg.bb)) + l + l))
 	msg_mask.Len = unix.SizeofSockaddrInet6
 	msg_mask.Family = unix.AF_INET6
 
