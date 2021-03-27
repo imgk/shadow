@@ -250,9 +250,6 @@ func roundup(a uintptr) uintptr {
 
 // addRouteEntry4 is ...
 func (d *Device) addRouteEntry4(cidr []string) error {
-	const RTM_ADD = 1
-	const RTM_VERSION = 5
-
 	// https://opensource.apple.com/source/network_cmds/network_cmds-596/route.tproj/route.c.auto.html
 	fd, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
 	if err != nil {
@@ -277,8 +274,8 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
 	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + l + l)
-	msg.hdr.rtm_version = RTM_VERSION
-	msg.hdr.rtm_type = RTM_ADD
+	msg.hdr.rtm_version = unix.RTM_VERSION
+	msg.hdr.rtm_type = unix.RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
 	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
 	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
@@ -322,9 +319,6 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 
 // addRouteEntry6 is ...
 func (d *Device) addRouteEntry6(cidr []string) error {
-	const RTM_ADD = 1
-	const RTM_VERSION = 5
-
 	// https://opensource.apple.com/source/network_cmds/network_cmds-596/route.tproj/route.c.auto.html
 	fd, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
 	if err != nil {
@@ -350,8 +344,8 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
 	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + n + l)
-	msg.hdr.rtm_version = RTM_VERSION
-	msg.hdr.rtm_type = RTM_ADD
+	msg.hdr.rtm_version = unix.RTM_VERSION
+	msg.hdr.rtm_type = unix.RTM_ADD
 	msg.hdr.rtm_index = uint16(interf.Index)
 	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
 	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
