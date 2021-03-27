@@ -208,38 +208,6 @@ func (d *Device) Activate() error {
 	return nil
 }
 
-// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h#L75-L88
-type rt_metrics struct {
-	rmx_locks    uint32
-	rmx_mtu      uint32
-	rmx_hopcount uint32
-	rmx_expire   int32
-	rmx_recvpipe uint32
-	rmx_sendpipe uint32
-	rmx_ssthresh uint32
-	rmx_rtt      uint32
-	rmx_rttvar   uint32
-	rmx_pksent   uint32
-	rmx_state    uint32
-	rmx_filler   [3]uint32
-}
-
-// https://github.com/apple/darwin-xnu/blob/master/bsd/net/route.h#L343-L356
-type rt_msghdr struct {
-	rtm_msglen  uint16
-	rtm_version byte
-	rtm_type    byte
-	rtm_index   uint16
-	rtm_flags   int32
-	rtm_addrs   int32
-	rtm_pid     uint32
-	rtm_seq     int32
-	rtm_errno   int32
-	rtm_use     int32
-	rtm_inits   uint32
-	rtm_rmx     rt_metrics
-}
-
 func roundup(a uintptr) uintptr {
 	if a > 0 {
 		return 1 + ((a - 1) | (unsafe.Sizeof(uint32(0)) - 1))
@@ -260,7 +228,7 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	l := roundup(unix.SizeofSockaddrInet4)
 
 	type rt_message struct {
-		hdr rt_msghdr
+		hdr unix.RtMsghdr
 		bb  [512]byte
 	}
 
@@ -270,20 +238,20 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	}
 
 	// https://gitlab.run.montefiore.ulg.ac.be/sdn-pp/fastclick/blob/master/elements/userlevel/kerneltun.cc#L292-334
-	msgSlice := make([]byte, unsafe.Sizeof(rt_msghdr{})+l+l+l)
+	msgSlice := make([]byte, unsafe.Sizeof(unix.RtMsghdr{})+l+l+l)
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + l + l)
-	msg.hdr.rtm_version = unix.RTM_VERSION
-	msg.hdr.rtm_type = unix.RTM_ADD
-	msg.hdr.rtm_index = uint16(interf.Index)
-	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
-	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
-	msg.hdr.rtm_pid = 0
-	msg.hdr.rtm_seq = 0
-	msg.hdr.rtm_errno = 0
-	msg.hdr.rtm_use = 0
-	msg.hdr.rtm_inits = 0
+	msg.hdr.Msglen = uint16(unsafe.Sizeof(unix.RtMsghdr{}) + l + l + l)
+	msg.hdr.Version = unix.RTM_VERSION
+	msg.hdr.Type = unix.RTM_ADD
+	msg.hdr.Index = uint16(interf.Index)
+	msg.hdr.Flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
+	msg.hdr.Addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
+	msg.hdr.Pid = 0
+	msg.hdr.Seq = 0
+	msg.hdr.Errno = 0
+	msg.hdr.Use = 0
+	msg.hdr.Inits = 0
 
 	msg_dest := (*unix.RawSockaddrInet4)(unsafe.Pointer(&msg.bb))
 	msg_dest.Len = unix.SizeofSockaddrInet4
@@ -307,11 +275,11 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 		msg_dest.Addr = *(*[4]byte)(unsafe.Pointer(&ipv4[0]))
 		msg_mask.Addr = *(*[4]byte)(unsafe.Pointer(&mask[0]))
 
-		if _, err := unix.Write(fd, msgSlice[:msg.hdr.rtm_msglen]); err != nil {
+		if _, err := unix.Write(fd, msgSlice[:msg.hdr.Msglen]); err != nil {
 			return fmt.Errorf("write to socket error: %w", err)
 		}
 
-		msg.hdr.rtm_seq++
+		msg.hdr.Seq++
 	}
 
 	return nil
@@ -329,7 +297,7 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	l := roundup(unix.SizeofSockaddrInet6)
 
 	type rt_message struct {
-		hdr rt_msghdr
+		hdr unix.RtMsghdr
 		bb  [512]byte
 	}
 
@@ -339,20 +307,20 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	}
 
 	// https://gitlab.run.montefiore.ulg.ac.be/sdn-pp/fastclick/blob/master/elements/userlevel/kerneltun.cc#L292-334
-	msgSlice := make([]byte, unsafe.Sizeof(rt_msghdr{})+l+l+l)
+	msgSlice := make([]byte, unsafe.Sizeof(unix.RtMsghdr{})+l+l+l)
 
 	msg := (*rt_message)(unsafe.Pointer(&msgSlice[0]))
-	msg.hdr.rtm_msglen = uint16(unsafe.Sizeof(rt_msghdr{}) + l + l + l)
-	msg.hdr.rtm_version = unix.RTM_VERSION
-	msg.hdr.rtm_type = unix.RTM_ADD
-	msg.hdr.rtm_index = uint16(interf.Index)
-	msg.hdr.rtm_flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
-	msg.hdr.rtm_addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
-	msg.hdr.rtm_pid = 0
-	msg.hdr.rtm_seq = 0
-	msg.hdr.rtm_errno = 0
-	msg.hdr.rtm_use = 0
-	msg.hdr.rtm_inits = 0
+	msg.hdr.Msglen = uint16(unsafe.Sizeof(unix.RtMsghdr{}) + l + l + l)
+	msg.hdr.Version = unix.RTM_VERSION
+	msg.hdr.Type = unix.RTM_ADD
+	msg.hdr.Index = uint16(interf.Index)
+	msg.hdr.Flags = unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
+	msg.hdr.Addrs = unix.RTA_DST | unix.RTA_GATEWAY | unix.RTA_NETMASK
+	msg.hdr.Pid = 0
+	msg.hdr.Seq = 0
+	msg.hdr.Errno = 0
+	msg.hdr.Use = 0
+	msg.hdr.Inits = 0
 
 	msg_dest := (*unix.RawSockaddrInet6)(unsafe.Pointer(&msg.bb))
 	msg_dest.Len = unix.SizeofSockaddrInet6
@@ -376,11 +344,11 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 		msg_dest.Addr = *(*[16]byte)(unsafe.Pointer(&ipv6[0]))
 		msg_mask.Addr = *(*[16]byte)(unsafe.Pointer(&mask[0]))
 
-		if _, err := unix.Write(fd, msgSlice[:msg.hdr.rtm_msglen]); err != nil {
+		if _, err := unix.Write(fd, msgSlice[:msg.hdr.Msglen]); err != nil {
 			return fmt.Errorf("write to socket error: %w", err)
 		}
 
-		msg.hdr.rtm_seq++
+		msg.hdr.Seq++
 	}
 
 	return nil
