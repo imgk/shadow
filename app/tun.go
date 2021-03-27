@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"os/exec"
+	"strings"
 
 	"github.com/imgk/shadow/pkg/handler/recorder"
 	"github.com/imgk/shadow/pkg/netstack"
@@ -114,10 +116,56 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 		return fmt.Errorf("add route entry error: %w", err)
 	}
 
+	if config.Tun.PostUp != "" {
+		ss := strings.Split(config.Tun.PostUp, "; ")
+		for _, s := range ss {
+			ss := strings.Split(s, " ")
+			for i := range ss {
+				if ss[i] == "%i" {
+					ss[i] = dev.Name
+				}
+			}
+			cmd := exec.Command(ss[0], ss[1:]...)
+			if err = cmd.Run(); err != nil {
+				return
+			}
+		}
+	}
+
+	if config.Tun.PostDown != "" {
+		ss := strings.Split(config.Tun.PostDown, "; ")
+		c := &Command{Cmds: make([]*exec.Cmd, 0, len(ss))}
+		for _, s := range ss {
+			ss := strings.Split(s, " ")
+			for i := range ss {
+				if ss[i] == "%i" {
+					ss[i] = dev.Name
+				}
+			}
+			c.Cmds = append(c.Cmds, exec.Command(ss[0], ss[1:]...))
+		}
+		app.attachCloser(c)
+	}
+
 	return nil
 }
 
 // Run is ...
 func (app *App) Run() error {
 	return app.RunWithDevice(nil)
+}
+
+// Command is ...
+type Command struct {
+	Cmds []*exec.Cmd
+}
+
+// Close is ...
+func (c *Command) Close() (last error) {
+	for _, cmd := range c.Cmds {
+		if err := cmd.Run(); err != nil {
+			last = err
+		}
+	}
+	return
 }
