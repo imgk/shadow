@@ -77,6 +77,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 }
 
 // setInterfaceAddress6 is ...
+// https://github.com/comzyh/clash/blob/add-water/proxy/tun/dev/dev_darwin.go#L494
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 	d.Conf6.Addr = parse6(addr)
 	d.Conf6.Mask = parse6(mask)
@@ -87,10 +88,6 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 		return err
 	}
 	defer unix.Close(fd)
-
-	if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_SETFD), uintptr(unix.FD_CLOEXEC)); errno != 0 {
-		return os.NewSyscallError("fcntl: F_SETFD, FD_CLOEXEC", errno)
-	}
 
 	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/in6_var.h#L114-L119
 	// https://opensource.apple.com/source/network_cmds/network_cmds-543.260.3/
@@ -112,6 +109,12 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 		ifra_lifetime   in6_addrlifetime
 	}
 
+	// https://github.com/yggdrasil-network/yggdrasil-go/blob/983dfdb5535124cf2663166db580387d7a8a149d/src/tuntap/tun_darwin.go#L36
+	const (
+		IN6_IFF_NODAD   = 0x0020
+		IN6_IFF_SECURED = 0x0400
+	)
+
 	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/nd6.h#L469
 	const ND6_INFINITE_LIFETIME = 0xffffffff
 
@@ -122,15 +125,13 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 			Addr:   d.Conf6.Addr,
 		},
 		ifra_prefixmask: unix.RawSockaddrInet6{
-			Len:    unix.SizeofSockaddrInet6,
-			Family: unix.AF_INET6,
-			Addr:   d.Conf6.Mask,
+			Len:  unix.SizeofSockaddrInet6,
+			Addr: d.Conf6.Mask,
 		},
+		ifra_flags: IN6_IFF_NODAD | IN6_IFF_SECURED,
 		ifra_lifetime: in6_addrlifetime{
-			ia6t_expire:    ND6_INFINITE_LIFETIME,
-			ia6t_preferred: ND6_INFINITE_LIFETIME,
-			ia6t_vltime:    ND6_INFINITE_LIFETIME,
-			ia6t_pltime:    ND6_INFINITE_LIFETIME,
+			ia6t_vltime: ND6_INFINITE_LIFETIME,
+			ia6t_pltime: ND6_INFINITE_LIFETIME,
 		},
 	}
 	copy(in6_ifra.ifra_name[:], d.Name[:])
@@ -141,6 +142,7 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 		IOC_INOUT = IOC_IN | IOC_OUT
 	)
 
+	// https://github.com/yggdrasil-network/yggdrasil-go/blob/master/src/tuntap/tun_darwin.go#L75
 	// https://github.com/apple/darwin-xnu/blob/a449c6a3b8014d9406c2ddbdc81795da24aa7443/bsd/netinet6/in6_var.h
 	// #define SIOCAIFADDR_IN6	   _IOW('i', 26, struct in6_aliasreq)
 	const SIOCAIFADDR_IN6 = IOC_IN | ((128 & 0x1fff) << 16) | uint32(byte('i'))<<8 | 26
@@ -223,7 +225,10 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 	if err != nil {
 		return err
 	}
-	defer unix.Close(fd)
+	defer func() {
+		unix.Shutdown(fd, unix.SHUT_RDWR)
+		unix.Close(fd)
+	}()
 
 	l := roundup(unix.SizeofSockaddrInet4)
 
@@ -292,7 +297,10 @@ func (d *Device) addRouteEntry6(cidr []string) error {
 	if err != nil {
 		return err
 	}
-	defer unix.Close(fd)
+	defer func() {
+		unix.Shutdown(fd, unix.SHUT_RDWR)
+		unix.Close(fd)
+	}()
 
 	l := roundup(unix.SizeofSockaddrInet6)
 
