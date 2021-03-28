@@ -78,6 +78,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) (err error) {
 
 // setInterfaceAddress6 is ...
 // https://github.com/comzyh/clash/blob/add-water/proxy/tun/dev/dev_darwin.go#L494
+// TODO: set address for IPv6
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) (err error) {
 	d.Conf6.Addr = parse6(addr)
 	d.Conf6.Mask = parse6(mask)
@@ -291,6 +292,7 @@ func (d *Device) addRouteEntry4(cidr []string) error {
 }
 
 // addRouteEntry6 is ...
+// TODO: add route for IPv6
 func (d *Device) addRouteEntry6(cidr []string) error {
 	// https://opensource.apple.com/source/network_cmds/network_cmds-596/route.tproj/route.c.auto.html
 	fd, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
