@@ -76,3 +76,6 @@ sudo go/bin/shadow -c /etc/shadow.json -v
 ## Documentation
 
 Please read [doc/README.md](https://github.com/imgk/shadow/blob/main/doc/README.md)
+
+## TODO
+- [ ] Set interface IPv6 address and IPv6 routes
