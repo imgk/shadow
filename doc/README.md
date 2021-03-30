@@ -10,7 +10,7 @@ Please read [howitworks.md](https://github.com/imgk/shadow/blob/main/doc/howitwo
 
 ## Example Usage of Shadow
 
-1. Use shadow as DoH client for Windows.
+### 1. Use shadow as DoH client for Windows.
 
 Please use WinDivert.
 
@@ -50,7 +50,7 @@ If you are willing to use WinTun, remember to modify Windows route table if shad
 }
 ```
 
-2. Use shadow as transparent proxy on Windows.
+### 2. Use shadow as transparent proxy on Windows.
 
 Use geography location of IP address and proxy HTTPS connections. `1.2.3.4` is the IP address of your proxy server.
 
@@ -76,5 +76,11 @@ Use geography location of IP address and proxy HTTPS connections. `1.2.3.4` is t
 }
 ```
 
-3. Use shadow as transparent proxy on Linux/OpenWrt/macOS.
+PS:
++ `Error loading wintun.dll DLL: Unable to load library: The parameter is incorrect.` for WinTun on Windows 7, x86, see [#26](https://github.com/imgk/shadow/issues/26).
++ Unsigned driver issue for WinTun on Windows 7, see [#29](https://github.com/imgk/shadow/issues/29).
 
+### 3. Use shadow as transparent proxy on Linux/OpenWrt/macOS.
+
+```
+```
