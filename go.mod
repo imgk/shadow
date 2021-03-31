@@ -10,11 +10,11 @@ require (
 	github.com/oschwald/maxminddb-golang v1.8.0
 	github.com/v2fly/v2ray-core/v4 v4.36.3-0.20210330064233-24cc50398512
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
-	golang.org/x/net v0.0.0-20210329181859-df645c7b52b1
-	golang.org/x/sys v0.0.0-20210326220804-49726bf1d181
+	golang.org/x/net v0.0.0-20210330230544-e57232859fb2
+	golang.org/x/sys v0.0.0-20210330210617-4fbd30eecc44
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	golang.zx2c4.com/wireguard v0.0.0-20210323190719-bc69a3fa60f7
 	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210323190719-bc69a3fa60f7
 	golang.zx2c4.com/wireguard/windows v0.3.9
-	gvisor.dev/gvisor v0.0.0-20210329203544-08cc017c0880
+	gvisor.dev/gvisor v0.0.0-20210330184204-3edf00261b7d
 )
