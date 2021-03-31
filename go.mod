@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/gorilla/websocket v1.4.2
-	github.com/imgk/divert-go v0.0.0-20210305210126-39508b245d1a
+	github.com/imgk/divert-go v0.0.0-20210331015403-0a6653e3cde1
 	github.com/lucas-clemente/quic-go v0.20.0
 	github.com/miekg/dns v1.1.41
 	github.com/oschwald/maxminddb-golang v1.8.0
