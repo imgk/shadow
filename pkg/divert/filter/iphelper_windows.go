@@ -3,6 +3,8 @@
 package filter
 
 import (
+	"errors"
+	"net"
 	"reflect"
 	"unsafe"
 
@@ -13,6 +15,7 @@ var (
 	iphlpapi            = windows.MustLoadDLL("iphlpapi.dll")
 	getExtendedTcpTable = iphlpapi.MustFindProc("GetExtendedTcpTable")
 	getExtendedUdpTable = iphlpapi.MustFindProc("GetExtendedUdpTable")
+	getBestInterfaceEx  = iphlpapi.MustFindProc("GetBestInterfaceEx")
 )
 
 // GetTCPTable is ...
@@ -204,4 +207,45 @@ func GetExtendedUdpTable(order uint32, ulAf uint32, tableClass uint32, buf []byt
 		}
 		return nil, errno
 	}
+}
+
+// GetInterfaceIndex is ...
+func GetInterfaceIndex(s string) (int, error) {
+	destAddr := windows.RawSockaddr{}
+
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return 0, errors.New("parse ip error")
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		addr := (*windows.RawSockaddrInet4)(unsafe.Pointer(&destAddr))
+		addr.Family = windows.AF_INET
+		copy(addr.Addr[:], ipv4)
+	} else {
+		ipv6 := ip.To16()
+		addr := (*windows.RawSockaddrInet6)(unsafe.Pointer(&destAddr))
+		addr.Family = windows.AF_INET6
+		copy(addr.Addr[:], ipv6)
+	}
+
+	return GetBestInterfaceEx(&destAddr)
+}
+
+// GetBestInterfaceEx is ...
+func GetBestInterfaceEx(addr *windows.RawSockaddr) (int, error) {
+	dwBestIfIndex := int32(0)
+
+	// IPHLPAPI_DLL_LINKAGE DWORD GetBestInterfaceEx(
+	//  sockaddr *pDestAddr,
+	//  PDWORD   pdwBestIfIndex
+	// );
+	// https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getbestinterfaceex
+	ret, _, errno := getBestInterfaceEx.Call(
+		uintptr(unsafe.Pointer(addr)),
+		uintptr(unsafe.Pointer(&dwBestIfIndex)),
+	)
+	if ret == windows.NO_ERROR {
+		return int(dwBestIfIndex), nil
+	}
+	return 0, errno
 }
