@@ -8,13 +8,13 @@ require (
 	github.com/lucas-clemente/quic-go v0.20.1
 	github.com/miekg/dns v1.1.42
 	github.com/oschwald/maxminddb-golang v1.8.0
-	github.com/v2fly/v2ray-core/v4 v4.39.0
-	golang.org/x/crypto v0.0.0-20210506145944-38f3c27a63bf
-	golang.org/x/net v0.0.0-20210505214959-0714010a04ed
-	golang.org/x/sys v0.0.0-20210507161434-a76c4d0a0096
+	github.com/v2fly/v2ray-core/v4 v4.39.1
+	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
+	golang.org/x/net v0.0.0-20210510120150-4163338589ed
+	golang.org/x/sys v0.0.0-20210511113859-b0526f3d8744
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
-	golang.zx2c4.com/wireguard v0.0.0-20210507124553-ea5456b5e079
-	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210507124553-ea5456b5e079
-	golang.zx2c4.com/wireguard/windows v0.3.13
-	gvisor.dev/gvisor v0.0.0-20210507194346-949c81431d5b
+	golang.zx2c4.com/wireguard v0.0.0-20210511144717-5846b622837e
+	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210511144717-5846b622837e
+	golang.zx2c4.com/wireguard/windows v0.3.14
+	gvisor.dev/gvisor v0.0.0-20210513182845-f4d9f967005f
 )

@@ -85,11 +85,11 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger, mtu int) (e
 	}
 
 	// set forwarding
-	if tcperr := s.Stack.SetForwarding(ipv4.ProtocolNumber, true); tcperr != nil {
+	if tcperr := s.Stack.SetForwardingDefaultAndAllNICs(ipv4.ProtocolNumber, true); tcperr != nil {
 		err = fmt.Errorf("set ipv4 forwarding error: %s", tcperr)
 		return
 	}
-	if tcperr := s.Stack.SetForwarding(ipv6.ProtocolNumber, true); tcperr != nil {
+	if tcperr := s.Stack.SetForwardingDefaultAndAllNICs(ipv6.ProtocolNumber, true); tcperr != nil {
 		err = fmt.Errorf("set ipv6 forwarding error: %s", tcperr)
 		return
 	}
