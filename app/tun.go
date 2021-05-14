@@ -91,8 +91,13 @@ func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	if err != nil {
 		return
 	}
+	// new domain matcher
+	matcher, err := NewGeoSiteMatcher(config)
+	if err != nil {
+		return fmt.Errorf("NewDomainMatcher error: %w", err)
+	}
 	// new netstack
-	stack := netstack.NewStack(handler, resolver, tree, !config.DomainRules.DisableHijack /* true for hijacking queries */)
+	stack := netstack.NewStack(handler, resolver, tree, matcher, !config.DomainRules.DisableHijack /* true for hijacking queries */)
 	err = stack.Start(dev, app.Logger, dev.MTU)
 	if err != nil {
 		return

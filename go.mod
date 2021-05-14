@@ -16,5 +16,6 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20210511144717-5846b622837e
 	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210511144717-5846b622837e
 	golang.zx2c4.com/wireguard/windows v0.3.14
+	google.golang.org/protobuf v1.26.0
 	gvisor.dev/gvisor v0.0.0-20210513182845-f4d9f967005f
 )

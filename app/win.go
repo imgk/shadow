@@ -110,8 +110,13 @@ func (app *App) Run() error {
 	if err != nil {
 		return fmt.Errorf("NewDomainTree error: %w", err)
 	}
+	// new geosite matcher
+	matcher, err := NewGeoSiteMatcher(app.Conf)
+	if err != nil {
+		return fmt.Errorf("NewDomainMatcher error: %w", err)
+	}
 	// new netstack
-	stack := netstack.NewStack(handler, resolver, tree, !app.Conf.DomainRules.DisableHijack /* true for hijacking queries */)
+	stack := netstack.NewStack(handler, resolver, tree, matcher, !app.Conf.DomainRules.DisableHijack /* true for hijacking queries */)
 	err = stack.Start(dev, app.Logger, 1500 /*MTU for WinDivert*/)
 	if err != nil {
 		return fmt.Errorf("start netstack error: %w", err)

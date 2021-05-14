@@ -9,6 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/imgk/shadow/pkg/geosite"
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/netstack/core"
@@ -111,17 +112,19 @@ type Stack struct {
 
 	resolver resolver.Resolver
 	tree     *suffixtree.DomainTree
+	matcher  geosite.Matcher
 
 	counter uint16
 }
 
 // NewStack is ....
-func NewStack(handler gonet.Handler, resolver resolver.Resolver, tree *suffixtree.DomainTree, hijack bool) *Stack {
+func NewStack(handler gonet.Handler, resolver resolver.Resolver, tree *suffixtree.DomainTree, matcher geosite.Matcher, hijack bool) *Stack {
 	return &Stack{
 		Handler:  handler,
 		Hijack:   hijack,
 		resolver: resolver,
 		tree:     tree,
+		matcher:  matcher,
 		counter:  uint16(time.Now().Unix()),
 	}
 }

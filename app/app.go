@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imgk/shadow/pkg/geosite"
 	"github.com/imgk/shadow/pkg/logger"
 	"github.com/imgk/shadow/pkg/suffixtree"
 )
@@ -108,10 +109,10 @@ type Conf struct {
 			File string `json:"file"`
 			// Proxy is ...
 			Proxy []string `json:"proxy,omitempty"`
-			// Direct is ...
-			Direct []string `json:"direct,omitempty"`
-			// Blocked is ...
-			Blocked []string `json:"blocked,omitempty"`
+			// Bypass is ...
+			Bypass []string `json:"bypass,omitempty"`
+			// Final is ...
+			Final string `json:"final,omitempty"`
 		} `json:"geo_site,omitempty"`
 		// DisableHijack is ...
 		// hijack dns queries
@@ -207,6 +208,17 @@ func (c *Conf) prepareGeographicalIP() {
 	c.GeoIP.Final = strings.ToLower(c.GeoIP.Final)
 }
 
+// prepareGeographicalSite is ...
+func (c *Conf) prepareGeographicalSite() {
+	for i, v := range c.DomainRules.GeoSite.Proxy {
+		c.DomainRules.GeoSite.Proxy[i] = strings.ToLower(v)
+	}
+	for i, v := range c.DomainRules.GeoSite.Bypass {
+		c.DomainRules.GeoSite.Bypass[i] = strings.ToLower(v)
+	}
+	c.DomainRules.GeoSite.Final = strings.ToLower(c.DomainRules.GeoSite.Final)
+}
+
 // ReadFromURL is ...
 func (c *Conf) ReadFromURL(s string) error {
 	r, err := http.Get(s)
@@ -256,6 +268,7 @@ func (c *Conf) ReadFromByteSlice(b []byte) error {
 		return c.prepareFilterString()
 	}
 	c.prepareGeographicalIP()
+	c.prepareGeographicalSite()
 	return nil
 }
 
@@ -353,6 +366,12 @@ func NewDomainTree(conf *Conf) (*suffixtree.DomainTree, error) {
 	}
 	tree.Unlock()
 	return tree, nil
+}
+
+// NewGeoSiteMatcher is ...
+func NewGeoSiteMatcher(conf *Conf) (geosite.Matcher, error) {
+	g := &conf.DomainRules.GeoSite
+	return geosite.NewMatcher(g.File, g.Proxy, g.Bypass, g.Final)
 }
 
 // PAC is ...

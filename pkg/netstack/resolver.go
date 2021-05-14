@@ -68,7 +68,11 @@ func (s *Stack) LookupIP(addr net.IP) (*socks.Addr, error) {
 func (s *Stack) HandleMessage(m *dns.Msg) {
 	de, ok := s.tree.Load(m.Question[0].Name).(*suffixtree.DomainEntry)
 	if !ok {
-		return
+		if s.matcher.Match(m.Question[0].Name) {
+			s.tree.Store(m.Question[0].Name, &suffixtree.DomainEntry{Rule: "PROXY"})
+		} else {
+			return
+		}
 	}
 
 	switch m.Question[0].Qtype {
