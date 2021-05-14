@@ -372,7 +372,7 @@ func NewDomainTree(conf *Conf) (*suffixtree.DomainTree, error) {
 func NewGeoSiteMatcher(conf *Conf) (geosite.Matcher, error) {
 	g := &conf.DomainRules.GeoSite
 	if g.File == "" {
-		return geosite.Mathcer{}, nil
+		return geosite.Matcher{}, nil
 	}
 	return geosite.NewMatcher(g.File, g.Proxy, g.Bypass, g.Final)
 }
