@@ -10,6 +10,40 @@ type metaResolver struct {
 	servers []Resolver
 }
 
+// Type is ...
+type Type int
+
+const (
+	// Fallback is ...
+	Fallback Type = iota
+)
+
+// NewMultiResolver is ...
+func NewMultiResolver(ss []string, t Type) (Resolver, error) {
+	if len(ss) == 0 {
+		return nil, errors.New("zero length name server")
+	}
+
+	if len(ss) == 1 {
+		return NewResolver(ss[0])
+	}
+
+	rr := []Resolver{}
+	for _, s := range ss {
+		r, err := NewResolver(s)
+		if err != nil {
+			return nil, err
+		}
+		rr = append(rr, r)
+	}
+
+	switch t {
+	case Fallback:
+		return &FallbackResolver{servers: rr}, nil
+	}
+	return nil, errors.New("type error")
+}
+
 // FallbackResolver is ...
 type FallbackResolver metaResolver
 

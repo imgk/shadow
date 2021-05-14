@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,7 +31,7 @@ type Conf struct {
 	// dns resolver server address
 	// tls://1.1.1.1:853
 	// https://1.1.1.1:443/dns-query
-	NameServer string `json:"name_server"`
+	NameServer []string `json:"name_server"`
 	// ProxyServer is ...
 	// for incoming socks5/http proxy
 	// 127.0.0.1:1080
@@ -127,73 +125,6 @@ type Conf struct {
 		// answer 0.0.0.0 or ::0
 		Blocked []string `json:"blocked,omitempty"`
 	} `json:"domain_rules"`
-}
-
-// prepareFilterString is ...
-// generate filter string for WinDivert
-// ignore packets to dns server and proxy server
-func (c *Conf) prepareFilterString() error {
-	const Filter44 = "outbound and (ipv6 or (ip and ip.DstAddr != %s and ip.DstAddr != %s))"
-	const Filter64 = "outbound and ((ipv6 and ipv6.DstAddr != %s) or (ip and ip.DstAddr != %s))"
-	const Filter66 = "outbound and ((ipv6 and ipv6.DstAddr != %s and ipv6.DstAddr != %s) or ip)"
-
-	// ResovleIP is to resovle ip from url
-	ResolveIP := func(s string) (net.IP, error) {
-		u, err := url.Parse(s)
-		if err != nil {
-			return nil, err
-		}
-		addr, err := net.ResolveTCPAddr("tcp", u.Host)
-		if err != nil {
-			return nil, err
-		}
-		if ipv4 := addr.IP.To4(); ipv4 != nil {
-			return ipv4, nil
-		}
-		return addr.IP.To16(), nil
-	}
-
-	type Proto struct {
-		Proto  string `json:"protocol"`
-		URL    string `json:"url,omitempty"`
-		Server string `json:"server,omitempty"`
-	}
-	proto := Proto{}
-	if err := json.Unmarshal(c.Server, &proto); err != nil {
-		return fmt.Errorf("unmarshal server error: %w", err)
-	}
-	if proto.URL == "" && proto.Server == "" {
-		return errors.New("no server address for parsing")
-	}
-	server := proto.URL
-	if server == "" {
-		server = fmt.Sprintf("http://%s", proto.Server)
-	}
-
-	proxyIP, err := ResolveIP(server)
-	if err != nil {
-		return err
-	}
-
-	dnsIP, err := ResolveIP(c.NameServer)
-	if err != nil {
-		return err
-	}
-
-	if len(proxyIP) == net.IPv4len && len(dnsIP) == net.IPv4len {
-		c.FilterString = fmt.Sprintf(Filter44, proxyIP, dnsIP)
-		return nil
-	}
-	if len(proxyIP) == net.IPv4len && len(dnsIP) == net.IPv6len {
-		c.FilterString = fmt.Sprintf(Filter64, dnsIP, proxyIP)
-		return nil
-	}
-	if len(proxyIP) == net.IPv6len && len(dnsIP) == net.IPv4len {
-		c.FilterString = fmt.Sprintf(Filter64, proxyIP, dnsIP)
-		return nil
-	}
-	c.FilterString = fmt.Sprintf(Filter66, proxyIP, dnsIP)
-	return nil
 }
 
 // prepareGeographicalIP is ...

@@ -3,11 +3,13 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -36,7 +38,7 @@ func (app *App) Run() error {
 	if err != nil {
 		return fmt.Errorf("create mutex error: %w", err)
 	}
-	app.attachCloser(&WindowsMutex{Handle: mutex})
+	app.attachCloser(WindowsMutex(mutex))
 	defer func() {
 		if err != nil {
 			for _, closer := range app.closers {
@@ -56,7 +58,7 @@ func (app *App) Run() error {
 	}
 
 	// new dns resolver
-	resolver, err := resolver.NewResolver(app.Conf.NameServer)
+	resolver, err := resolver.NewMultiResolver(app.Conf.NameServer, resolver.Fallback)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -186,13 +188,81 @@ func NewAppFilter(conf *Conf) (*filter.AppFilter, error) {
 }
 
 // WindowsMutex is ...
-type WindowsMutex struct {
-	Handle windows.Handle
-}
+type WindowsMutex windows.Handle
 
 // Close is ...
-func (m *WindowsMutex) Close() error {
-	windows.ReleaseMutex(m.Handle)
-	windows.CloseHandle(m.Handle)
+func (h WindowsMutex) Close() error {
+	windows.ReleaseMutex(windows.Handle(h))
+	windows.CloseHandle(windows.Handle(h))
+	return nil
+}
+
+// prepareFilterString is ...
+// generate filter string for WinDivert
+// ignore packets to dns server and proxy server
+func (c *Conf) prepareFilterString() error {
+	const Filter44 = "outbound and (ipv6 or (ip and ip.DstAddr != %s and ip.DstAddr != %s))"
+	const Filter64 = "outbound and ((ipv6 and ipv6.DstAddr != %s) or (ip and ip.DstAddr != %s))"
+	const Filter66 = "outbound and ((ipv6 and ipv6.DstAddr != %s and ipv6.DstAddr != %s) or ip)"
+
+	// ResovleIP is to resovle ip from url
+	ResolveIP := func(s string) (net.IP, error) {
+		u, err := url.Parse(s)
+		if err != nil {
+			return nil, err
+		}
+		addr, err := net.ResolveTCPAddr("tcp", u.Host)
+		if err != nil {
+			return nil, err
+		}
+		if ipv4 := addr.IP.To4(); ipv4 != nil {
+			return ipv4, nil
+		}
+		return addr.IP.To16(), nil
+	}
+
+	type Proto struct {
+		Proto  string `json:"protocol"`
+		URL    string `json:"url,omitempty"`
+		Server string `json:"server,omitempty"`
+	}
+	proto := Proto{}
+	if err := json.Unmarshal(c.Server, &proto); err != nil {
+		return fmt.Errorf("unmarshal server error: %w", err)
+	}
+	if proto.URL == "" && proto.Server == "" {
+		return errors.New("no server address for parsing")
+	}
+	server := proto.URL
+	if server == "" {
+		server = fmt.Sprintf("http://%s", proto.Server)
+	}
+
+	proxyIP, err := ResolveIP(server)
+	if err != nil {
+		return err
+	}
+
+	if len(c.NameServer) != 1 {
+		return errors.New("only support one name server for WinDivert")
+	}
+	dnsIP, err := ResolveIP(c.NameServer[0])
+	if err != nil {
+		return err
+	}
+
+	if len(proxyIP) == net.IPv4len && len(dnsIP) == net.IPv4len {
+		c.FilterString = fmt.Sprintf(Filter44, proxyIP, dnsIP)
+		return nil
+	}
+	if len(proxyIP) == net.IPv4len && len(dnsIP) == net.IPv6len {
+		c.FilterString = fmt.Sprintf(Filter64, dnsIP, proxyIP)
+		return nil
+	}
+	if len(proxyIP) == net.IPv6len && len(dnsIP) == net.IPv4len {
+		c.FilterString = fmt.Sprintf(Filter64, proxyIP, dnsIP)
+		return nil
+	}
+	c.FilterString = fmt.Sprintf(Filter66, proxyIP, dnsIP)
 	return nil
 }

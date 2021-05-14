@@ -22,7 +22,7 @@
 
     // DNS Server
     // https://1.1.1.1:443/dns-query
-    "name_server": "https://1.1.1.1:443/dns-query",
+    "name_server": ["https://1.1.1.1:443/dns-query"],
 
 
     // tun device only
@@ -70,6 +70,12 @@
     // and redirect queries to name_server for domains in direct.
     // If not found, it is direct
     "domain_rules": {
+        "geo_site": {
+            "file": "geosite.dat",
+            "proxy": ["US"],
+            "bypass": ["CN"],
+            "final": "proxy"
+        },
         "proxy": [
             "**.google.com",
             "**.google.*",

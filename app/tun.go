@@ -22,7 +22,7 @@ import (
 func (app *App) RunWithDevice(dev *tun.Device) (err error) {
 	config := app.Conf
 	// new dns resolver
-	resolver, err := resolver.NewResolver(config.NameServer)
+	resolver, err := resolver.NewMultiResolver(config.NameServer, resolver.Fallback)
 	if err != nil {
 		return fmt.Errorf("dns server error: %w", err)
 	}
@@ -173,4 +173,9 @@ func (c *Command) Close() (last error) {
 		}
 	}
 	return
+}
+
+// prepareFilterString is ...
+func (c *Conf) prepareFilterString() error {
+	return nil
 }
