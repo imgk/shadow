@@ -336,11 +336,11 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 	r.Reader.SetReadDeadline(time.Now().Add(r.timeout))
 	n, tgt, err := r.Reader.ReadTo(bb)
 	if err != nil {
-		return 0, err
+		return 0, io.EOF
 	}
 	addr, err := socks.ResolveAddrBuffer(tgt, b[0:])
 	if err != nil {
-		return 0, err
+		return 0, io.EOF
 	}
 	b = append(b[:len(addr.Addr)], byte(n>>8), byte(n), 0x0d, 0x0a)
 	b = append(b, bb[:n]...)

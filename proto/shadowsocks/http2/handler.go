@@ -479,13 +479,15 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 	// use 512 for buffer for 2 + SaltSize + MaxAddrLen + Overhead
 	headerLen := len(b)/2 + 512
 	if len(b) < headerLen+2<<10 {
-		return 0, io.ErrShortBuffer
+		return 0, io.EOF
 	}
+
 	r.Reader.SetReadDeadline(time.Now().Add(r.timeout))
 	n, addr, err := r.Reader.ReadTo(b[headerLen:])
 	if err != nil {
-		return 0, err
+		return 0, io.EOF
 	}
+
 	offset, err := func(b []byte, tgt net.Addr) (int, error) {
 		if addr, ok := tgt.(*socks.Addr); ok {
 			offset := len(b) - len(addr.Addr)
@@ -514,7 +516,7 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 		return 0, errors.New("addr type error")
 	}(b[:headerLen], addr)
 	if err != nil {
-		return 0, err
+		return 0, io.EOF
 	}
 
 	buf, err := func(dst, pkt []byte, cipher *core.Cipher) ([]byte, error) {
@@ -538,5 +540,8 @@ func (r *PacketReader) Read(b []byte) (int, error) {
 	}(b[2:], b[offset:headerLen+n], r.Cipher)
 	b[0] = byte(len(buf) >> 8)
 	b[1] = byte(len(buf))
-	return 2 + len(buf), err
+	if err != nil {
+		return 2 + len(buf), io.EOF
+	}
+	return 2 + len(buf), nil
 }
