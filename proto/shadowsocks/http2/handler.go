@@ -353,12 +353,16 @@ func (r *Reader) Close() error {
 // Read is ...
 func (r *Reader) Read(b []byte) (int, error) {
 	if r.AEAD == nil {
-		return r.init(b)
+		n, err := r.init(b)
+		if err != nil {
+			return n, io.EOF
+		}
+		return n, nil
 	}
 
 	overhead := r.AEAD.Overhead()
 	if len(b) < 2+overhead+overhead {
-		return 0, io.ErrShortBuffer
+		return 0, io.EOF
 	}
 	if n := 2 + overhead + core.MaxPacketSize + overhead; len(b) > n {
 		b = b[:n]
@@ -367,7 +371,7 @@ func (r *Reader) Read(b []byte) (int, error) {
 	buf := b[2+overhead : len(b)-overhead]
 	n, err := r.Reader.Read(buf)
 	if err != nil {
-		return 0, err
+		return 0, io.EOF
 	}
 
 	b[0] = byte(n >> 8)

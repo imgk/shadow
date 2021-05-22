@@ -285,9 +285,17 @@ func NewReader(conn gonet.Conn, tgt net.Addr) *Reader {
 func (r *Reader) Read(b []byte) (int, error) {
 	if r.Reader == nil {
 		r.Reader = r.Conn
-		return WriteAddr(b, socks.CmdConnect, r.tgt)
+		n, err := WriteAddr(b, socks.CmdConnect, r.tgt)
+		if err != nil {
+			return n, io.EOF
+		}
+		return n, nil
 	}
-	return r.Reader.Read(b)
+	n, err := r.Reader.Read(b)
+	if err != nil {
+		return n, io.EOF
+	}
+	return n, nil
 }
 
 // Close is ...
