@@ -297,6 +297,9 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 		}
 	}(r.Body)
 
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
 	return err
 }
 

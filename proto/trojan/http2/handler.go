@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -233,6 +234,9 @@ func (h *Handler) HandlePacket(conn gonet.PacketConn) error {
 		return
 	}(r.Body, conn)
 
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
 	return err
 }
 
