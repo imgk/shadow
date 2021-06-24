@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/gorilla/websocket v1.4.2
-	github.com/imgk/divert-go v0.0.0-20210621124553-be33d7f0fb65
+	github.com/imgk/divert-go v0.0.0-20210624020031-744b33047207
 	github.com/lucas-clemente/quic-go v0.21.1
 	github.com/miekg/dns v1.1.43
 	github.com/oschwald/maxminddb-golang v1.8.0
@@ -17,5 +17,6 @@ require (
 	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20210604143328-f9b48a961cd2
 	golang.zx2c4.com/wireguard/windows v0.3.15
 	google.golang.org/protobuf v1.26.0
-	gvisor.dev/gvisor v0.0.0-20210623014015-b3541865b493
+	gvisor.dev/gvisor v0.0.0-20210624000850-689cacfe5062
+
 )
