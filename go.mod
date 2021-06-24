@@ -18,5 +18,4 @@ require (
 	golang.zx2c4.com/wireguard/windows v0.3.15
 	google.golang.org/protobuf v1.26.0
 	gvisor.dev/gvisor v0.0.0-20210624000850-689cacfe5062
-
 )
