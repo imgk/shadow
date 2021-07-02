@@ -452,20 +452,21 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 	}
 	defer route.Release()
 
-	if tcperr := sendUDP(
-		route,
-		v.ToVectorisedView(),
-		uint16(src.Port),
-		conn.routeInfo.id.RemotePort,
-		0,    /* ttl */
-		true, /* useDefaultTTL */
-		0,    /* tos */
-		nil,  /* owner */
-		true,
-	); tcperr != nil {
-		return 0, errors.New((*tcperr).String())
+	n, tcperr := (&udpPacketInfo{
+		route:         route,
+		data:          v,
+		localPort:     uint16(src.Port),
+		remotePort:    conn.routeInfo.id.RemotePort,
+		ttl:           0,    /* ttl */
+		useDefaultTTL: true, /* useDefaultTTL */
+		tos:           0,    /* tos */
+		owner:         nil,  /* owner */
+		noChecksum:    true,
+	}).send()
+	if tcperr != nil {
+		return n, errors.New(tcperr.String())
 	}
-	return len(b), nil
+	return n, nil
 }
 
 // HandlePacket is to read packet to UDPConn
@@ -479,11 +480,73 @@ func (conn *UDPConn) HandlePacket(b []byte, addr *net.UDPAddr) {
 // use unsafe package
 var _ unsafe.Pointer = unsafe.Pointer(nil)
 
-// sendUDP sends a UDP segment via the provided network endpoint and under the
-// provided identity.
+// udpPacketInfo contains all information required to send a UDP packet.
 //
-//go:linkname sendUDP gvisor.dev/gvisor/pkg/tcpip/transport/udp.sendUDP
-func sendUDP(r *stack.Route, data buffer.VectorisedView, localPort, remotePort uint16, ttl uint8, useDefaultTTL bool, tos uint8, owner tcpip.PacketOwner, noChecksum bool) *tcpip.Error
+// This should be used as a value-only type, which exists in order to simplify
+// return value syntax. It should not be exported or extended.
+type udpPacketInfo struct {
+	route         *stack.Route
+	data          buffer.View
+	localPort     uint16
+	remotePort    uint16
+	ttl           uint8
+	useDefaultTTL bool
+	tos           uint8
+	owner         tcpip.PacketOwner
+	noChecksum    bool
+}
+
+// send sends the given packet.
+func (u *udpPacketInfo) send() (int, tcpip.Error) {
+	const ProtocolNumber = header.UDPProtocolNumber
+
+	vv := u.data.ToVectorisedView()
+	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
+		ReserveHeaderBytes: header.UDPMinimumSize + int(u.route.MaxHeaderLength()),
+		Data:               vv,
+	})
+	pkt.Owner = u.owner
+
+	// Initialize the UDP header.
+	udp := header.UDP(pkt.TransportHeader().Push(header.UDPMinimumSize))
+	pkt.TransportProtocolNumber = ProtocolNumber
+
+	length := uint16(pkt.Size())
+	udp.Encode(&header.UDPFields{
+		SrcPort: u.localPort,
+		DstPort: u.remotePort,
+		Length:  length,
+	})
+
+	// Set the checksum field unless TX checksum offload is enabled.
+	// On IPv4, UDP checksum is optional, and a zero value indicates the
+	// transmitter skipped the checksum generation (RFC768).
+	// On IPv6, UDP checksum is not optional (RFC2460 Section 8.1).
+	if u.route.RequiresTXTransportChecksum() &&
+		(!u.noChecksum || u.route.NetProto() == header.IPv6ProtocolNumber) {
+		xsum := u.route.PseudoHeaderChecksum(ProtocolNumber, length)
+		for _, v := range vv.Views() {
+			xsum = header.Checksum(v, xsum)
+		}
+		udp.SetChecksum(^udp.CalculateChecksum(xsum))
+	}
+
+	if u.useDefaultTTL {
+		u.ttl = u.route.DefaultTTL()
+	}
+	if err := u.route.WritePacket(stack.NetworkHeaderParams{
+		Protocol: ProtocolNumber,
+		TTL:      u.ttl,
+		TOS:      u.tos,
+	}, pkt); err != nil {
+		u.route.Stats().UDP.PacketSendErrors.Increment()
+		return 0, err
+	}
+
+	// Track count of packets sent.
+	u.route.Stats().UDP.PacketsSent.Increment()
+	return len(u.data), nil
+}
 
 // verifyChecksum verifies the checksum unless RX checksum offload is enabled.
 // On IPv4, UDP checksum is optional, and a zero value means the transmitter

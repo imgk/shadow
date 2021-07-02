@@ -1,3 +1,4 @@
+//go:build trojan
 // +build trojan
 
 package register

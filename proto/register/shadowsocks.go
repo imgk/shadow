@@ -1,3 +1,4 @@
+//go:build shadowsocks
 // +build shadowsocks
 
 package register

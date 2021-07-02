@@ -1,3 +1,4 @@
+//go:build v2ray
 // +build v2ray
 
 package register

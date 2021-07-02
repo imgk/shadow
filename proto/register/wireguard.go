@@ -1,3 +1,4 @@
+//go:build wireguard
 // +build wireguard
 
 package register

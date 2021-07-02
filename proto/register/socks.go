@@ -1,3 +1,4 @@
+//go:build socks
 // +build socks
 
 package register
