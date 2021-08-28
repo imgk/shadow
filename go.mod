@@ -20,6 +20,8 @@ require (
 	gvisor.dev/gvisor v0.0.0-20210827202551-ac5bbb582c3d
 )
 
+replace golang.zx2c4.com/wireguard/tun/netstack => github.com/imgk/wireguard-go/tun/netstack v0.0.0-20210507014402-7cfc11fee980
+
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/dgryski/go-metro v0.0.0-20200812162917-85c65e2d0165 // indirect
