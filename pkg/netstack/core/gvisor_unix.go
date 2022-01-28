@@ -96,15 +96,12 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 func (e *Endpoint) WriteNotify() {
 	const Offset = 4
 
-	info, ok := e.Endpoint.Read()
-	if !ok {
-		return
-	}
+	pkt := e.Endpoint.Read()
 
 	e.mu.Lock()
-	buf := append(e.buff[:Offset], info.Pkt.NetworkHeader().View()...)
-	buf = append(buf, info.Pkt.TransportHeader().View()...)
-	vv := info.Pkt.Data().ExtractVV()
+	buf := append(e.buff[:Offset], pkt.NetworkHeader().View()...)
+	buf = append(buf, pkt.TransportHeader().View()...)
+	vv := pkt.Data().ExtractVV()
 	buf = append(buf, vv.ToView()...)
 	e.Writer.Write(buf, Offset)
 	e.mu.Unlock()

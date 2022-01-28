@@ -102,15 +102,12 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 
 // WriteNotify is to write packets back to system
 func (e *Endpoint) WriteNotify() {
-	info, ok := e.Endpoint.Read()
-	if !ok {
-		return
-	}
+	pkt := e.Endpoint.Read()
 
 	e.mu.Lock()
-	buf := append(e.buff[:0], info.Pkt.NetworkHeader().View()...)
-	buf = append(buf, info.Pkt.TransportHeader().View()...)
-	vv := info.Pkt.Data().ExtractVV()
+	buf := append(e.buff[:0], pkt.NetworkHeader().View()...)
+	buf = append(buf, pkt.TransportHeader().View()...)
+	vv := pkt.Data().ExtractVV()
 	buf = append(buf, vv.ToView()...)
 	e.Writer.Write(buf)
 	e.mu.Unlock()
