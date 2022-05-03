@@ -3,7 +3,6 @@ package http2
 import (
 	"crypto/sha256"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -71,7 +70,7 @@ func NewHandler(server, path, password, domain string, timeout time.Duration) (*
 		buff := [HeaderLen]byte{}
 		hash := sha256.Sum224([]byte(password))
 		hex.Encode(buff[:HeaderLen], hash[:])
-		return fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString(buff[:]))
+		return fmt.Sprintf("Basic %v", string(buff[:]))
 	}(password)
 
 	dialer := NetDialer{Addr: server}
@@ -115,7 +114,7 @@ func NewQUICHandler(server, path, password, domain string, timeout time.Duration
 		buff := [HeaderLen]byte{}
 		hash := sha256.Sum224([]byte(password))
 		hex.Encode(buff[:HeaderLen], hash[:])
-		return fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString(buff[:]))
+		return fmt.Sprintf("Basic %v", string(buff[:]))
 	}(password)
 
 	dialer := QUICDialer{Addr: server}
