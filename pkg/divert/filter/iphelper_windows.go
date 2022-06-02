@@ -1,11 +1,10 @@
-// +build windows
+//go:build windows
 
 package filter
 
 import (
 	"errors"
 	"net"
-	"reflect"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -25,12 +24,7 @@ func GetTCPTable(buf []byte) ([]TCPRow, error) {
 		return nil, err
 	}
 	t := (*TCPTable)(unsafe.Pointer(&b[0]))
-	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.Table)),
-		Len:  int(t.Len),
-		Cap:  int(t.Len),
-	}
-	return *(*[]TCPRow)(unsafe.Pointer(h)), nil
+	return unsafe.Slice((*TCPRow)(unsafe.Pointer(&t.Table)), t.Len), nil
 }
 
 // TCPTable is ...
@@ -56,12 +50,7 @@ func GetTCP6Table(buf []byte) ([]TCP6Row, error) {
 		return nil, err
 	}
 	t := (*TCP6Table)(unsafe.Pointer(&b[0]))
-	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.Table)),
-		Len:  int(t.Len),
-		Cap:  int(t.Len),
-	}
-	return *(*[]TCP6Row)(unsafe.Pointer(h)), nil
+	return unsafe.Slice((*TCP6Row)(unsafe.Pointer(&t.Table)), t.Len), nil
 }
 
 // TCP6Table is ...
@@ -124,12 +113,7 @@ func GetUDPTable(buf []byte) ([]UDPRow, error) {
 		return nil, err
 	}
 	t := (*UDPTable)(unsafe.Pointer(&b[0]))
-	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.Table)),
-		Len:  int(t.Len),
-		Cap:  int(t.Len),
-	}
-	return *(*[]UDPRow)(unsafe.Pointer(h)), nil
+	return unsafe.Slice((*UDPRow)(unsafe.Pointer(&t.Table)), t.Len), nil
 }
 
 // UDPTable is ...
@@ -152,12 +136,7 @@ func GetUDP6Table(buf []byte) ([]UDP6Row, error) {
 		return nil, err
 	}
 	t := (*UDP6Table)(unsafe.Pointer(&b[0]))
-	h := &reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&t.Table)),
-		Len:  int(t.Len),
-		Cap:  int(t.Len),
-	}
-	return *(*[]UDP6Row)(unsafe.Pointer(h)), nil
+	return unsafe.Slice((*UDP6Row)(unsafe.Pointer(&t.Table)), t.Len), nil
 }
 
 // UDP6Table is ...

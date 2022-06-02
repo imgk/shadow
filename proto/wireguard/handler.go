@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -81,7 +82,7 @@ type Handler struct {
 
 // NewHandler is ...
 func NewHandler(addr, dns string, mtu int, setting string, timeout time.Duration) (*Handler, error) {
-	tun, tnet, err := netstack.CreateNetTUN([]net.IP{net.ParseIP(addr)}, []net.IP{net.ParseIP(dns)}, mtu)
+	tun, tnet, err := netstack.CreateNetTUN([]netip.Addr{netip.MustParseAddr(addr)}, []netip.Addr{netip.MustParseAddr(dns)}, mtu)
 	if err != nil {
 		return nil, err
 	}

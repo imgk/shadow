@@ -4,12 +4,11 @@
 package tun
 
 import (
-	"bytes"
 	"crypto/md5"
 	"errors"
+	"fmt"
 	"io"
-	"net"
-	"sort"
+	"net/netip"
 	"unsafe"
 
 	"golang.org/x/crypto/hkdf"
@@ -85,15 +84,25 @@ func (d *Device) Write(b []byte) (int, error) {
 	return d.NativeTun.Write(b, 0)
 }
 
+// SetInterfaceAddress is ...
+// 192.168.1.11/24
+// fe80:08ef:ae86:68ef::11/64
+func (d *Device) SetInterfaceAddress(address string) error {
+	if _, _, gateway, err := getInterfaceConfig4(address); err == nil {
+		return d.setInterfaceAddress4("", address, gateway)
+	}
+	if _, _, gateway, err := getInterfaceConfig6(address); err == nil {
+		return d.setInterfaceAddress6("", address, gateway)
+	}
+	return errors.New("tun device address error")
+}
+
 // setInterfaceAddress4 is ...
 // https://github.com/WireGuard/wireguard-windows/blob/ef8d4f03bbb6e407bc4470b2134a9ab374155633/tunnel/addressconfig.go#L60-L168
 func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
-	addresses := append([]net.IPNet{}, net.IPNet{
-		IP:   net.ParseIP(addr).To4(),
-		Mask: net.IPMask(net.ParseIP(mask).To4()),
-	})
+	addresses := append([]netip.Prefix{}, netip.MustParsePrefix(mask))
 
 	err := luid.SetIPAddressesForFamily(windows.AF_INET, addresses)
 	if errors.Is(err, windows.ERROR_OBJECT_ALREADY_EXISTS) {
@@ -104,7 +113,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 		return err
 	}
 
-	err = luid.SetDNS(windows.AF_INET, []net.IP{net.ParseIP(gateway).To4()}, []string{})
+	err = luid.SetDNS(windows.AF_INET, []netip.Addr{netip.MustParseAddr(gateway)}, []string{})
 	return err
 }
 
@@ -112,10 +121,7 @@ func (d *Device) setInterfaceAddress4(addr, mask, gateway string) error {
 func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
-	addresses := append([]net.IPNet{}, net.IPNet{
-		IP:   net.ParseIP(addr).To16(),
-		Mask: net.IPMask(net.ParseIP(mask).To16()),
-	})
+	addresses := append([]netip.Prefix{}, netip.MustParsePrefix(mask))
 
 	err := luid.SetIPAddressesForFamily(windows.AF_INET6, addresses)
 	if errors.Is(err, windows.ERROR_OBJECT_ALREADY_EXISTS) {
@@ -126,7 +132,7 @@ func (d *Device) setInterfaceAddress6(addr, mask, gateway string) error {
 		return err
 	}
 
-	err = luid.SetDNS(windows.AF_INET6, []net.IP{net.ParseIP(gateway).To16()}, []string{})
+	err = luid.SetDNS(windows.AF_INET6, []netip.Addr{netip.MustParseAddr(gateway)}, []string{})
 	return err
 }
 
@@ -139,99 +145,59 @@ func (d *Device) Activate() error {
 func (d *Device) addRouteEntry4(cidr []string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
-	routes := make([]winipcfg.RouteData, 0, len(cidr))
+	routes := make(map[winipcfg.RouteData]bool, len(cidr))
 	for _, item := range cidr {
-		_, ipNet, err := net.ParseCIDR(item)
+		ipNet, err := netip.ParsePrefix(item)
 		if err != nil {
-			return err
+			return fmt.Errorf("ParsePrefix error: %w", err)
 		}
-		routes = append(routes, winipcfg.RouteData{
-			Destination: *ipNet,
-			NextHop:     net.IPv4zero,
+		routes[winipcfg.RouteData{
+			Destination: ipNet,
+			NextHop:     netip.IPv4Unspecified(),
 			Metric:      0,
-		})
+		}] = true
 	}
 
-	deduplicatedRoutes := make([]*winipcfg.RouteData, 0, len(routes))
-	sort.Slice(routes, func(i, j int) bool {
-		if routes[i].Metric != routes[j].Metric {
-			return routes[i].Metric < routes[j].Metric
+	for r := range routes {
+		if err := luid.AddRoute(r.Destination, r.NextHop, r.Metric); err != nil {
+			return fmt.Errorf("AddRoute error: %w", err)
 		}
-		if c := bytes.Compare(routes[i].NextHop, routes[j].NextHop); c != 0 {
-			return c < 0
-		}
-		if c := bytes.Compare(routes[i].Destination.IP, routes[j].Destination.IP); c != 0 {
-			return c < 0
-		}
-		if c := bytes.Compare(routes[i].Destination.Mask, routes[j].Destination.Mask); c != 0 {
-			return c < 0
-		}
-		return false
-	})
-	for i := 0; i < len(routes); i++ {
-		if i > 0 && routes[i].Metric == routes[i-1].Metric &&
-			bytes.Equal(routes[i].NextHop, routes[i-1].NextHop) &&
-			bytes.Equal(routes[i].Destination.IP, routes[i-1].Destination.IP) &&
-			bytes.Equal(routes[i].Destination.Mask, routes[i-1].Destination.Mask) {
-			continue
-		}
-		deduplicatedRoutes = append(deduplicatedRoutes, &routes[i])
 	}
 
-	return luid.SetRoutesForFamily(windows.AF_INET, deduplicatedRoutes)
+	return nil
 }
 
 // addRouteEntry6 is ...
 func (d *Device) addRouteEntry6(cidr []string) error {
 	luid := winipcfg.LUID(d.NativeTun.LUID())
 
-	routes := make([]winipcfg.RouteData, 0, len(cidr))
+	routes := make(map[winipcfg.RouteData]bool, len(cidr))
 	for _, item := range cidr {
-		_, ipNet, err := net.ParseCIDR(item)
+		ipNet, err := netip.ParsePrefix(item)
 		if err != nil {
-			return err
+			return fmt.Errorf("ParsePrefix error: %w", err)
 		}
-		routes = append(routes, winipcfg.RouteData{
-			Destination: *ipNet,
-			NextHop:     net.IPv6zero,
+		routes[winipcfg.RouteData{
+			Destination: ipNet,
+			NextHop:     netip.IPv6Unspecified(),
 			Metric:      0,
-		})
+		}] = true
 	}
 
-	deduplicatedRoutes := make([]*winipcfg.RouteData, 0, len(routes))
-	sort.Slice(routes, func(i, j int) bool {
-		if routes[i].Metric != routes[j].Metric {
-			return routes[i].Metric < routes[j].Metric
+	for r := range routes {
+		if err := luid.AddRoute(r.Destination, r.NextHop, r.Metric); err != nil {
+			return fmt.Errorf("AddRoute error: %w", err)
 		}
-		if c := bytes.Compare(routes[i].NextHop, routes[j].NextHop); c != 0 {
-			return c < 0
-		}
-		if c := bytes.Compare(routes[i].Destination.IP, routes[j].Destination.IP); c != 0 {
-			return c < 0
-		}
-		if c := bytes.Compare(routes[i].Destination.Mask, routes[j].Destination.Mask); c != 0 {
-			return c < 0
-		}
-		return false
-	})
-	for i := 0; i < len(routes); i++ {
-		if i > 0 && routes[i].Metric == routes[i-1].Metric &&
-			bytes.Equal(routes[i].NextHop, routes[i-1].NextHop) &&
-			bytes.Equal(routes[i].Destination.IP, routes[i-1].Destination.IP) &&
-			bytes.Equal(routes[i].Destination.Mask, routes[i-1].Destination.Mask) {
-			continue
-		}
-		deduplicatedRoutes = append(deduplicatedRoutes, &routes[i])
 	}
 
-	return luid.SetRoutesForFamily(windows.AF_INET6, deduplicatedRoutes)
+	return nil
 }
 
 // use golang.zx2c4.com/wireguard/windows/tunnel
 var _ = tunnel.UseFixedGUIDInsteadOfDeterministic
 
 // cleanupAddressesOnDisconnectedInterfaces is ...
-// https://github.com/WireGuard/wireguard-windows/blob/master/tunnel/addressconfig.go#L22
+// https://github.com/WireGuard/wireguard-windows/blob/master/tunnel/addressconfig.go#L21
 //
 //go:linkname cleanupAddressesOnDisconnectedInterfaces golang.zx2c4.com/wireguard/windows/tunnel.cleanupAddressesOnDisconnectedInterfaces
-func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, addresses []net.IPNet)
+func cleanupAddressesOnDisconnectedInterfaces(family winipcfg.AddressFamily, addresses []netip.Prefix)

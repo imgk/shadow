@@ -1,5 +1,4 @@
 //go:build windows && divert
-// +build windows,divert
 
 package app
 

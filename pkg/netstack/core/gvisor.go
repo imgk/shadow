@@ -296,8 +296,18 @@ func (s *Stack) Del(k int) {
 // HandlePacket is to handle UDP connections
 func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuffer) bool {
 	// Ref: gVisor pkg/tcpip/transport/udp/endpoint.go HandlePacket
-	udpHdr := header.UDP(pkt.TransportHeader().View())
-	if int(udpHdr.Length()) > pkt.Data().Size()+header.UDPMinimumSize {
+	hdr := header.UDP(pkt.TransportHeader().View())
+	netHdr := pkt.Network()
+	lengthValid, csumValid := header.UDPValid(
+		hdr,
+		func() uint16 { return pkt.Data().AsRange().Checksum() },
+		uint16(pkt.Data().Size()),
+		pkt.NetworkProtocolNumber,
+		netHdr.SourceAddress(),
+		netHdr.DestinationAddress(),
+		pkt.RXTransportChecksumValidated)
+	if !lengthValid {
+		// Malformed packet.
 		s.Error("udp %v:%v <---> %v:%v malformed packet",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
@@ -308,7 +318,7 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 		return true
 	}
 
-	if !verifyChecksum(udpHdr, pkt) {
+	if !csumValid {
 		s.Error("udp %v:%v <---> %v:%v checksum error",
 			net.IP(id.RemoteAddress),
 			int(id.RemotePort),
@@ -506,6 +516,7 @@ func (u *udpPacketInfo) send() (int, tcpip.Error) {
 		Data:               vv,
 	})
 	pkt.Owner = u.owner
+	defer pkt.DecRef()
 
 	// Initialize the UDP header.
 	udp := header.UDP(pkt.TransportHeader().Push(header.UDPMinimumSize))
@@ -547,11 +558,3 @@ func (u *udpPacketInfo) send() (int, tcpip.Error) {
 	u.route.Stats().UDP.PacketsSent.Increment()
 	return len(u.data), nil
 }
-
-// verifyChecksum verifies the checksum unless RX checksum offload is enabled.
-// On IPv4, UDP checksum is optional, and a zero value means the transmitter
-// omitted the checksum generation (RFC768).
-// On IPv6, UDP checksum is not optional (RFC2460 Section 8.1).
-//
-//go:linkname verifyChecksum gvisor.dev/gvisor/pkg/tcpip/transport/udp.verifyChecksum
-func verifyChecksum(hdr header.UDP, pkt *stack.PacketBuffer) bool

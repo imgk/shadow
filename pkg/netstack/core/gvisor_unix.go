@@ -1,5 +1,4 @@
 //go:build linux || darwin
-// +build linux darwin
 
 package core
 
@@ -76,18 +75,17 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 			}
 			buf = buf[Offset:]
 
+			pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
+				ReserveHeaderBytes: 0,
+				Data:               buffer.View(buf[:nr]).ToVectorisedView(),
+			})
 			switch header.IPVersion(buf) {
 			case header.IPv4Version:
-				ep.InjectInbound(header.IPv4ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
-					ReserveHeaderBytes: 0,
-					Data:               buffer.View(buf[:nr]).ToVectorisedView(),
-				}))
+				ep.InjectInbound(header.IPv4ProtocolNumber, pktBuffer)
 			case header.IPv6Version:
-				ep.InjectInbound(header.IPv6ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
-					ReserveHeaderBytes: 0,
-					Data:               buffer.View(buf[:nr]).ToVectorisedView(),
-				}))
+				ep.InjectInbound(header.IPv6ProtocolNumber, pktBuffer)
 			}
+			pktBuffer.DecRef()
 		}
 	}(e.Reader, Offset+e.mtu, e.Endpoint)
 }

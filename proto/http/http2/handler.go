@@ -1,6 +1,7 @@
 package http2
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -43,7 +44,7 @@ type QUICDialer struct {
 }
 
 // Dial is ...
-func (d *QUICDialer) Dial(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
 }
 

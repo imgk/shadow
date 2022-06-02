@@ -1,5 +1,4 @@
 //go:build linux || darwin || (windows && !divert)
-// +build linux darwin windows,!divert
 
 package app
 

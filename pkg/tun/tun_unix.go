@@ -3,7 +3,11 @@
 
 package tun
 
-import "golang.zx2c4.com/wireguard/tun"
+import (
+	"errors"
+
+	"golang.zx2c4.com/wireguard/tun"
+)
 
 // Device is ...
 type Device struct {
@@ -53,4 +57,17 @@ func CreateTUN(name string, mtu int) (dev *Device, err error) {
 // DeviceType is ...
 func (d *Device) DeviceType() string {
 	return "UnixTun"
+}
+
+// SetInterfaceAddress is ...
+// 192.168.1.11/24
+// fe80:08ef:ae86:68ef::11/64
+func (d *Device) SetInterfaceAddress(address string) error {
+	if addr, mask, gateway, err := getInterfaceConfig4(address); err == nil {
+		return d.setInterfaceAddress4(addr, mask, gateway)
+	}
+	if addr, mask, gateway, err := getInterfaceConfig6(address); err == nil {
+		return d.setInterfaceAddress6(addr, mask, gateway)
+	}
+	return errors.New("tun device address error")
 }

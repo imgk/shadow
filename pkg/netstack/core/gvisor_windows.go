@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package core
 
@@ -84,18 +83,17 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 			}
 			buf = buf[:nr]
 
+			pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
+				ReserveHeaderBytes: 0,
+				Data:               buffer.View(buf).ToVectorisedView(),
+			})
 			switch header.IPVersion(buf) {
 			case header.IPv4Version:
-				ep.InjectInbound(header.IPv4ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
-					ReserveHeaderBytes: 0,
-					Data:               buffer.View(buf).ToVectorisedView(),
-				}))
+				ep.InjectInbound(header.IPv4ProtocolNumber, pktBuffer)
 			case header.IPv6Version:
-				ep.InjectInbound(header.IPv6ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
-					ReserveHeaderBytes: 0,
-					Data:               buffer.View(buf).ToVectorisedView(),
-				}))
+				ep.InjectInbound(header.IPv6ProtocolNumber, pktBuffer)
 			}
+			pktBuffer.DecRef()
 		}
 	}(r, e.mtu+4, e.Endpoint)
 }
@@ -143,10 +141,12 @@ func (e *endpoint) Write(b []byte) (int, error) {
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
 		}
-		e.Endpoint.InjectInbound(header.IPv4ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
+		pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
 			ReserveHeaderBytes: 0,
 			Data:               buffer.View(buf).ToVectorisedView(),
-		}))
+		})
+		e.Endpoint.InjectInbound(header.IPv4ProtocolNumber, pktBuffer)
+		pktBuffer.DecRef()
 	case header.IPv6Version:
 		// WinDivert: need to calculate chekcsum
 		pkt := header.IPv6(buf)
@@ -164,10 +164,12 @@ func (e *endpoint) Write(b []byte) (int, error) {
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
 		}
-		e.Endpoint.InjectInbound(header.IPv6ProtocolNumber, stack.NewPacketBuffer(stack.PacketBufferOptions{
+		pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
 			ReserveHeaderBytes: 0,
 			Data:               buffer.View(buf).ToVectorisedView(),
-		}))
+		})
+		e.Endpoint.InjectInbound(header.IPv6ProtocolNumber, pktBuffer)
+		pktBuffer.DecRef()
 	}
 	return len(buf), nil
 }

@@ -28,19 +28,6 @@ func NewDeviceWithMTU(name string, mtu int) (*Device, error) {
 	return CreateTUN(name, mtu)
 }
 
-// SetInterfaceAddress is ...
-// 192.168.1.11/24
-// fe80:08ef:ae86:68ef::11/64
-func (d *Device) SetInterfaceAddress(address string) error {
-	if addr, mask, gateway, err := getInterfaceConfig4(address); err == nil {
-		return d.setInterfaceAddress4(addr, mask, gateway)
-	}
-	if addr, mask, gateway, err := getInterfaceConfig6(address); err == nil {
-		return d.setInterfaceAddress6(addr, mask, gateway)
-	}
-	return errors.New("tun device address error")
-}
-
 // AddRouteEntry is ...
 // 198.18.0.0/16
 // 8.8.8.8/32
@@ -67,8 +54,9 @@ func (d *Device) AddRouteEntry(cidr []string) error {
 		}
 	}
 	if len(cidr6) > 0 {
-		err := d.addRouteEntry6(cidr6)
-		return err
+		if err := d.addRouteEntry6(cidr6); err != nil {
+			return err
+		}
 	}
 	return nil
 }
